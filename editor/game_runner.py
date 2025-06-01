@@ -78,12 +78,13 @@ except ImportError as e:
 
 class LupineGameWindow(arcade.Window):
     def __init__(self):
-        super().__init__(1920, 1080, "Lupine Engine - Game Runner")  # 16:9 aspect ratio
+        super().__init__(1280, 720, "Lupine Engine - Game Runner", resizable=True)  # 16:9 aspect ratio, smaller and resizable
         self.scene = None
         self.scene_data = None
         self.camera = None
         self.sprite_lists = {{}}
         self.textures = {{}}
+        self.text_objects = {{}}  # Cache for text objects to improve performance
 
         # LSC Runtime for script execution
         if LSC_AVAILABLE:
@@ -115,6 +116,26 @@ class LupineGameWindow(arcade.Window):
 
         for name, func in builtins.items():
             self.lsc_runtime.global_scope.define(name, func)
+
+    def get_text_object(self, text, font_size=12, color=arcade.color.WHITE):
+        """Get or create a cached text object for better performance"""
+        key = f"{{text}}_{{font_size}}_{{color}}"
+        if key not in self.text_objects:
+            self.text_objects[key] = arcade.Text(
+                text=text,
+                x=0,
+                y=0,
+                color=color,
+                font_size=font_size
+            )
+        return self.text_objects[key]
+
+    def draw_cached_text(self, text, x, y, color=arcade.color.WHITE, font_size=12):
+        """Draw text using cached text objects for better performance"""
+        text_obj = self.get_text_object(text, font_size, color)
+        text_obj.x = x
+        text_obj.y = y
+        text_obj.draw()
 
     def load_scene(self):
         try:
@@ -225,45 +246,89 @@ class LupineGameWindow(arcade.Window):
     def setup_sprite_node(self, sprite_node):
         """Setup a sprite node with proper texture loading"""
         try:
-            if sprite_node.texture:
+            texture_path = getattr(sprite_node, 'texture', None)
+            if texture_path:
                 # Load texture if not already loaded
-                texture_path = Path(r"{project_path}") / sprite_node.texture
-                if texture_path.exists() and str(texture_path) not in self.textures:
-                    self.textures[str(texture_path)] = arcade.load_texture(str(texture_path))
-                    print(f"Loaded texture: {{texture_path}}")
+                full_texture_path = Path(r"{project_path}") / texture_path
+                if full_texture_path.exists():
+                    if str(full_texture_path) not in self.textures:
+                        self.textures[str(full_texture_path)] = arcade.load_texture(str(full_texture_path))
+                        print(f"Loaded texture: {{full_texture_path}}")
 
-                # Create arcade sprite
-                if str(texture_path) in self.textures:
-                    arcade_sprite = arcade.Sprite()
-                    arcade_sprite.texture = self.textures[str(texture_path)]
-                    arcade_sprite.center_x = sprite_node.position[0]
-                    arcade_sprite.center_y = sprite_node.position[1]
-                    arcade_sprite.angle = sprite_node.rotation
-                    arcade_sprite.scale = sprite_node.scale[0]  # Use X scale
+                    # Create arcade sprite with proper properties
+                    if str(full_texture_path) in self.textures:
+                        arcade_sprite = arcade.Sprite()
+                        arcade_sprite.texture = self.textures[str(full_texture_path)]
 
-                    self.sprite_lists["sprites"].append(arcade_sprite)
+                        # Set position (convert from scene coordinates)
+                        arcade_sprite.center_x = sprite_node.position[0] + self.width // 2
+                        arcade_sprite.center_y = sprite_node.position[1] + self.height // 2
+
+                        # Set rotation and scale
+                        arcade_sprite.angle = getattr(sprite_node, 'rotation', 0)
+                        scale = getattr(sprite_node, 'scale', [1.0, 1.0])
+                        arcade_sprite.scale = scale[0] if isinstance(scale, list) else scale
+
+                        # Set modulation/color if available
+                        modulate = getattr(sprite_node, 'modulate', [1.0, 1.0, 1.0, 1.0])
+                        if len(modulate) >= 3:
+                            # Convert to 0-255 range
+                            arcade_sprite.color = (
+                                int(modulate[0] * 255),
+                                int(modulate[1] * 255),
+                                int(modulate[2] * 255)
+                            )
+
+                        # Set alpha if available
+                        if len(modulate) >= 4:
+                            arcade_sprite.alpha = int(modulate[3] * 255)
+
+                        self.sprite_lists["sprites"].append(arcade_sprite)
+                        print(f"Created arcade sprite for {{sprite_node.name}} at {{arcade_sprite.center_x}}, {{arcade_sprite.center_y}}")
+                else:
+                    print(f"Texture file not found: {{full_texture_path}}")
+            else:
+                # Create a placeholder sprite without texture
+                arcade_sprite = arcade.Sprite()
+                arcade_sprite.center_x = sprite_node.position[0] + self.width // 2
+                arcade_sprite.center_y = sprite_node.position[1] + self.height // 2
+                # Create a simple colored texture as placeholder
+                arcade_sprite.texture = arcade.Texture.create_filled("placeholder", (64, 64), arcade.color.GREEN)
+                self.sprite_lists["sprites"].append(arcade_sprite)
+                print(f"Created placeholder sprite for {{sprite_node.name}} (no texture)")
 
         except Exception as e:
             print(f"Error setting up sprite {{sprite_node.name}}: {{e}}")
+            import traceback
+            traceback.print_exc()
 
     def setup(self):
         arcade.set_background_color(arcade.color.DARK_GRAY)
+
+        # Set proper OpenGL blend mode to avoid white film
+        self.ctx.enable(self.ctx.BLEND)
+        self.ctx.blend_func = self.ctx.SRC_ALPHA, self.ctx.ONE_MINUS_SRC_ALPHA
+
         print("Game setup complete")
         print("ESC to exit")
 
     def on_draw(self):
         self.clear()
 
+        # Set proper blend mode for rendering
+        self.ctx.enable(self.ctx.BLEND)
+        self.ctx.blend_func = self.ctx.SRC_ALPHA, self.ctx.ONE_MINUS_SRC_ALPHA
+
         # Use camera if available
         if self.camera:
             self.camera.use()
 
-        # Draw sprite lists (proper game objects)
+        # Draw sprite lists (proper game objects with textures)
         for sprite_list in self.sprite_lists.values():
             sprite_list.draw()
 
-        # Draw scene nodes (fallback for basic rendering)
-        if self.scene_data and not LSC_AVAILABLE:
+        # Draw scene nodes (fallback for basic rendering with texture support)
+        if self.scene_data:
             nodes = self.scene_data.get("nodes", [])
             for node in nodes:
                 self.draw_node_fallback(node)
@@ -271,12 +336,12 @@ class LupineGameWindow(arcade.Window):
         # Draw UI overlay (always drawn without camera)
         if self.camera:
             # Reset to default camera for UI
-            arcade.get_window().ctx.default_camera.use()
+            self.ctx.default_camera.use()
 
         self.draw_ui()
 
     def draw_node_fallback(self, node_data):
-        """Fallback node rendering when LSC is not available"""
+        """Fallback node rendering with proper texture support"""
         position = node_data.get("position", [0, 0])
         node_type = node_data.get("type", "Node")
 
@@ -286,39 +351,92 @@ class LupineGameWindow(arcade.Window):
 
         if node_type == "Node2D":
             arcade.draw_circle_filled(x, y, 8, arcade.color.WHITE)
-            arcade.draw_text(node_data.get("name", "Node"), x + 15, y,
-                           arcade.color.WHITE, 12)
+            self.draw_cached_text(node_data.get("name", "Node"), x + 15, y,
+                                arcade.color.WHITE, 12)
         elif node_type == "Sprite":
-            size = node_data.get("size", [64, 64])
-            # Use the correct arcade function: draw_lbwh_rectangle_filled(left, bottom, width, height, color)
-            arcade.draw_lbwh_rectangle_filled(x - size[0]//2, y - size[1]//2, size[0], size[1], arcade.color.GREEN)
-            arcade.draw_text(node_data.get("name", "Sprite"), x + size[0]//2 + 10, y,
-                           arcade.color.WHITE, 12)
+            self.draw_sprite_fallback(node_data, x, y)
         elif node_type == "Camera2D":
             # Use the correct arcade function: draw_lbwh_rectangle_outline(left, bottom, width, height, color, border_width)
             arcade.draw_lbwh_rectangle_outline(x - 30, y - 20, 60, 40, arcade.color.YELLOW, 3)
-            arcade.draw_text(node_data.get("name", "Camera"), x + 35, y,
-                           arcade.color.YELLOW, 12)
+            self.draw_cached_text(node_data.get("name", "Camera"), x + 35, y,
+                                arcade.color.YELLOW, 12)
         elif node_type == "Area2D":
             arcade.draw_circle_outline(x, y, 30, arcade.color.BLUE, 3)
-            arcade.draw_text(node_data.get("name", "Area"), x + 35, y,
-                           arcade.color.BLUE, 12)
+            self.draw_cached_text(node_data.get("name", "Area"), x + 35, y,
+                                arcade.color.BLUE, 12)
 
         # Draw children
         for child in node_data.get("children", []):
             self.draw_node_fallback(child)
 
+    def draw_sprite_fallback(self, node_data, x, y):
+        """Draw sprite with actual texture if available"""
+        texture_path = node_data.get("texture", "")
+        size = node_data.get("size", [64, 64])
+
+        # Try to load and draw the actual texture
+        if texture_path:
+            try:
+                # Load texture if not already loaded
+                full_path = Path(r"{project_path}") / texture_path
+                if full_path.exists():
+                    if str(full_path) not in self.textures:
+                        self.textures[str(full_path)] = arcade.load_texture(str(full_path))
+                        print(f"Loaded fallback texture: {{full_path}}")
+
+                    # Draw the texture
+                    if str(full_path) in self.textures:
+                        texture = self.textures[str(full_path)]
+
+                        # Get actual texture size
+                        tex_width = texture.width
+                        tex_height = texture.height
+
+                        # Use texture size or specified size
+                        draw_width = size[0] if size != [64, 64] else tex_width
+                        draw_height = size[1] if size != [64, 64] else tex_height
+
+                        # Draw texture using arcade's draw_texture_rect
+                        # Create a Rect object for the texture position and size
+                        rect = arcade.Rect.from_kwargs(x=x, y=y, width=draw_width, height=draw_height)
+                        arcade.draw_texture_rect(texture, rect)
+
+                        # Draw name label
+                        self.draw_cached_text(node_data.get("name", "Sprite"),
+                                            x + draw_width//2 + 10, y,
+                                            arcade.color.WHITE, 12)
+                        return
+
+            except Exception as e:
+                print(f"Error loading texture {{texture_path}}: {{e}}")
+
+        # Fallback to colored rectangle if no texture
+        arcade.draw_lbwh_rectangle_filled(x - size[0]//2, y - size[1]//2, size[0], size[1], arcade.color.GREEN)
+        self.draw_cached_text(node_data.get("name", "Sprite"), x + size[0]//2 + 10, y,
+                            arcade.color.WHITE, 12)
+
     def draw_ui(self):
         """Draw UI overlay"""
-        arcade.draw_text("Lupine Engine - Game Runner", 10, self.height - 30,
-                        arcade.color.WHITE, 16)
+        self.draw_cached_text("Lupine Engine - Game Runner", 10, self.height - 30,
+                            arcade.color.WHITE, 16)
 
         # Show camera info if available
         if self.camera:
-            arcade.draw_text(f"Camera: {{self.camera.position}}", 10, self.height - 50,
-                            arcade.color.WHITE, 12)
+            self.draw_cached_text(f"Camera: {{self.camera.position}}", 10, self.height - 50,
+                                arcade.color.WHITE, 12)
 
-        arcade.draw_text("ESC: Exit", 10, 10, arcade.color.WHITE, 12)
+        self.draw_cached_text("ESC: Exit", 10, 10, arcade.color.WHITE, 12)
+
+    def on_resize(self, width, height):
+        """Handle window resize events"""
+        super().on_resize(width, height)
+
+        # Clear text cache when window is resized to avoid positioning issues
+        self.text_objects.clear()
+
+        # Update camera viewport if camera exists
+        if self.camera:
+            self.camera.viewport = (0, 0, width, height)
 
     def on_update(self, delta_time):
         """Update game logic and run scripts"""
