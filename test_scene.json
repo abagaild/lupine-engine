@@ -1,0 +1,28 @@
+{
+  "name": "TestScene",
+  "nodes": [
+    {
+      "name": "Main",
+      "type": "Node2D",
+      "position": [
+        0,
+        0
+      ],
+      "children": [
+        {
+          "name": "TestSprite",
+          "type": "Sprite",
+          "position": [
+            100,
+            100
+          ],
+          "size": [
+            64,
+            64
+          ],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

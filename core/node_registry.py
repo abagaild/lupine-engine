@@ -3,7 +3,7 @@ Node Registry System for Lupine Engine
 Manages dynamic node registration and categorization for extensible node system
 """
 
-import os
+
 import json
 from typing import Dict, List, Any, Optional, Callable
 from pathlib import Path
@@ -71,97 +71,7 @@ class NodeRegistry:
             description="2D sprite for displaying textures"
         ))
         
-        self.register_node(NodeDefinition(
-            name="Camera2D",
-            category=NodeCategory.NODE_2D,
-            class_name="Camera2D",
-            description="2D camera for viewing scenes"
-        ))
-        
-        self.register_node(NodeDefinition(
-            name="Area2D",
-            category=NodeCategory.NODE_2D,
-            class_name="Area2D",
-            description="2D area for collision detection"
-        ))
-        
-        self.register_node(NodeDefinition(
-            name="RigidBody2D",
-            category=NodeCategory.NODE_2D,
-            class_name="RigidBody2D",
-            description="2D physics body"
-        ))
-        
-        self.register_node(NodeDefinition(
-            name="StaticBody2D",
-            category=NodeCategory.NODE_2D,
-            class_name="StaticBody2D",
-            description="2D static physics body"
-        ))
-        
-        self.register_node(NodeDefinition(
-            name="KinematicBody2D",
-            category=NodeCategory.NODE_2D,
-            class_name="KinematicBody2D",
-            description="2D kinematic physics body"
-        ))
-        
-        self.register_node(NodeDefinition(
-            name="CollisionShape2D",
-            category=NodeCategory.NODE_2D,
-            class_name="CollisionShape2D",
-            description="2D collision shape"
-        ))
-        
-        self.register_node(NodeDefinition(
-            name="AnimatedSprite2D",
-            category=NodeCategory.NODE_2D,
-            class_name="AnimatedSprite2D",
-            description="2D animated sprite"
-        ))
-        
-        # UI nodes
-        self.register_node(NodeDefinition(
-            name="Control",
-            category=NodeCategory.UI,
-            class_name="Control",
-            description="Base UI control node"
-        ))
-        
-        self.register_node(NodeDefinition(
-            name="CanvasLayer",
-            category=NodeCategory.UI,
-            class_name="CanvasLayer",
-            description="Canvas layer for UI rendering"
-        ))
-        
-        self.register_node(NodeDefinition(
-            name="Button",
-            category=NodeCategory.UI,
-            class_name="Button",
-            description="UI button control"
-        ))
-        
-        self.register_node(NodeDefinition(
-            name="Label",
-            category=NodeCategory.UI,
-            class_name="Label",
-            description="UI text label"
-        ))
-        
-        self.register_node(NodeDefinition(
-            name="Panel",
-            category=NodeCategory.UI,
-            class_name="Panel",
-            description="UI panel container"
-        ))
-        
-        self.register_node(NodeDefinition(
-            name="LineEdit",
-            category=NodeCategory.UI,
-            class_name="LineEdit",
-            description="UI text input field"
-        ))
+
     
     def register_node(self, node_def: NodeDefinition):
         """Register a new node type"""
@@ -192,7 +102,7 @@ class NodeRegistry:
         """Get all registered nodes"""
         return self._nodes.copy()
     
-    def create_node_instance(self, node_name: str, instance_name: str = None):
+    def create_node_instance(self, node_name: str, instance_name: Optional[str] = None):
         """Create an instance of a registered node"""
         node_def = self.get_node_definition(node_name)
         if not node_def:
@@ -203,26 +113,12 @@ class NodeRegistry:
             return node_def.factory_func(instance_name or node_name)
         
         # Import and create node using class name
-        from core.scene import Node, Node2D, Sprite, Camera2D, Area2D
+        from core.scene import Node, Node2D, Sprite
 
         class_map = {
             "Node": Node,
             "Node2D": Node2D,
             "Sprite": Sprite,
-            "Camera2D": Camera2D,
-            "Area2D": Area2D,
-            "Control": Node2D,  # Use Node2D as base for UI nodes for now
-            "Button": Node2D,
-            "Label": Node2D,
-            "Panel": Node2D,
-            "LineEdit": Node2D,
-            "CanvasLayer": Node2D,
-            "RigidBody2D": Node2D,
-            "StaticBody2D": Node2D,
-            "KinematicBody2D": Node2D,
-            "CollisionShape2D": Node2D,
-            "AnimatedSprite2D": Node2D,
-            # Add more as needed
         }
         
         node_class = class_map.get(node_def.class_name)
@@ -336,6 +232,6 @@ def get_available_nodes() -> Dict[str, NodeDefinition]:
     """Get all available nodes"""
     return get_node_registry().get_all_nodes()
 
-def create_node(node_type: str, name: str = None):
+def create_node(node_type: str, name: Optional[str] = None):
     """Create a node instance"""
     return get_node_registry().create_node_instance(node_type, name)

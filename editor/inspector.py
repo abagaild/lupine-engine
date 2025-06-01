@@ -7,7 +7,8 @@ from typing import Dict, Any, Optional
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QScrollArea, QFormLayout, QLabel,
     QLineEdit, QSpinBox, QDoubleSpinBox, QCheckBox, QComboBox,
-    QGroupBox, QPushButton, QHBoxLayout, QTextEdit, QMessageBox
+    QGroupBox, QPushButton, QHBoxLayout, QTextEdit, QMessageBox,
+    QFileDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
@@ -83,6 +84,18 @@ class InspectorWidget(QWidget):
         """Set the node to inspect"""
         self.current_node = node_data
         self.refresh_properties()
+
+    def update_node_reference(self, updated_node_data: dict):
+        """Update the current node reference while preserving the UI state"""
+        if self.current_node and updated_node_data:
+            current_node_name = self.current_node.get("name", "")
+            updated_node_name = updated_node_data.get("name", "")
+
+            # Only update if it's the same node
+            if current_node_name == updated_node_name:
+                self.current_node = updated_node_data
+                # Don't refresh properties here to avoid UI flicker
+                # The properties should already be up to date
     
     def refresh_properties(self):
         """Refresh the properties display"""
@@ -216,12 +229,20 @@ class InspectorWidget(QWidget):
         group = QGroupBox("Sprite")
         layout = QFormLayout(group)
 
-        # Texture path
+        # Texture path with browse button
         texture = self.current_node.get("texture", "")
+        texture_layout = QHBoxLayout()
+
         texture_edit = QLineEdit(str(texture) if texture else "")
         texture_edit.setPlaceholderText("Path to texture file...")
         texture_edit.textChanged.connect(lambda text: self.update_property("texture", text))
-        layout.addRow("Texture:", texture_edit)
+        texture_layout.addWidget(texture_edit)
+
+        browse_btn = QPushButton("Browse")
+        browse_btn.clicked.connect(lambda: self.browse_texture(texture_edit))
+        texture_layout.addWidget(browse_btn)
+
+        layout.addRow("Texture:", texture_layout)
         self.property_widgets["texture"] = texture_edit
 
         # Centered
@@ -573,3 +594,24 @@ class InspectorWidget(QWidget):
             offset[index] = value
             self.current_node["offset"] = offset
             self.property_changed.emit(self.current_node.get("name", ""), "offset", offset)
+
+    def browse_texture(self, texture_edit: QLineEdit):
+        """Browse for texture file"""
+        file_dialog = QFileDialog(self)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+        file_dialog.setNameFilter("Image Files (*.png *.jpg *.jpeg *.bmp *.gif *.tga)")
+        file_dialog.setDirectory(str(self.project.project_path / "assets"))
+
+        if file_dialog.exec() == QFileDialog.DialogCode.Accepted:
+            selected_files = file_dialog.selectedFiles()
+            if selected_files:
+                file_path = selected_files[0]
+                # Convert to relative path from project root
+                try:
+                    relative_path = self.project.get_relative_path(file_path)
+                    texture_edit.setText(str(relative_path))
+                    self.update_property("texture", str(relative_path))
+                except ValueError:
+                    # File is outside project, use absolute path
+                    texture_edit.setText(file_path)
+                    self.update_property("texture", file_path)

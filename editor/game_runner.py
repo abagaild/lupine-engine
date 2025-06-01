@@ -65,14 +65,56 @@ sys.path.insert(0, r"{project_path}")
 
 import arcade
 import json
+from pathlib import Path
+
+# Import LSC runtime for script execution
+try:
+    from core.lsc import LSCRuntime, LSCInterpreter, execute_lsc_script
+    from core.scene import Scene, Node, Node2D, Sprite, Camera2D
+    LSC_AVAILABLE = True
+except ImportError as e:
+    print(f"LSC not available: {{e}}")
+    LSC_AVAILABLE = False
 
 class LupineGameWindow(arcade.Window):
     def __init__(self):
         super().__init__(1920, 1080, "Lupine Engine - Game Runner")  # 16:9 aspect ratio
+        self.scene = None
         self.scene_data = None
-        self.camera_x = 0
-        self.camera_y = 0
+        self.camera = None
+        self.sprite_lists = {{}}
+        self.textures = {{}}
+
+        # LSC Runtime for script execution
+        if LSC_AVAILABLE:
+            self.lsc_runtime = LSCRuntime(game_runtime=self)
+            # Add game runtime methods to LSC scope
+            self.setup_lsc_builtins()
+        else:
+            self.lsc_runtime = None
+
         self.load_scene()
+
+    def setup_lsc_builtins(self):
+        """Setup additional built-in functions for LSC scripts"""
+        if not self.lsc_runtime:
+            return
+
+        # Add game-specific functions to global scope
+        builtins = {{
+            'get_node': self.get_node,
+            'find_node': self.find_node_by_name,
+            'create_sprite': self.create_sprite,
+            'is_key_pressed': self.is_key_pressed,
+            'change_scene': self.change_scene,
+            'reload_scene': self.reload_scene,
+            'get_scene': self.get_scene,
+            'get_delta_time': lambda: self.lsc_runtime.delta_time if self.lsc_runtime else 0.0,
+            'get_fps': lambda: 1.0 / self.lsc_runtime.delta_time if self.lsc_runtime and self.lsc_runtime.delta_time > 0 else 0.0,
+        }}
+
+        for name, func in builtins.items():
+            self.lsc_runtime.global_scope.define(name, func)
 
     def load_scene(self):
         try:
@@ -80,6 +122,14 @@ class LupineGameWindow(arcade.Window):
             with open(scene_file, 'r') as f:
                 self.scene_data = json.load(f)
             print(f"Loaded scene: {{self.scene_data.get('name', 'Unknown')}}")
+
+            # Load scene using proper Scene class
+            if LSC_AVAILABLE:
+                self.scene = Scene.load_from_file(scene_file)
+                self.setup_scene()
+            else:
+                print("LSC not available, using basic scene rendering")
+
         except Exception as e:
             print(f"Error loading scene: {{e}}")
             # Create a default scene if loading fails
@@ -93,46 +143,146 @@ class LupineGameWindow(arcade.Window):
                 }}]
             }}
 
+    def setup_scene(self):
+        """Setup the scene with proper sprite lists and cameras"""
+        if not self.scene:
+            return
+
+        # Find cameras in the scene
+        self.find_cameras(self.scene.root)
+
+        # Create sprite lists for different node types
+        self.sprite_lists = {{
+            "sprites": arcade.SpriteList(),
+            "ui": arcade.SpriteList()
+        }}
+
+        # Setup nodes and load their scripts
+        self.setup_node(self.scene.root)
+
+    def find_cameras(self, node):
+        """Find and setup cameras in the scene"""
+        if isinstance(node, Camera2D) and node.current:
+            self.camera = arcade.Camera2D()
+            # Set camera position based on node position
+            self.camera.position = node.position
+            print(f"Found active camera: {{node.name}} at {{node.position}}")
+
+        for child in node.children:
+            self.find_cameras(child)
+
+    def setup_node(self, node):
+        """Setup a node and its children, including script loading"""
+        try:
+            # Load and execute node script if it exists
+            if node.script_path and self.lsc_runtime:
+                script_file = Path(r"{project_path}") / node.script_path
+                if script_file.exists():
+                    with open(script_file, 'r') as f:
+                        script_content = f.read()
+
+                    # Create script instance for this node
+                    from core.lsc.runtime import LSCScriptInstance
+                    script_instance = LSCScriptInstance(node, node.script_path, self.lsc_runtime)
+
+                    # Execute the script in the script instance's scope
+                    old_scope = self.lsc_runtime.current_scope
+                    self.lsc_runtime.current_scope = script_instance.scope
+
+                    try:
+                        # Add node reference to script scope
+                        script_instance.scope.define('self', node)
+                        script_instance.scope.define('node', node)
+
+                        # Execute script
+                        execute_lsc_script(script_content, self.lsc_runtime)
+
+                        # Attach script instance to node
+                        node.script_instance = script_instance
+
+                        # Call on_ready if it exists
+                        if script_instance.scope.has('on_ready'):
+                            script_instance.call_method('on_ready')
+                            script_instance.ready_called = True
+
+                        print(f"Loaded script for {{node.name}}: {{node.script_path}}")
+
+                    finally:
+                        # Restore scope
+                        self.lsc_runtime.current_scope = old_scope
+
+            # Setup sprite nodes
+            if isinstance(node, Sprite):
+                self.setup_sprite_node(node)
+
+        except Exception as e:
+            print(f"Error setting up node {{node.name}}: {{e}}")
+
+        # Setup children
+        for child in node.children:
+            self.setup_node(child)
+
+    def setup_sprite_node(self, sprite_node):
+        """Setup a sprite node with proper texture loading"""
+        try:
+            if sprite_node.texture:
+                # Load texture if not already loaded
+                texture_path = Path(r"{project_path}") / sprite_node.texture
+                if texture_path.exists() and str(texture_path) not in self.textures:
+                    self.textures[str(texture_path)] = arcade.load_texture(str(texture_path))
+                    print(f"Loaded texture: {{texture_path}}")
+
+                # Create arcade sprite
+                if str(texture_path) in self.textures:
+                    arcade_sprite = arcade.Sprite()
+                    arcade_sprite.texture = self.textures[str(texture_path)]
+                    arcade_sprite.center_x = sprite_node.position[0]
+                    arcade_sprite.center_y = sprite_node.position[1]
+                    arcade_sprite.angle = sprite_node.rotation
+                    arcade_sprite.scale = sprite_node.scale[0]  # Use X scale
+
+                    self.sprite_lists["sprites"].append(arcade_sprite)
+
+        except Exception as e:
+            print(f"Error setting up sprite {{sprite_node.name}}: {{e}}")
+
     def setup(self):
         arcade.set_background_color(arcade.color.DARK_GRAY)
         print("Game setup complete")
-        print("Controls: WASD to move camera, ESC to exit")
+        print("ESC to exit")
 
     def on_draw(self):
         self.clear()
 
-        # Draw grid
-        self.draw_grid()
+        # Use camera if available
+        if self.camera:
+            self.camera.use()
 
-        # Draw scene nodes
-        if self.scene_data:
+        # Draw sprite lists (proper game objects)
+        for sprite_list in self.sprite_lists.values():
+            sprite_list.draw()
+
+        # Draw scene nodes (fallback for basic rendering)
+        if self.scene_data and not LSC_AVAILABLE:
             nodes = self.scene_data.get("nodes", [])
             for node in nodes:
-                self.draw_node(node)
+                self.draw_node_fallback(node)
 
-        # Draw UI overlay
+        # Draw UI overlay (always drawn without camera)
+        if self.camera:
+            # Reset to default camera for UI
+            arcade.get_window().ctx.default_camera.use()
+
         self.draw_ui()
 
-    def draw_grid(self):
-        # Draw a simple grid
-        grid_size = 100
-        for x in range(-2000, 2000, grid_size):
-            arcade.draw_line(x - self.camera_x, -2000 - self.camera_y,
-                           x - self.camera_x, 2000 - self.camera_y,
-                           arcade.color.DARK_GRAY, 1)
-        for y in range(-2000, 2000, grid_size):
-            arcade.draw_line(-2000 - self.camera_x, y - self.camera_y,
-                           2000 - self.camera_x, y - self.camera_y,
-                           arcade.color.DARK_GRAY, 1)
-
-    def draw_node(self, node_data):
-        # Simple node rendering with camera offset
+    def draw_node_fallback(self, node_data):
+        """Fallback node rendering when LSC is not available"""
         position = node_data.get("position", [0, 0])
         node_type = node_data.get("type", "Node")
 
-        # Apply camera transform
-        x = position[0] + self.width // 2 - self.camera_x
-        y = position[1] + self.height // 2 - self.camera_y
+        # Center position on screen
+        x = position[0] + self.width // 2
+        y = position[1] + self.height // 2
 
         if node_type == "Node2D":
             arcade.draw_circle_filled(x, y, 8, arcade.color.WHITE)
@@ -140,11 +290,13 @@ class LupineGameWindow(arcade.Window):
                            arcade.color.WHITE, 12)
         elif node_type == "Sprite":
             size = node_data.get("size", [64, 64])
-            arcade.draw_rectangle_filled(x, y, size[0], size[1], arcade.color.GREEN)
+            # Use the correct arcade function: draw_lbwh_rectangle_filled(left, bottom, width, height, color)
+            arcade.draw_lbwh_rectangle_filled(x - size[0]//2, y - size[1]//2, size[0], size[1], arcade.color.GREEN)
             arcade.draw_text(node_data.get("name", "Sprite"), x + size[0]//2 + 10, y,
                            arcade.color.WHITE, 12)
         elif node_type == "Camera2D":
-            arcade.draw_rectangle_outline(x, y, 60, 40, arcade.color.YELLOW, 3)
+            # Use the correct arcade function: draw_lbwh_rectangle_outline(left, bottom, width, height, color, border_width)
+            arcade.draw_lbwh_rectangle_outline(x - 30, y - 20, 60, 40, arcade.color.YELLOW, 3)
             arcade.draw_text(node_data.get("name", "Camera"), x + 35, y,
                            arcade.color.YELLOW, 12)
         elif node_type == "Area2D":
@@ -154,45 +306,158 @@ class LupineGameWindow(arcade.Window):
 
         # Draw children
         for child in node_data.get("children", []):
-            self.draw_node(child)
+            self.draw_node_fallback(child)
 
     def draw_ui(self):
-        # Draw UI overlay
+        """Draw UI overlay"""
         arcade.draw_text("Lupine Engine - Game Runner", 10, self.height - 30,
                         arcade.color.WHITE, 16)
-        arcade.draw_text(f"Camera: ({{self.camera_x}}, {{self.camera_y}})", 10, self.height - 50,
-                        arcade.color.WHITE, 12)
-        arcade.draw_text("WASD: Move Camera | ESC: Exit", 10, 10,
-                        arcade.color.WHITE, 12)
+
+        # Show camera info if available
+        if self.camera:
+            arcade.draw_text(f"Camera: {{self.camera.position}}", 10, self.height - 50,
+                            arcade.color.WHITE, 12)
+
+        arcade.draw_text("ESC: Exit", 10, 10, arcade.color.WHITE, 12)
 
     def on_update(self, delta_time):
-        # Basic camera movement
-        camera_speed = 200 * delta_time
+        """Update game logic and run scripts"""
+        # Update LSC runtime timing
+        if self.lsc_runtime:
+            self.lsc_runtime.update_time(delta_time)
 
-        # Initialize pressed_keys if it doesn't exist
-        if not hasattr(self, 'pressed_keys'):
-            self.pressed_keys = set()
+        # Update sprite lists
+        for sprite_list in self.sprite_lists.values():
+            sprite_list.on_update(delta_time)
 
-        if arcade.key.W in self.pressed_keys:
-            self.camera_y += camera_speed
-        if arcade.key.S in self.pressed_keys:
-            self.camera_y -= camera_speed
-        if arcade.key.A in self.pressed_keys:
-            self.camera_x -= camera_speed
-        if arcade.key.D in self.pressed_keys:
-            self.camera_x += camera_speed
+        # Call script update methods if available
+        if self.lsc_runtime and self.scene:
+            self.update_node_scripts(self.scene.root, delta_time)
+
+    def update_node_scripts(self, node, delta_time):
+        """Update scripts attached to nodes"""
+        try:
+            # Call on_update method if the node has a script
+            if hasattr(node, 'script_instance'):
+                node.script_instance.call_method('on_update', delta_time)
+        except Exception as e:
+            print(f"Error updating script for {{node.name}}: {{e}}")
+
+        # Update children
+        for child in node.children:
+            self.update_node_scripts(child, delta_time)
 
     def on_key_press(self, key, modifiers):
+        """Handle key press events"""
         if key == arcade.key.ESCAPE:
             self.close()
 
-        if not hasattr(self, 'pressed_keys'):
-            self.pressed_keys = set()
-        self.pressed_keys.add(key)
+        # Forward input to LSC runtime for script handling
+        if self.lsc_runtime:
+            # Store key state for script access
+            if not hasattr(self, 'pressed_keys'):
+                self.pressed_keys = set()
+            self.pressed_keys.add(key)
+
+            # Call script input handlers
+            if self.scene:
+                self.handle_node_input(self.scene.root, 'on_key_press', key, modifiers)
 
     def on_key_release(self, key, modifiers):
+        """Handle key release events"""
         if hasattr(self, 'pressed_keys'):
             self.pressed_keys.discard(key)
+
+        # Forward input to LSC runtime
+        if self.lsc_runtime and self.scene:
+            self.handle_node_input(self.scene.root, 'on_key_release', key, modifiers)
+
+    def handle_node_input(self, node, method_name, *args):
+        """Handle input events for node scripts"""
+        try:
+            if hasattr(node, 'script_instance'):
+                node.script_instance.call_method(method_name, *args)
+        except Exception as e:
+            print(f"Error handling input for {{node.name}}: {{e}}")
+
+        # Handle input for children
+        for child in node.children:
+            self.handle_node_input(child, method_name, *args)
+
+    def is_key_pressed(self, key):
+        """Check if a key is currently pressed (for script access)"""
+        return hasattr(self, 'pressed_keys') and key in self.pressed_keys
+
+    # Game runtime methods for LSC scripts
+    def change_scene(self, scene_path):
+        """Change to a different scene"""
+        try:
+            print(f"Changing scene to: {{scene_path}}")
+            # This would be implemented to actually change scenes
+            # For now, just log the request
+        except Exception as e:
+            print(f"Error changing scene: {{e}}")
+
+    def reload_scene(self):
+        """Reload the current scene"""
+        try:
+            print("Reloading current scene")
+            self.load_scene()
+        except Exception as e:
+            print(f"Error reloading scene: {{e}}")
+
+    def get_scene(self):
+        """Get the current scene"""
+        return self.scene
+
+    def get_node(self, name):
+        """Get a node by name"""
+        if self.scene:
+            return self.find_node_by_name(self.scene.root, name)
+        return None
+
+    def find_node_by_name(self, node, name):
+        """Recursively find a node by name"""
+        if isinstance(node, str):
+            # If called with just a name, search from root
+            if self.scene:
+                return self.find_node_by_name(self.scene.root, node)
+            return None
+
+        if node.name == name:
+            return node
+        for child in node.children:
+            result = self.find_node_by_name(child, name)
+            if result:
+                return result
+        return None
+
+    def find_node(self, name):
+        """Find node by name (alias for LSC compatibility)"""
+        return self.find_node_by_name(name)
+
+    def get_tree(self):
+        """Get the scene tree (for LSC compatibility)"""
+        return self.scene
+
+    def create_sprite(self, texture_path, x=0, y=0):
+        """Create a new sprite at runtime"""
+        try:
+            if texture_path not in self.textures:
+                full_path = Path(r"{project_path}") / texture_path
+                if full_path.exists():
+                    self.textures[texture_path] = arcade.load_texture(str(full_path))
+
+            if texture_path in self.textures:
+                sprite = arcade.Sprite()
+                sprite.texture = self.textures[texture_path]
+                sprite.center_x = x
+                sprite.center_y = y
+                self.sprite_lists["sprites"].append(sprite)
+                return sprite
+        except Exception as e:
+            print(f"Error creating sprite: {{e}}")
+        return None
 
 def main():
     try:
