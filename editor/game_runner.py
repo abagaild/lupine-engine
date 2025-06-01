@@ -58,9 +58,16 @@ class GameProcess(QThread):
         project_path = str(self.project.project_path).replace('\\', '\\\\')
         scene_file_path = str(self.project.get_absolute_path(self.scene_path)).replace('\\', '\\\\')
 
-        runner_content = f'''
+        # Get the Lupine Engine path (where this script is located)
+        import os
+        lupine_engine_path = str(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))).replace('\\', '\\\\')
+
+        # Create the template with placeholders
+        template = '''
 import sys
 import os
+# Add both the Lupine Engine path and project path to sys.path
+sys.path.insert(0, r"{lupine_engine_path}")
 sys.path.insert(0, r"{project_path}")
 
 import arcade
@@ -69,11 +76,12 @@ from pathlib import Path
 
 # Import LSC runtime for script execution
 try:
-    from core.lsc import LSCRuntime, LSCInterpreter, execute_lsc_script
+    from core.lsc import LSCRuntime, LSCInterpreter
+    from core.lsc.interpreter import execute_lsc_script
     from core.scene import Scene, Node, Node2D, Sprite, Camera2D
     LSC_AVAILABLE = True
 except ImportError as e:
-    print(f"LSC not available: {{e}}")
+    print(f"LSC not available: {e}")
     LSC_AVAILABLE = False
 
 class LupineGameWindow(arcade.Window):
@@ -82,9 +90,9 @@ class LupineGameWindow(arcade.Window):
         self.scene = None
         self.scene_data = None
         self.camera = None
-        self.sprite_lists = {{}}
-        self.textures = {{}}
-        self.text_objects = {{}}  # Cache for text objects to improve performance
+        self.sprite_lists = {}
+        self.textures = {}
+        self.text_objects = {}  # Cache for text objects to improve performance
 
         # LSC Runtime for script execution
         if LSC_AVAILABLE:
@@ -102,24 +110,24 @@ class LupineGameWindow(arcade.Window):
             return
 
         # Add game-specific functions to global scope
-        builtins = {{
-            'get_node': self.get_node,
-            'find_node': self.find_node_by_name,
-            'create_sprite': self.create_sprite,
-            'is_key_pressed': self.is_key_pressed,
-            'change_scene': self.change_scene,
-            'reload_scene': self.reload_scene,
-            'get_scene': self.get_scene,
-            'get_delta_time': lambda: self.lsc_runtime.delta_time if self.lsc_runtime else 0.0,
-            'get_fps': lambda: 1.0 / self.lsc_runtime.delta_time if self.lsc_runtime and self.lsc_runtime.delta_time > 0 else 0.0,
-        }}
+        builtins = {
+            "get_node": self.get_node,
+            "find_node": self.find_node_by_name,
+            "create_sprite": self.create_sprite,
+            "is_key_pressed": self.is_key_pressed,
+            "change_scene": self.change_scene,
+            "reload_scene": self.reload_scene,
+            "get_scene": self.get_scene,
+            "get_delta_time": lambda: self.lsc_runtime.delta_time if self.lsc_runtime else 0.0,
+            "get_fps": lambda: 1.0 / self.lsc_runtime.delta_time if self.lsc_runtime and self.lsc_runtime.delta_time > 0 else 0.0,
+        }
 
         for name, func in builtins.items():
             self.lsc_runtime.global_scope.define(name, func)
 
     def get_text_object(self, text, font_size=12, color=arcade.color.WHITE):
         """Get or create a cached text object for better performance"""
-        key = f"{{text}}_{{font_size}}_{{color}}"
+        key = f"{text}_{font_size}_{color}"
         if key not in self.text_objects:
             self.text_objects[key] = arcade.Text(
                 text=text,
@@ -131,18 +139,26 @@ class LupineGameWindow(arcade.Window):
         return self.text_objects[key]
 
     def draw_cached_text(self, text, x, y, color=arcade.color.WHITE, font_size=12):
-        """Draw text using cached text objects for better performance"""
-        text_obj = self.get_text_object(text, font_size, color)
-        text_obj.x = x
-        text_obj.y = y
-        text_obj.draw()
+        """Draw text using the most reliable method"""
+        try:
+            # Use arcade.draw_text for maximum compatibility
+            arcade.draw_text(text, x, y, color, font_size)
+        except Exception as e:
+            print(f"Error drawing text '{text}': {e}")
+            # Fallback - try with basic parameters
+            try:
+                arcade.draw_text(str(text), float(x), float(y), arcade.color.WHITE, 12)
+            except Exception as e2:
+                print(f"Text drawing fallback also failed: {e2}")
 
     def load_scene(self):
         try:
             scene_file = r"{scene_file_path}"
             with open(scene_file, 'r') as f:
                 self.scene_data = json.load(f)
-            print(f"Loaded scene: {{self.scene_data.get('name', 'Unknown')}}")
+            print(f"Loaded scene: {self.scene_data.get('name', 'Unknown')}")
+            print(f"Scene file: {scene_file}")
+            print(f"Scene nodes: {len(self.scene_data.get('nodes', []))}")
 
             # Load scene using proper Scene class
             if LSC_AVAILABLE:
@@ -152,45 +168,72 @@ class LupineGameWindow(arcade.Window):
                 print("LSC not available, using basic scene rendering")
 
         except Exception as e:
-            print(f"Error loading scene: {{e}}")
+            print(f"Error loading scene: {e}")
             # Create a default scene if loading fails
-            self.scene_data = {{
+            self.scene_data = {
                 "name": "Default",
-                "nodes": [{{
+                "nodes": [{
                     "name": "Main",
                     "type": "Node2D",
                     "position": [0, 0],
                     "children": []
-                }}]
-            }}
+                }]
+            }
 
     def setup_scene(self):
         """Setup the scene with proper sprite lists and cameras"""
-        if not self.scene:
-            return
-
-        # Find cameras in the scene
-        self.find_cameras(self.scene.root)
-
         # Create sprite lists for different node types
-        self.sprite_lists = {{
+        self.sprite_lists = {
             "sprites": arcade.SpriteList(),
             "ui": arcade.SpriteList()
-        }}
+        }
 
-        # Setup nodes and load their scripts
-        self.setup_node(self.scene.root)
+        # Find cameras in the scene
+        if self.scene:
+            for root_node in self.scene.root_nodes:
+                self.find_cameras(root_node)
+                # Setup nodes and load their scripts
+                self.setup_node(root_node)
+        elif self.scene_data:
+            # Fallback to scene data if Scene object not available
+            nodes = self.scene_data.get("nodes", [])
+            for node in nodes:
+                self.find_cameras(node)
 
     def find_cameras(self, node):
         """Find and setup cameras in the scene"""
-        if isinstance(node, Camera2D) and node.current:
+        # Handle both node objects and scene data dictionaries
+        if hasattr(node, 'type') and node.type == "Camera2D" and getattr(node, 'current', False):
+            # Node object case
             self.camera = arcade.Camera2D()
-            # Set camera position based on node position
-            self.camera.position = node.position
-            print(f"Found active camera: {{node.name}} at {{node.position}}")
+            # Use world coordinates directly - no screen offset conversion
+            self.camera.position = (node.position[0], node.position[1])
+            if hasattr(node, 'zoom'):
+                self.camera.zoom = node.zoom[0] if isinstance(node.zoom, list) else node.zoom
+            print(f"Found active camera: {node.name} at {node.position}")
+        elif isinstance(node, dict) and node.get("type") == "Camera2D" and node.get("current", False):
+            # Scene data dictionary case
+            self.camera = arcade.Camera2D()
+            position = node.get("position", [0.0, 0.0])
+            zoom = node.get("zoom", [1.0, 1.0])
+            offset = node.get("offset", [0.0, 0.0])
 
-        for child in node.children:
-            self.find_cameras(child)
+            # Arcade Camera2D position is the center of the view in world coordinates
+            # Apply camera offset - no Y inversion needed as Arcade uses same coordinate system
+            camera_x = position[0] + offset[0]
+            camera_y = position[1] + offset[1]
+
+            self.camera.position = (camera_x, camera_y)
+            self.camera.zoom = zoom[0] if isinstance(zoom, list) else zoom  # Use X zoom for uniform scaling
+            print(f"Found active camera: {node.get('name', 'Camera2D')} at world {position}, arcade {(camera_x, camera_y)} with zoom {zoom}")
+
+        # Recursively check children
+        if hasattr(node, 'children'):
+            for child in node.children:
+                self.find_cameras(child)
+        elif isinstance(node, dict) and "children" in node:
+            for child in node["children"]:
+                self.find_cameras(child)
 
     def setup_node(self, node):
         """Setup a node and its children, including script loading"""
@@ -226,18 +269,18 @@ class LupineGameWindow(arcade.Window):
                             script_instance.call_method('on_ready')
                             script_instance.ready_called = True
 
-                        print(f"Loaded script for {{node.name}}: {{node.script_path}}")
+                        print(f"Loaded script for {node.name}: {node.script_path}")
 
                     finally:
                         # Restore scope
                         self.lsc_runtime.current_scope = old_scope
 
-            # Setup sprite nodes
+            # Setup sprite nodes (including AnimatedSprite)
             if isinstance(node, Sprite):
                 self.setup_sprite_node(node)
 
         except Exception as e:
-            print(f"Error setting up node {{node.name}}: {{e}}")
+            print(f"Error setting up node {node.name}: {e}")
 
         # Setup children
         for child in node.children:
@@ -253,16 +296,16 @@ class LupineGameWindow(arcade.Window):
                 if full_texture_path.exists():
                     if str(full_texture_path) not in self.textures:
                         self.textures[str(full_texture_path)] = arcade.load_texture(str(full_texture_path))
-                        print(f"Loaded texture: {{full_texture_path}}")
+                        print(f"Loaded texture: {full_texture_path}")
 
                     # Create arcade sprite with proper properties
                     if str(full_texture_path) in self.textures:
                         arcade_sprite = arcade.Sprite()
                         arcade_sprite.texture = self.textures[str(full_texture_path)]
 
-                        # Set position (convert from scene coordinates)
-                        arcade_sprite.center_x = sprite_node.position[0] + self.width // 2
-                        arcade_sprite.center_y = sprite_node.position[1] + self.height // 2
+                        # Set position using world coordinates directly
+                        arcade_sprite.center_x = sprite_node.position[0]
+                        arcade_sprite.center_y = sprite_node.position[1]
 
                         # Set rotation and scale
                         arcade_sprite.angle = getattr(sprite_node, 'rotation', 0)
@@ -284,21 +327,21 @@ class LupineGameWindow(arcade.Window):
                             arcade_sprite.alpha = int(modulate[3] * 255)
 
                         self.sprite_lists["sprites"].append(arcade_sprite)
-                        print(f"Created arcade sprite for {{sprite_node.name}} at {{arcade_sprite.center_x}}, {{arcade_sprite.center_y}}")
+                        print(f"Created arcade sprite for {sprite_node.name} at world ({sprite_node.position[0]}, {sprite_node.position[1]}) -> arcade ({arcade_sprite.center_x}, {arcade_sprite.center_y})")
                 else:
-                    print(f"Texture file not found: {{full_texture_path}}")
+                    print(f"Texture file not found: {full_texture_path}")
             else:
                 # Create a placeholder sprite without texture
                 arcade_sprite = arcade.Sprite()
-                arcade_sprite.center_x = sprite_node.position[0] + self.width // 2
-                arcade_sprite.center_y = sprite_node.position[1] + self.height // 2
+                arcade_sprite.center_x = sprite_node.position[0]
+                arcade_sprite.center_y = sprite_node.position[1]
                 # Create a simple colored texture as placeholder
                 arcade_sprite.texture = arcade.Texture.create_filled("placeholder", (64, 64), arcade.color.GREEN)
                 self.sprite_lists["sprites"].append(arcade_sprite)
-                print(f"Created placeholder sprite for {{sprite_node.name}} (no texture)")
+                print(f"Created placeholder sprite for {sprite_node.name} (no texture)")
 
         except Exception as e:
-            print(f"Error setting up sprite {{sprite_node.name}}: {{e}}")
+            print(f"Error setting up sprite {sprite_node.name}: {e}")
             import traceback
             traceback.print_exc()
 
@@ -308,6 +351,12 @@ class LupineGameWindow(arcade.Window):
         # Set proper OpenGL blend mode to avoid white film
         self.ctx.enable(self.ctx.BLEND)
         self.ctx.blend_func = self.ctx.SRC_ALPHA, self.ctx.ONE_MINUS_SRC_ALPHA
+
+        # Initialize camera viewport if camera exists
+        if self.camera:
+            # Use Arcade's match_window method for proper camera setup
+            self.camera.match_window(viewport=True, projection=True, scissor=True, position=False)
+            print(f"Camera initialized with viewport: {self.camera.viewport}, position: {self.camera.position}")
 
         print("Game setup complete")
         print("ESC to exit")
@@ -322,6 +371,14 @@ class LupineGameWindow(arcade.Window):
         # Use camera if available
         if self.camera:
             self.camera.use()
+            # Debug: Print camera info occasionally
+            if hasattr(self, '_debug_counter'):
+                self._debug_counter += 1
+            else:
+                self._debug_counter = 0
+
+            if self._debug_counter % 60 == 0:  # Print every 60 frames (1 second at 60fps)
+                print(f"Camera position: {self.camera.position}, viewport: {self.camera.viewport}")
 
         # Draw sprite lists (proper game objects with textures)
         for sprite_list in self.sprite_lists.values():
@@ -336,34 +393,84 @@ class LupineGameWindow(arcade.Window):
         # Draw UI overlay (always drawn without camera)
         if self.camera:
             # Reset to default camera for UI
-            self.ctx.default_camera.use()
+            if hasattr(self.ctx, 'default_camera'):
+                self.ctx.default_camera.use()
+            elif hasattr(self.ctx, '_default_camera'):
+                self.ctx._default_camera.use()
+            else:
+                # Fallback - create a new camera for UI
+                ui_camera = arcade.Camera2D()
+                ui_camera.match_window()
+                ui_camera.use()
 
         self.draw_ui()
+
+    def calculate_ui_position(self, position, rect_size=None):
+        """Calculate UI position relative to game viewport with support for percentage positioning"""
+        game_area = getattr(self, 'game_area', {"width": self.width, "height": self.height, "offset_x": 0, "offset_y": 0})
+
+        # Support for percentage-based positioning (0.0-1.0 range)
+        # If position values are between 0 and 1, treat as percentages
+        x_pos = position[0]
+        y_pos = position[1]
+
+        # Convert percentage to absolute position
+        if 0.0 <= x_pos <= 1.0:
+            x_pos = x_pos * game_area['width']
+        if 0.0 <= y_pos <= 1.0:
+            y_pos = y_pos * game_area['height']
+
+        # Calculate final screen position
+        ui_x = game_area['offset_x'] + x_pos
+        ui_y = game_area['offset_y'] + y_pos
+
+        return ui_x, ui_y
+
+    def calculate_ui_size(self, rect_size, base_size=None):
+        """Calculate UI size with support for percentage-based sizing"""
+        game_area = getattr(self, 'game_area', {"width": self.width, "height": self.height, "offset_x": 0, "offset_y": 0})
+
+        width = rect_size[0]
+        height = rect_size[1]
+
+        # Support percentage-based sizing (0.0-1.0 range)
+        if 0.0 <= width <= 1.0:
+            width = width * game_area['width']
+        if 0.0 <= height <= 1.0:
+            height = height * game_area['height']
+
+        return width, height
 
     def draw_node_fallback(self, node_data):
         """Fallback node rendering with proper texture support"""
         position = node_data.get("position", [0, 0])
         node_type = node_data.get("type", "Node")
 
-        # Center position on screen
-        x = position[0] + self.width // 2
-        y = position[1] + self.height // 2
+        # Use world coordinates directly
+        x = position[0]
+        y = position[1]
 
         if node_type == "Node2D":
-            arcade.draw_circle_filled(x, y, 8, arcade.color.WHITE)
-            self.draw_cached_text(node_data.get("name", "Node"), x + 15, y,
-                                arcade.color.WHITE, 12)
+            # Node2D nodes are invisible containers - no rendering needed
+            pass
         elif node_type == "Sprite":
             self.draw_sprite_fallback(node_data, x, y)
+        elif node_type == "AnimatedSprite":
+            self.draw_animated_sprite_fallback(node_data, x, y)
         elif node_type == "Camera2D":
-            # Use the correct arcade function: draw_lbwh_rectangle_outline(left, bottom, width, height, color, border_width)
-            arcade.draw_lbwh_rectangle_outline(x - 30, y - 20, 60, 40, arcade.color.YELLOW, 3)
-            self.draw_cached_text(node_data.get("name", "Camera"), x + 35, y,
-                                arcade.color.YELLOW, 12)
+            # Camera2D nodes are invisible in game - no rendering needed
+            pass
         elif node_type == "Area2D":
-            arcade.draw_circle_outline(x, y, 30, arcade.color.BLUE, 3)
-            self.draw_cached_text(node_data.get("name", "Area"), x + 35, y,
-                                arcade.color.BLUE, 12)
+            # Area2D nodes are invisible in game - no rendering needed
+            pass
+        elif node_type == "Control":
+            self.draw_control_fallback(node_data, x, y)
+        elif node_type == "Panel":
+            self.draw_panel_fallback(node_data, x, y)
+        elif node_type == "Label":
+            self.draw_label_fallback(node_data, x, y)
+        elif node_type == "CanvasLayer":
+            self.draw_canvas_layer_fallback(node_data, x, y)
 
         # Draw children
         for child in node_data.get("children", []):
@@ -382,7 +489,7 @@ class LupineGameWindow(arcade.Window):
                 if full_path.exists():
                     if str(full_path) not in self.textures:
                         self.textures[str(full_path)] = arcade.load_texture(str(full_path))
-                        print(f"Loaded fallback texture: {{full_path}}")
+                        print(f"Loaded fallback texture: {full_path}")
 
                     # Draw the texture
                     if str(full_path) in self.textures:
@@ -396,47 +503,209 @@ class LupineGameWindow(arcade.Window):
                         draw_width = size[0] if size != [64, 64] else tex_width
                         draw_height = size[1] if size != [64, 64] else tex_height
 
-                        # Draw texture using arcade's draw_texture_rect
-                        # Create a Rect object for the texture position and size
-                        rect = arcade.Rect.from_kwargs(x=x, y=y, width=draw_width, height=draw_height)
-                        arcade.draw_texture_rect(texture, rect)
-
-                        # Draw name label
-                        self.draw_cached_text(node_data.get("name", "Sprite"),
-                                            x + draw_width//2 + 10, y,
-                                            arcade.color.WHITE, 12)
+                        # Draw texture using arcade's correct function
+                        try:
+                            # Create rectangle for texture drawing (centered on x, y)
+                            rect = arcade.LBWH(x - draw_width//2, y - draw_height//2, draw_width, draw_height)
+                            # Use the correct arcade.draw_texture_rect function
+                            arcade.draw_texture_rect(texture, rect)
+                        except Exception as e:
+                            print(f"Error drawing texture: {e}")
+                            # Fallback - draw a colored rectangle instead
+                            arcade.draw_lbwh_rectangle_filled(x - draw_width//2, y - draw_height//2, draw_width, draw_height, arcade.color.BLUE)
                         return
 
             except Exception as e:
-                print(f"Error loading texture {{texture_path}}: {{e}}")
+                print(f"Error loading texture {texture_path}: {e}")
 
         # Fallback to colored rectangle if no texture
         arcade.draw_lbwh_rectangle_filled(x - size[0]//2, y - size[1]//2, size[0], size[1], arcade.color.GREEN)
-        self.draw_cached_text(node_data.get("name", "Sprite"), x + size[0]//2 + 10, y,
-                            arcade.color.WHITE, 12)
+
+    def draw_animated_sprite_fallback(self, node_data, x, y):
+        """Draw AnimatedSprite with animation indicators"""
+        # First draw as a regular sprite
+        self.draw_sprite_fallback(node_data, x, y)
+
+        # Add animation indicators
+        playing = node_data.get("playing", False)
+        anim_name = node_data.get("animation", "default")
+
+        # Draw animation status indicator
+        if playing:
+            # Draw play triangle (green)
+            arcade.draw_triangle_filled(x - 40, y - 8, x - 40, y + 8, x - 32, y, arcade.color.GREEN)
+        else:
+            # Draw pause bars (yellow)
+            arcade.draw_lbwh_rectangle_filled(x - 42, y - 8, 3, 16, arcade.color.YELLOW)
+            arcade.draw_lbwh_rectangle_filled(x - 37, y - 8, 3, 16, arcade.color.YELLOW)
+
+        # Draw animation name (simplified)
+        self.draw_cached_text(f"Anim: {anim_name}", x - 60, y - 20, arcade.color.CYAN, 10)
+
+    def draw_control_fallback(self, node_data, x, y):
+        """Draw Control node (base UI node)"""
+        # Get control properties - Controls use position (UI coordinate system)
+        position = node_data.get("position", [0.0, 0.0])
+        rect_size = node_data.get("rect_size", [100.0, 100.0])
+
+        # Calculate UI position and size with percentage support
+        ui_x, ui_y = self.calculate_ui_position(position, rect_size)
+        ui_width, ui_height = self.calculate_ui_size(rect_size)
+
+        # Control nodes are typically invisible containers - no rendering needed
+        # But we store the calculated position for child elements if needed
+
+    def draw_panel_fallback(self, node_data, x, y):
+        """Draw Panel node"""
+        # Get panel properties - Panels use position (UI coordinate system)
+        position = node_data.get("position", [0.0, 0.0])
+        rect_size = node_data.get("rect_size", [100.0, 100.0])
+        panel_color = node_data.get("panel_color", [0.2, 0.2, 0.2, 1.0])
+        border_width = node_data.get("border_width", 0.0)
+        border_color = node_data.get("border_color", [0.0, 0.0, 0.0, 1.0])
+
+        # Calculate UI position and size with percentage support
+        ui_x, ui_y = self.calculate_ui_position(position, rect_size)
+        ui_width, ui_height = self.calculate_ui_size(rect_size)
+
+        # Convert colors to arcade format (0-255)
+        panel_arcade_color = (
+            int(panel_color[0] * 255),
+            int(panel_color[1] * 255),
+            int(panel_color[2] * 255),
+            int(panel_color[3] * 255)
+        )
+
+        # Draw panel background
+        arcade.draw_lbwh_rectangle_filled(
+            ui_x, ui_y, ui_width, ui_height,
+            panel_arcade_color
+        )
+
+        # Draw border if enabled
+        if border_width > 0:
+            border_arcade_color = (
+                int(border_color[0] * 255),
+                int(border_color[1] * 255),
+                int(border_color[2] * 255)
+            )
+            arcade.draw_lbwh_rectangle_outline(
+                ui_x, ui_y, ui_width, ui_height,
+                border_arcade_color, int(border_width)
+            )
+
+
+
+    def draw_label_fallback(self, node_data, x, y):
+        """Draw Label node"""
+        # Get label properties - Labels can use either position or rect_position
+        position = node_data.get("position", node_data.get("rect_position", [0.0, 0.0]))
+        rect_size = node_data.get("rect_size", [100.0, 50.0])
+        text = node_data.get("text", "Label")
+        font_color = node_data.get("font_color", [1.0, 1.0, 1.0, 1.0])
+        h_align = node_data.get("h_align", "Left")
+        v_align = node_data.get("v_align", "Top")
+
+        # Calculate UI position and size with percentage support
+        ui_x, ui_y = self.calculate_ui_position(position, rect_size)
+        ui_width, ui_height = self.calculate_ui_size(rect_size)
+
+        # Convert font color to arcade format
+        font_arcade_color = (
+            int(font_color[0] * 255),
+            int(font_color[1] * 255),
+            int(font_color[2] * 255)
+        )
+
+        # Calculate text position based on alignment within the rect (centered on position)
+        text_x = ui_x - ui_width/2 + 5  # Default left alignment with padding
+        if h_align == "Center":
+            # Center text within the rect
+            text_x = ui_x
+        elif h_align == "Right":
+            # Right align text within the rect
+            text_x = ui_x + ui_width/2 - 5
+
+        text_y = ui_y + ui_height/2 - 15  # Default top alignment (arcade uses bottom-left origin)
+        if v_align == "Center":
+            # Center text vertically within the rect
+            text_y = ui_y
+        elif v_align == "Bottom":
+            # Bottom align text within the rect
+            text_y = ui_y - ui_height/2 + 15
+
+        # Draw the actual text with proper font size and font
+        actual_font_size = node_data.get("font_size", 14)
+        font_name = node_data.get("font", "Arial")  # Default to Arial
+
+        # Support percentage-based font sizing (relative to game height)
+        if 0.0 <= actual_font_size <= 1.0:
+            game_area = getattr(self, 'game_area', {"width": self.width, "height": self.height, "offset_x": 0, "offset_y": 0})
+            actual_font_size = actual_font_size * game_area['height']
+
+        # For now, use the font size - font family support would require more complex text rendering
+        self.draw_cached_text(text, text_x, text_y, font_arcade_color, actual_font_size)
+
+    def draw_canvas_layer_fallback(self, node_data, x, y):
+        """Draw CanvasLayer node"""
+        # Get canvas layer properties
+        layer_index = node_data.get("layer", 1)
+        offset = node_data.get("offset", [0.0, 0.0])
+        rotation = node_data.get("rotation", 0.0)
+        scale = node_data.get("scale", [1.0, 1.0])
+        follow_viewport_enable = node_data.get("follow_viewport_enable", False)
+
+        # Adjust position for layer coordinates
+        layer_x = x + offset[0]
+        layer_y = y + offset[1]
+
+        # CanvasLayer nodes are invisible containers for UI layering - no rendering needed
 
     def draw_ui(self):
-        """Draw UI overlay"""
-        self.draw_cached_text("Lupine Engine - Game Runner", 10, self.height - 30,
-                            arcade.color.WHITE, 16)
-
-        # Show camera info if available
-        if self.camera:
-            self.draw_cached_text(f"Camera: {{self.camera.position}}", 10, self.height - 50,
-                                arcade.color.WHITE, 12)
-
+        """Draw UI overlay - minimal for clean game view"""
+        # Only show essential controls
         self.draw_cached_text("ESC: Exit", 10, 10, arcade.color.WHITE, 12)
 
     def on_resize(self, width, height):
-        """Handle window resize events"""
+        """Handle window resize events with aspect ratio maintenance"""
         super().on_resize(width, height)
 
         # Clear text cache when window is resized to avoid positioning issues
         self.text_objects.clear()
 
+        # Maintain 16:9 aspect ratio with letterboxing/pillarboxing
+        target_aspect = 16.0 / 9.0
+        current_aspect = width / height
+
+        if current_aspect > target_aspect:
+            # Window is too wide - add pillarboxing (black bars on sides)
+            game_height = height
+            game_width = int(height * target_aspect)
+            offset_x = (width - game_width) // 2
+            offset_y = 0
+        else:
+            # Window is too tall - add letterboxing (black bars on top/bottom)
+            game_width = width
+            game_height = int(width / target_aspect)
+            offset_x = 0
+            offset_y = (height - game_height) // 2
+
+        # Store the game area dimensions for UI positioning
+        self.game_area = {
+            "width": game_width,
+            "height": game_height,
+            "offset_x": offset_x,
+            "offset_y": offset_y
+        }
+
         # Update camera viewport if camera exists
         if self.camera:
-            self.camera.viewport = (0, 0, width, height)
+            # Use Arcade's match_window method instead of update_values to avoid Rect issues
+            try:
+                self.camera.match_window(viewport=True, projection=True, scissor=True, position=False)
+            except Exception as e:
+                print(f"Camera viewport update failed: {e}")
+                # Fallback - just continue without viewport update
 
     def on_update(self, delta_time):
         """Update game logic and run scripts"""
@@ -444,13 +713,16 @@ class LupineGameWindow(arcade.Window):
         if self.lsc_runtime:
             self.lsc_runtime.update_time(delta_time)
 
-        # Update sprite lists
+        # Update sprites in sprite lists
         for sprite_list in self.sprite_lists.values():
-            sprite_list.on_update(delta_time)
+            for sprite in sprite_list:
+                if hasattr(sprite, 'on_update'):
+                    sprite.on_update(delta_time)
 
         # Call script update methods if available
         if self.lsc_runtime and self.scene:
-            self.update_node_scripts(self.scene.root, delta_time)
+            for root_node in self.scene.root_nodes:
+                self.update_node_scripts(root_node, delta_time)
 
     def update_node_scripts(self, node, delta_time):
         """Update scripts attached to nodes"""
@@ -459,7 +731,7 @@ class LupineGameWindow(arcade.Window):
             if hasattr(node, 'script_instance'):
                 node.script_instance.call_method('on_update', delta_time)
         except Exception as e:
-            print(f"Error updating script for {{node.name}}: {{e}}")
+            print(f"Error updating script for {node.name}: {e}")
 
         # Update children
         for child in node.children:
@@ -479,7 +751,8 @@ class LupineGameWindow(arcade.Window):
 
             # Call script input handlers
             if self.scene:
-                self.handle_node_input(self.scene.root, 'on_key_press', key, modifiers)
+                for root_node in self.scene.root_nodes:
+                    self.handle_node_input(root_node, 'on_key_press', key, modifiers)
 
     def on_key_release(self, key, modifiers):
         """Handle key release events"""
@@ -488,7 +761,8 @@ class LupineGameWindow(arcade.Window):
 
         # Forward input to LSC runtime
         if self.lsc_runtime and self.scene:
-            self.handle_node_input(self.scene.root, 'on_key_release', key, modifiers)
+            for root_node in self.scene.root_nodes:
+                self.handle_node_input(root_node, 'on_key_release', key, modifiers)
 
     def handle_node_input(self, node, method_name, *args):
         """Handle input events for node scripts"""
@@ -496,7 +770,7 @@ class LupineGameWindow(arcade.Window):
             if hasattr(node, 'script_instance'):
                 node.script_instance.call_method(method_name, *args)
         except Exception as e:
-            print(f"Error handling input for {{node.name}}: {{e}}")
+            print(f"Error handling input for {node.name}: {e}")
 
         # Handle input for children
         for child in node.children:
@@ -510,11 +784,11 @@ class LupineGameWindow(arcade.Window):
     def change_scene(self, scene_path):
         """Change to a different scene"""
         try:
-            print(f"Changing scene to: {{scene_path}}")
+            print(f"Changing scene to: {scene_path}")
             # This would be implemented to actually change scenes
             # For now, just log the request
         except Exception as e:
-            print(f"Error changing scene: {{e}}")
+            print(f"Error changing scene: {e}")
 
     def reload_scene(self):
         """Reload the current scene"""
@@ -522,7 +796,7 @@ class LupineGameWindow(arcade.Window):
             print("Reloading current scene")
             self.load_scene()
         except Exception as e:
-            print(f"Error reloading scene: {{e}}")
+            print(f"Error reloading scene: {e}")
 
     def get_scene(self):
         """Get the current scene"""
@@ -531,7 +805,10 @@ class LupineGameWindow(arcade.Window):
     def get_node(self, name):
         """Get a node by name"""
         if self.scene:
-            return self.find_node_by_name(self.scene.root, name)
+            for root_node in self.scene.root_nodes:
+                result = self.find_node_by_name(root_node, name)
+                if result:
+                    return result
         return None
 
     def find_node_by_name(self, node, name):
@@ -539,7 +816,10 @@ class LupineGameWindow(arcade.Window):
         if isinstance(node, str):
             # If called with just a name, search from root
             if self.scene:
-                return self.find_node_by_name(self.scene.root, node)
+                for root_node in self.scene.root_nodes:
+                    result = self.find_node_by_name(root_node, node)
+                    if result:
+                        return result
             return None
 
         if node.name == name:
@@ -574,7 +854,7 @@ class LupineGameWindow(arcade.Window):
                 self.sprite_lists["sprites"].append(sprite)
                 return sprite
         except Exception as e:
-            print(f"Error creating sprite: {{e}}")
+            print(f"Error creating sprite: {e}")
         return None
 
 def main():
@@ -583,14 +863,19 @@ def main():
         game.setup()
         arcade.run()
     except Exception as e:
-        print(f"Game error: {{e}}")
+        print(f"Game error: {e}")
         import traceback
         traceback.print_exc()
 
 if __name__ == "__main__":
     main()
 '''
-        
+
+        # Format the template with actual values using string replacement
+        runner_content = template.replace("{lupine_engine_path}", lupine_engine_path)
+        runner_content = runner_content.replace("{project_path}", project_path)
+        runner_content = runner_content.replace("{scene_file_path}", scene_file_path)
+
         # Write to temporary file
         runner_path = self.project.project_path / "temp_runner.py"
         with open(runner_path, 'w') as f:

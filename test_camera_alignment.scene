@@ -1,0 +1,73 @@
+{
+  "name": "Camera Alignment Test",
+  "metadata": {},
+  "nodes": [
+    {
+      "name": "MainCamera",
+      "type": "Camera2D",
+      "position": [-165.0, -392.0],
+      "rotation": 0.0,
+      "scale": [1.0, 1.0],
+      "z_index": 0,
+      "visible": true,
+      "modulate": [1.0, 1.0, 1.0, 1.0],
+      "opacity": 1.0,
+      "current": true,
+      "enabled": true,
+      "zoom": [1.0, 1.0],
+      "offset": [0.0, 0.0],
+      "children": []
+    },
+    {
+      "name": "CenterSprite",
+      "type": "Sprite",
+      "position": [-165.0, -392.0],
+      "rotation": 0.0,
+      "scale": [1.0, 1.0],
+      "z_index": 0,
+      "visible": true,
+      "modulate": [1.0, 1.0, 1.0, 1.0],
+      "opacity": 1.0,
+      "texture": "splash.png",
+      "size": [128, 128],
+      "centered": true,
+      "vframes": 1,
+      "hframes": 1,
+      "frame": 0,
+      "children": []
+    },
+    {
+      "name": "OffsetSprite",
+      "type": "Sprite",
+      "position": [-65.0, -292.0],
+      "rotation": 0.0,
+      "scale": [1.0, 1.0],
+      "z_index": 0,
+      "visible": true,
+      "modulate": [1.0, 1.0, 1.0, 1.0],
+      "opacity": 1.0,
+      "texture": "splash.png",
+      "size": [64, 64],
+      "centered": true,
+      "vframes": 1,
+      "hframes": 1,
+      "frame": 0,
+      "children": []
+    },
+    {
+      "name": "TestLabel",
+      "type": "Label",
+      "position": [50.0, 100.0],
+      "rect_size": [200.0, 50.0],
+      "visible": true,
+      "modulate": [1.0, 1.0, 1.0, 1.0],
+      "opacity": 1.0,
+      "text": "Camera Test",
+      "font_color": [1.0, 1.0, 1.0, 1.0],
+      "font_size": 24,
+      "h_align": "Left",
+      "v_align": "Top",
+      "children": []
+    }
+  ]
+}

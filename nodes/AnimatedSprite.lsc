@@ -1,0 +1,216 @@
+# AnimatedSprite Node - Equivalent to Godot's AnimatedSprite2D
+# Displays animated 2D textures with frame-based animation support
+extends Sprite
+
+# Animation properties
+export_group("Animation")
+export var sprite_frames: SpriteFrames = null  # SpriteFrames resource containing animations
+export var animation: String = "default"  # Current animation name
+export var frame: int = 0  # Current frame index within the animation
+export var speed_scale: float = 1.0  # Animation playback speed multiplier
+export var playing: bool = false  # Whether animation is currently playing
+export var autoplay: String = ""  # Animation to play automatically on ready
+
+# Playback properties
+export_group("Playback")
+export var frame_progress: float = 0.0  # Progress within current frame (0.0 to 1.0)
+export var centered: bool = true  # Whether the sprite is centered on the node
+
+# Internal properties
+var _current_animation: Animation = null
+var _frame_timer: float = 0.0
+var _animation_finished: bool = false
+
+# Animation data structure
+class Animation:
+    var name: String
+    var frames: Array = []  # Array of frame data
+    var loop: bool = true
+    var fps: float = 5.0
+    
+    func _init(anim_name: String = ""):
+        name = anim_name
+
+class AnimationFrame:
+    var texture: Texture
+    var duration: float = 0.2  # Duration in seconds
+    
+    func _init(tex: Texture = null, dur: float = 0.2):
+        texture = tex
+        duration = dur
+
+# Called when the node enters the scene tree
+func _ready():
+    super._ready()
+
+    # Initialize default values if not set
+    if animation == "":
+        animation = "default"
+
+    # Set up default animation if sprite_frames is available
+    if sprite_frames:
+        _setup_animations()
+
+    # Start autoplay animation if specified
+    if autoplay != "":
+        play(autoplay)
+
+# Set up animations from sprite_frames resource
+func _setup_animations():
+    if not sprite_frames:
+        return
+    
+    # This would normally load from a SpriteFrames resource
+    # For now, we'll create a simple default animation
+    if not _current_animation:
+        _current_animation = Animation.new("default")
+        _current_animation.fps = 5.0
+        _current_animation.loop = true
+
+# Called every frame
+func _process(delta: float):
+    if playing and _current_animation:
+        _update_animation(delta)
+
+# Update animation frame
+func _update_animation(delta: float):
+    if not _current_animation or _current_animation.frames.size() == 0:
+        return
+    
+    # Calculate frame duration based on FPS
+    var frame_duration = 1.0 / (_current_animation.fps * speed_scale)
+    
+    # Update frame timer
+    _frame_timer += delta
+    
+    # Check if we need to advance to next frame
+    if _frame_timer >= frame_duration:
+        _frame_timer = 0.0
+        _advance_frame()
+
+# Advance to next frame
+func _advance_frame():
+    if not _current_animation:
+        return
+    
+    var frame_count = _current_animation.frames.size()
+    if frame_count == 0:
+        return
+    
+    frame += 1
+    
+    # Handle looping
+    if frame >= frame_count:
+        if _current_animation.loop:
+            frame = 0
+        else:
+            frame = frame_count - 1
+            playing = false
+            _animation_finished = true
+            emit_signal("animation_finished")
+    
+    # Update texture based on current frame
+    _update_current_texture()
+
+# Update the current texture based on frame
+func _update_current_texture():
+    if not _current_animation or frame >= _current_animation.frames.size():
+        return
+    
+    var current_frame_data = _current_animation.frames[frame]
+    if current_frame_data and current_frame_data.texture:
+        set_texture(current_frame_data.texture)
+
+# Play an animation
+func play(anim_name: String = "", custom_speed: float = 1.0, from_beginning: bool = true):
+    if anim_name == "":
+        # Use default animation if no name provided
+        if animation != "":
+            anim_name = animation
+        else:
+            anim_name = "default"
+    
+    animation = anim_name
+    speed_scale = custom_speed
+    
+    # Load animation (simplified for now)
+    _load_animation(anim_name)
+    
+    if from_beginning:
+        frame = 0
+        _frame_timer = 0.0
+    
+    playing = true
+    _animation_finished = false
+    _update_current_texture()
+
+# Stop animation
+func stop():
+    playing = false
+    _frame_timer = 0.0
+
+# Pause animation
+func pause():
+    playing = false
+
+# Resume animation
+func resume():
+    if _current_animation:
+        playing = true
+
+# Check if animation is playing
+func is_playing() -> bool:
+    return playing
+
+# Get current animation name
+func get_animation() -> String:
+    return animation
+
+# Set animation without playing
+func set_animation(anim_name: String):
+    animation = anim_name
+    _load_animation(anim_name)
+    _update_current_texture()
+
+# Load animation data (simplified)
+func _load_animation(anim_name: String):
+    # This would normally load from sprite_frames resource
+    # For now, create a simple animation
+    _current_animation = Animation.new(anim_name)
+    _current_animation.fps = 5.0
+    _current_animation.loop = true
+    
+    # Add some dummy frames (would be loaded from resource)
+    for i in range(4):
+        var frame_data = AnimationFrame.new()
+        frame_data.duration = 0.2
+        _current_animation.frames.append(frame_data)
+
+# Set frame directly
+func set_frame(new_frame: int):
+    if _current_animation and new_frame >= 0 and new_frame < _current_animation.frames.size():
+        frame = new_frame
+        _update_current_texture()
+
+# Get frame count for current animation
+func get_frame_count() -> int:
+    if _current_animation:
+        return _current_animation.frames.size()
+    return 0
+
+# Set speed scale
+func set_speed_scale(scale: float):
+    speed_scale = scale
+
+# Get speed scale
+func get_speed_scale() -> float:
+    return speed_scale
+
+# Check if animation finished
+func is_animation_finished() -> bool:
+    return _animation_finished
+
+# Signals
+signal animation_finished  # Emitted when non-looping animation finishes
+signal animation_changed   # Emitted when animation changes
+signal frame_changed       # Emitted when frame changes

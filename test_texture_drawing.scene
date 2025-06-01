@@ -1,0 +1,36 @@
+{
+  "name": "TextureDrawingTest",
+  "nodes": [
+    {
+      "name": "Main",
+      "type": "Node2D",
+      "position": [0, 0],
+      "children": [
+        {
+          "name": "TestSprite1",
+          "type": "Sprite",
+          "position": [200, 300],
+          "size": [64, 64],
+          "texture": "assets/textures/test_sprite.png",
+          "children": []
+        },
+        {
+          "name": "TestSprite2",
+          "type": "Sprite",
+          "position": [350, 300],
+          "size": [64, 64],
+          "texture": "assets/textures/blue_circle.png",
+          "children": []
+        },
+        {
+          "name": "TestSprite3",
+          "type": "Sprite",
+          "position": [500, 300],
+          "size": [64, 64],
+          "texture": "assets/textures/green_diamond.png",
+          "children": []
+        }
+      ]
+    }
+  ]
+}

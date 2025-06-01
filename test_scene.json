@@ -10,11 +10,31 @@
       ],
       "children": [
         {
+          "name": "TestLabel",
+          "type": "Label",
+          "rect_position": [50, 100],
+          "rect_size": [200, 50],
+          "text": "Hello Lupine Engine!",
+          "font_color": [1.0, 1.0, 1.0, 1.0],
+          "h_align": "Left",
+          "v_align": "Top",
+          "children": []
+        },
+        {
+          "name": "Player",
+          "type": "AnimatedSprite",
+          "position": [100, 200],
+          "texture": "assets/player.png",
+          "animation": "idle",
+          "playing": true,
+          "children": []
+        },
+        {
           "name": "TestSprite",
           "type": "Sprite",
           "position": [
-            100,
-            100
+            200,
+            150
           ],
           "size": [
             64,

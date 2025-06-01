@@ -1,0 +1,188 @@
+# Label Node - UI node that displays text on screen
+# Auto-wrap or clip, supports custom fonts, sizes, alignments
+extends Control
+
+# Text
+export_group("Text")
+export var text: String = "Label"  # actual string to draw
+export var autowrap: bool = false  # wrap text to fit within rect
+export var clip_text: bool = false  # clip overflow instead of wrapping
+
+# Font
+export_group("Font")
+export var font: Resource = null  # Font or BitmapFont resource
+export var font_size: int = 14  # only if dynamic Font (TrueType/OpenType)
+export var font_style: String = "Regular"  # "Regular", "Bold", "Italic" - if supported by font
+
+# Color & Effects
+export_group("Color & Effects")
+export var font_color: Color = Color(1.0, 1.0, 1.0, 1.0)  # default text color
+export var outline_color: Color = Color(0.0, 0.0, 0.0, 1.0)  # color of outline
+export var outline_size: float = 0.0  # thickness of outline (0 = none)
+
+# Alignment
+export_group("Alignment")
+export var h_align: String = "Left"  # "Left", "Center", "Right"
+export var v_align: String = "Top"  # "Top", "Center", "Bottom"
+
+# Rect / Layout
+export_group("Rect / Layout")
+export var rect_min_size: Vector2 = Vector2(0, 0)  # minimum size of the control
+export var size_flags: Dictionary = {"expand_h": false, "expand_v": false}  # how child grows
+
+# Internal variables
+var _cached_text_size: Vector2 = Vector2.ZERO
+var _text_lines: Array = []
+
+# Called when the node enters the scene tree for the first time
+func _ready():
+    # Set default size if not specified
+    if rect_size == Vector2.ZERO:
+        rect_size = Vector2(100, 50)
+    
+    # Update text layout
+    _update_text_layout()
+
+# Called every frame. 'delta' is the elapsed time since the previous frame
+func _process(delta):
+    pass
+
+# Set the text content
+func set_text(new_text: String):
+    if text != new_text:
+        text = new_text
+        _update_text_layout()
+        # Emit signal for renderer update
+        emit_signal("text_changed")
+
+# Get the text content
+func get_text() -> String:
+    return text
+
+# Set autowrap mode
+func set_autowrap(wrap: bool):
+    if autowrap != wrap:
+        autowrap = wrap
+        _update_text_layout()
+        # Emit signal for renderer update
+        emit_signal("text_changed")
+
+# Get autowrap mode
+func get_autowrap() -> bool:
+    return autowrap
+
+# Set clip text mode
+func set_clip_text(clip: bool):
+    if clip_text != clip:
+        clip_text = clip
+        _update_text_layout()
+        # Emit signal for renderer update
+        emit_signal("text_changed")
+
+# Get clip text mode
+func get_clip_text() -> bool:
+    return clip_text
+
+# Set font size
+func set_font_size(size: int):
+    if font_size != size:
+        font_size = max(1, size)
+        _update_text_layout()
+        # Emit signal for renderer update
+        emit_signal("text_changed")
+
+# Get font size
+func get_font_size() -> int:
+    return font_size
+
+# Set font color
+func set_font_color(color: Color):
+    font_color = color
+    # Emit signal for renderer update
+    emit_signal("text_changed")
+
+# Get font color
+func get_font_color() -> Color:
+    return font_color
+
+# Set horizontal alignment
+func set_h_align(align: String):
+    if h_align != align and align in ["Left", "Center", "Right"]:
+        h_align = align
+        # Emit signal for renderer update
+        emit_signal("text_changed")
+
+# Get horizontal alignment
+func get_h_align() -> String:
+    return h_align
+
+# Set vertical alignment
+func set_v_align(align: String):
+    if v_align != align and align in ["Top", "Center", "Bottom"]:
+        v_align = align
+        # Emit signal for renderer update
+        emit_signal("text_changed")
+
+# Get vertical alignment
+func get_v_align() -> String:
+    return v_align
+
+# Update text layout (internal)
+func _update_text_layout():
+    _text_lines.clear()
+    
+    if text.empty():
+        _cached_text_size = Vector2.ZERO
+        return
+    
+    # Simple text layout - split by newlines
+    var lines = text.split("\n")
+    
+    if autowrap:
+        # TODO: Implement word wrapping based on rect_size.x
+        _text_lines = lines
+    else:
+        _text_lines = lines
+    
+    # Calculate text size (simplified)
+    var line_height = font_size * 1.2  # Approximate line height
+    var max_width = 0.0
+    
+    for line in _text_lines:
+        # Approximate character width
+        var line_width = line.length() * font_size * 0.6
+        max_width = max(max_width, line_width)
+    
+    _cached_text_size = Vector2(max_width, _text_lines.size() * line_height)
+
+# Get the calculated text size
+func get_text_size() -> Vector2:
+    return _cached_text_size
+
+# Get text lines for rendering
+func get_text_lines() -> Array:
+    return _text_lines
+
+# Get the effective rect for drawing text
+func get_text_rect() -> Rect2:
+    var text_size = get_text_size()
+    var rect = Rect2(position, rect_size)
+    
+    # Apply horizontal alignment
+    var x_offset = 0.0
+    if h_align == "Center":
+        x_offset = (rect.size.x - text_size.x) / 2.0
+    elif h_align == "Right":
+        x_offset = rect.size.x - text_size.x
+    
+    # Apply vertical alignment
+    var y_offset = 0.0
+    if v_align == "Center":
+        y_offset = (rect.size.y - text_size.y) / 2.0
+    elif v_align == "Bottom":
+        y_offset = rect.size.y - text_size.y
+    
+    return Rect2(rect.position + Vector2(x_offset, y_offset), text_size)
+
+# Signals
+signal text_changed  # Emitted when text properties change

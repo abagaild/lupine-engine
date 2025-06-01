@@ -1,0 +1,40 @@
+{
+  "name": "TestCameraScene",
+  "nodes": [
+    {
+      "name": "Main",
+      "type": "Node2D",
+      "position": [0, 0],
+      "children": [
+        {
+          "name": "Player",
+          "type": "Sprite",
+          "position": [100, 200],
+          "size": [64, 64],
+          "texture": "assets/textures/player.png",
+          "children": []
+        },
+        {
+          "name": "MainCamera",
+          "type": "Camera2D",
+          "position": [0, 0],
+          "current": true,
+          "enabled": true,
+          "zoom": [1.0, 1.0],
+          "follow_target": "Player",
+          "follow_smoothing": true,
+          "offset": [0.0, 0.0],
+          "children": []
+        },
+        {
+          "name": "Background",
+          "type": "Sprite",
+          "position": [-200, -100],
+          "size": [128, 128],
+          "texture": "assets/textures/background.png",
+          "children": []
+        }
+      ]
+    }
+  ]
+}

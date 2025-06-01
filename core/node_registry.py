@@ -70,6 +70,63 @@ class NodeRegistry:
             script_path="nodes/Sprite.lsc",
             description="2D sprite for displaying textures"
         ))
+
+        self.register_node(NodeDefinition(
+            name="AnimatedSprite",
+            category=NodeCategory.NODE_2D,
+            class_name="AnimatedSprite",
+            script_path="nodes/AnimatedSprite.lsc",
+            description="2D animated sprite with frame-based animation support - equivalent to Godot's AnimatedSprite2D"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="Camera2D",
+            category=NodeCategory.NODE_2D,
+            class_name="Camera2D",
+            script_path="nodes/Camera2D.lsc",
+            description="2D camera with viewport control, following, limits, and effects - equivalent to Godot's Camera2D"
+        ))
+
+        # Base nodes
+        self.register_node(NodeDefinition(
+            name="Timer",
+            category=NodeCategory.BASE,
+            class_name="Timer",
+            script_path="nodes/Timer.lsc",
+            description="Fires timeout signal after set interval, optionally repeating. Great for delays, cooldowns, and scheduled events."
+        ))
+
+        # UI nodes
+        self.register_node(NodeDefinition(
+            name="Control",
+            category=NodeCategory.UI,
+            class_name="Control",
+            description="Base UI node with rect, layout, anchors, and margins"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="Panel",
+            category=NodeCategory.UI,
+            class_name="Panel",
+            script_path="nodes/Panel.lsc",
+            description="Simple rectangular container with background"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="Label",
+            category=NodeCategory.UI,
+            class_name="Label",
+            script_path="nodes/Label.lsc",
+            description="UI node that displays text on screen"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="CanvasLayer",
+            category=NodeCategory.UI,
+            class_name="CanvasLayer",
+            script_path="nodes/CanvasLayer.lsc",
+            description="Canvas layer for UI and effects with independent rendering"
+        ))
         
 
     
@@ -113,12 +170,19 @@ class NodeRegistry:
             return node_def.factory_func(instance_name or node_name)
         
         # Import and create node using class name
-        from core.scene import Node, Node2D, Sprite
+        from core.scene import Node, Node2D, Sprite, AnimatedSprite, Timer, Control, Panel, Label, CanvasLayer, Camera2D
 
         class_map = {
             "Node": Node,
             "Node2D": Node2D,
             "Sprite": Sprite,
+            "AnimatedSprite": AnimatedSprite,
+            "Timer": Timer,
+            "Control": Control,
+            "Panel": Panel,
+            "Label": Label,
+            "CanvasLayer": CanvasLayer,
+            "Camera2D": Camera2D,
         }
         
         node_class = class_map.get(node_def.class_name)

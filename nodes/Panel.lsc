@@ -1,0 +1,88 @@
+# Panel Node - Simple rectangular container with background
+# Useful for grouping other Control nodes or drawing UI panels
+extends Control
+
+# Style / Appearance
+export_group("Style / Appearance")
+export var panel_color: Color = Color(0.2, 0.2, 0.2, 1.0)  # solid color fill
+export var corner_radius: float = 0.0  # rounded corners radius (0 = sharp)
+export var border_width: float = 0.0  # border thickness
+export var border_color: Color = Color(0.0, 0.0, 0.0, 1.0)  # border color
+export var texture: Texture = null  # optional Texture to draw as background (stretches)
+
+# Layout
+export_group("Layout")
+export var rect_min_size: Vector2 = Vector2(0, 0)  # minimum control size
+export var size_flags: Dictionary = {"expand_h": false, "expand_v": false}  # how it grows
+
+# Called when the node enters the scene tree for the first time
+func _ready():
+    # Set default size if not specified
+    if rect_size == Vector2.ZERO:
+        rect_size = Vector2(100, 100)
+
+# Called every frame. 'delta' is the elapsed time since the previous frame
+func _process(delta):
+    pass
+
+# Set the panel color
+func set_panel_color(color: Color):
+    panel_color = color
+    # Emit signal for renderer update
+    emit_signal("appearance_changed")
+
+# Get the panel color
+func get_panel_color() -> Color:
+    return panel_color
+
+# Set the corner radius
+func set_corner_radius(radius: float):
+    corner_radius = max(0.0, radius)
+    # Emit signal for renderer update
+    emit_signal("appearance_changed")
+
+# Get the corner radius
+func get_corner_radius() -> float:
+    return corner_radius
+
+# Set the border width
+func set_border_width(width: float):
+    border_width = max(0.0, width)
+    # Emit signal for renderer update
+    emit_signal("appearance_changed")
+
+# Get the border width
+func get_border_width() -> float:
+    return border_width
+
+# Set the border color
+func set_border_color(color: Color):
+    border_color = color
+    # Emit signal for renderer update
+    emit_signal("appearance_changed")
+
+# Get the border color
+func get_border_color() -> Color:
+    return border_color
+
+# Set the background texture
+func set_texture(new_texture: Texture):
+    texture = new_texture
+    # Emit signal for renderer update
+    emit_signal("appearance_changed")
+
+# Get the background texture
+func get_texture() -> Texture:
+    return texture
+
+# Get the effective rect for drawing
+func get_draw_rect() -> Rect2:
+    return Rect2(position, rect_size)
+
+# Check if a point is inside the panel
+func has_point(point: Vector2) -> bool:
+    var rect = get_draw_rect()
+    return rect.has_point(point)
+
+# Signals
+signal appearance_changed  # Emitted when visual properties change
