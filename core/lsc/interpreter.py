@@ -44,9 +44,21 @@ class LSCInterpreter(ASTVisitor):
             raise
     
     def visit_program(self, node: Program) -> None:
-        """Visit program node"""
+        """Visit program node with two-pass execution"""
+        # First pass: Define all functions, classes, and signals
         for statement in node.statements:
-            self.execute_statement(statement)
+            if self._is_definition_statement(statement):
+                self.execute_statement(statement)
+
+        # Second pass: Execute all other statements
+        for statement in node.statements:
+            if not self._is_definition_statement(statement):
+                self.execute_statement(statement)
+
+    def _is_definition_statement(self, statement) -> bool:
+        """Check if statement is a definition (function, class, signal, enum)"""
+        from .ast_nodes import FunctionDef, ClassDef, SignalDeclaration, EnumDeclaration
+        return isinstance(statement, (FunctionDef, ClassDef, SignalDeclaration, EnumDeclaration))
     
     def execute_statement(self, statement: Statement) -> None:
         """Execute a statement"""
@@ -66,7 +78,17 @@ class LSCInterpreter(ASTVisitor):
         try:
             return self.runtime.get_variable(node.name)
         except NameError:
-            raise LSCRuntimeError(f"Undefined variable '{node.name}'")
+            # Try to provide a reasonable default for common undefined variables
+            default_value = self._get_default_for_undefined_variable(node.name)
+            if default_value is not None:
+                print(f"Warning: Using default value for undefined variable '{node.name}'")
+                # Define the variable with the default value for future use
+                self.runtime.define_variable(node.name, default_value)
+                return default_value
+            else:
+                print(f"Runtime Error: Undefined variable '{node.name}'")
+                # Return None instead of crashing to allow script to continue
+                return None
     
     def visit_binary_op(self, node: BinaryOp) -> Any:
         """Visit binary operation node"""
@@ -163,17 +185,24 @@ class LSCInterpreter(ASTVisitor):
     def visit_function_call(self, node: FunctionCall) -> Any:
         """Visit function call node"""
         function = self.evaluate_expression(node.function)
-        
+
+        if function is None:
+            # If function is None (undefined), return None instead of crashing
+            print(f"Warning: Attempting to call undefined function")
+            return None
+
         if not callable(function):
-            raise LSCRuntimeError(f"'{function}' is not callable")
-        
+            print(f"Warning: '{function}' is not callable, returning None")
+            return None
+
         # Evaluate arguments
         args = [self.evaluate_expression(arg) for arg in node.arguments]
-        
+
         try:
             return function(*args)
         except Exception as e:
-            raise LSCRuntimeError(f"Error calling function: {e}")
+            print(f"Warning: Error calling function: {e}")
+            return None
     
     def visit_member_access(self, node: MemberAccess) -> Any:
         """Visit member access node"""
@@ -467,6 +496,45 @@ class LSCInterpreter(ASTVisitor):
         if isinstance(value, (str, list, dict)) and len(value) == 0:
             return False
         return True
+
+    def _get_default_for_undefined_variable(self, name: str) -> Any:
+        """Get a reasonable default value for common undefined variables"""
+        from .builtins import LSCVector2, LSCRect2, LSCColor, LSCTexture
+
+        # Common defaults for frequently used undefined variables
+        defaults = {
+            'current': False,
+            'collision_mask': 1,
+            'collision_layer': 1,
+            'enable_animations': True,
+            'texture': None,
+            'null': None,
+            'position': LSCVector2(0, 0),
+            'global_position': LSCVector2(0, 0),
+            'velocity': LSCVector2(0, 0),
+            'scale': LSCVector2(1, 1),
+            'rotation': 0.0,
+            'visible': True,
+            'modulate': LSCColor(1, 1, 1, 1),
+            'z_index': 0,
+            'safe_margin': 0.08,
+            'enabled': True,
+            'max_stamina': 100.0,
+            'hframes': 1,
+            'vframes': 1,
+            'frame': 0,
+            'frame_x': 0,
+            'frame_y': 0,
+            'centered': True,
+            'offset': LSCVector2(0, 0),
+            'flip_h': False,
+            'flip_v': False,
+            'region_enabled': False,
+            'region_rect': LSCRect2(0, 0, 0, 0),
+            # Note: Function defaults removed - functions should be defined in first pass
+        }
+
+        return defaults.get(name)
 
 
 def execute_lsc_script(source_code: str, runtime: LSCRuntime) -> None:

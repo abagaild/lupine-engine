@@ -14,6 +14,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon, QKeySequence
 
 from core.project import LupineProject
+from core.node_registry import set_project_path
 from .scene_tree import SceneTreeWidget
 from .scene_view import SceneViewWidget
 from .inspector import InspectorWidget
@@ -30,7 +31,10 @@ class MainEditor(QMainWindow):
         super().__init__()
         self.project = LupineProject(project_path)
         self.project.load_project()
-        
+
+        # Set up node registry with project path for dynamic node loading
+        set_project_path(Path(project_path))
+
         self.current_scene = None
         self.open_scenes = {}  # scene_path -> scene_data
         
@@ -154,11 +158,16 @@ class MainEditor(QMainWindow):
         
         # Tools menu
         tools_menu = menubar.addMenu("Tools")
-        
+
         # Script editor
         script_editor_action = QAction("Script Editor", self)
         script_editor_action.triggered.connect(self.open_script_editor)
         tools_menu.addAction(script_editor_action)
+
+        # Input actions
+        input_actions_action = QAction("Input Actions", self)
+        input_actions_action.triggered.connect(self.open_input_actions)
+        tools_menu.addAction(input_actions_action)
         
         # Help menu
         help_menu = menubar.addMenu("Help")
@@ -200,6 +209,7 @@ class MainEditor(QMainWindow):
         self.scene_tree_dock.setObjectName("SceneTreeDock")
         self.scene_tree = SceneTreeWidget(self.project)
         self.scene_tree.node_changed.connect(self.on_scene_node_changed)
+        self.scene_tree.node_selected.connect(self.on_scene_tree_node_selected)
         self.scene_tree_dock.setWidget(self.scene_tree)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.scene_tree_dock)
         
@@ -207,6 +217,7 @@ class MainEditor(QMainWindow):
         self.inspector_dock = QDockWidget("Inspector", self)
         self.inspector_dock.setObjectName("InspectorDock")
         self.inspector = InspectorWidget(self.project)
+        self.inspector.property_changed.connect(self.on_inspector_property_changed)
         self.inspector_dock.setWidget(self.inspector)
         self.inspector_dock.setMinimumWidth(300)  # Make inspector wider
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.inspector_dock)
@@ -274,12 +285,16 @@ class MainEditor(QMainWindow):
             scene_widget = self.scene_tabs.widget(index)
             if hasattr(scene_widget, 'scene_path'):
                 self.current_scene = scene_widget.scene_path
-                # Update scene tree to show current scene
-                self.scene_tree.set_current_scene(self.current_scene)
-                # Update scene data in scene tree
-                if hasattr(scene_widget, 'viewport') and hasattr(scene_widget.viewport, 'scene_data'):
-                    self.scene_tree.current_scene_data = scene_widget.viewport.scene_data
-                    self.scene_tree.refresh_tree()
+                # Update scene tree with current scene data from open_scenes
+                if self.current_scene in self.open_scenes:
+                    # Ensure scene view and scene tree use the same data object
+                    shared_scene_data = self.open_scenes[self.current_scene]
+                    scene_widget.scene_data = shared_scene_data
+                    if hasattr(scene_widget, 'viewport'):
+                        scene_widget.viewport.scene_data = shared_scene_data
+
+                    self.scene_tree.set_scene_data(shared_scene_data)
+                    self.scene_tree.current_scene_path = self.current_scene
 
     def new_scene(self):
         """Create a new scene"""
@@ -300,11 +315,15 @@ class MainEditor(QMainWindow):
             ]
         }
 
-        # Add to open scenes
+        # Add to open scenes (this becomes the master reference)
         self.open_scenes[scene_path] = scene_data
 
-        # Create scene view widget
+        # Create scene view widget with the same data object
         scene_view = SceneViewWidget(self.project, scene_path, scene_data)
+        scene_view.scene_path = scene_path
+
+        # Connect scene view signals
+        self.connect_scene_view_signals(scene_view)
 
         # Add tab (before the "+" tab)
         tab_index = self.scene_tabs.count() - 1
@@ -313,7 +332,10 @@ class MainEditor(QMainWindow):
 
         # Set as current scene
         self.current_scene = scene_path
-        scene_view.scene_path = scene_path
+
+        # Update scene tree with the same data object
+        self.scene_tree.set_scene_data(scene_data)
+        self.scene_tree.current_scene_path = scene_path
 
     def open_scene_dialog(self):
         """Open scene selection dialog"""
@@ -347,12 +369,15 @@ class MainEditor(QMainWindow):
             with open(scene_file, 'r') as f:
                 scene_data = json.load(f)
 
-            # Add to open scenes
+            # Add to open scenes (this becomes the master reference)
             self.open_scenes[scene_path] = scene_data
 
-            # Create scene view widget
+            # Create scene view widget with the same data object
             scene_view = SceneViewWidget(self.project, scene_path, scene_data)
             scene_view.scene_path = scene_path
+
+            # Connect scene view signals
+            self.connect_scene_view_signals(scene_view)
 
             # Add tab
             scene_name = scene_data.get("name", Path(scene_path).stem)
@@ -362,6 +387,10 @@ class MainEditor(QMainWindow):
 
             # Set as current scene
             self.current_scene = scene_path
+
+            # Update scene tree with the same data object (not a copy)
+            self.scene_tree.set_scene_data(scene_data)
+            self.scene_tree.current_scene_path = scene_path
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load scene: {e}")
@@ -393,12 +422,18 @@ class MainEditor(QMainWindow):
             scene_file = self.project.get_absolute_path(scene_path)
             scene_file.parent.mkdir(parents=True, exist_ok=True)
 
-            # Get updated scene data from scene tree if available
+            # Ensure we're saving the most up-to-date data
+            # Priority: scene_tree.current_scene_data > open_scenes
+            scene_data_to_save = self.open_scenes[scene_path]
             if self.scene_tree.current_scene_data and self.scene_tree.current_scene_path == scene_path:
-                self.open_scenes[scene_path] = self.scene_tree.current_scene_data
+                # Synchronize tree to scene data before saving
+                self.scene_tree.sync_tree_to_scene_data()
+                scene_data_to_save = self.scene_tree.current_scene_data
+                # Update open_scenes to match
+                self.open_scenes[scene_path] = scene_data_to_save
 
             with open(scene_file, 'w') as f:
-                json.dump(self.open_scenes[scene_path], f, indent=2)
+                json.dump(scene_data_to_save, f, indent=2)
 
             self.status_bar.showMessage(f"Saved {scene_path}", 2000)
 
@@ -483,6 +518,157 @@ class MainEditor(QMainWindow):
         # Update inspector if node is selected
         if node_data:
             self.inspector.set_node(node_data)
+
+    def on_scene_tree_node_selected(self, node_data):
+        """Handle node selection from scene tree"""
+        # The scene tree now provides the current reference, so we can use it directly
+        # Update inspector
+        self.inspector.set_node(node_data)
+
+        # Update scene view selection
+        current_scene_widget = self.get_current_scene_widget()
+        if current_scene_widget and hasattr(current_scene_widget, 'viewport'):
+            current_scene_widget.viewport.set_selected_node(node_data)
+
+    def connect_scene_view_signals(self, scene_view: SceneViewWidget):
+        """Connect scene view signals to editor components"""
+        if hasattr(scene_view, 'viewport'):
+            # Connect node selection from scene view to inspector
+            scene_view.viewport.node_selected.connect(self.on_scene_view_node_selected)
+            # Connect node modifications from scene view to inspector
+            scene_view.viewport.node_modified.connect(self.on_scene_view_node_modified)
+
+    def on_scene_view_node_selected(self, node_data: dict):
+        """Handle node selection from scene view"""
+        # Get the most current node reference from our data stores
+        current_node_ref = self.get_current_node_reference(node_data.get("name", ""))
+        if current_node_ref:
+            node_data = current_node_ref
+
+        self.inspector.set_node(node_data)
+        # Also update scene tree selection if needed
+        self.scene_tree.select_node(node_data)
+
+    def on_scene_view_node_modified(self, node_data: dict, property_name: str, value):
+        """Handle node modification from scene view"""
+        node_name = node_data.get("name", "")
+
+        # Update the property in all our data stores to keep them synchronized
+        if self.current_scene and self.current_scene in self.open_scenes:
+            # Update the main scene data
+            scene_node = self.find_node_by_name(self.open_scenes[self.current_scene], node_name)
+            if scene_node:
+                scene_node[property_name] = value
+
+        # Update the scene tree data
+        if self.scene_tree.current_scene_data:
+            tree_node = self.find_node_by_name(self.scene_tree.current_scene_data, node_name)
+            if tree_node:
+                tree_node[property_name] = value
+
+            # Also update the tree item data to keep the UI synchronized
+            self.scene_tree.update_tree_item_property(node_name, property_name, value)
+
+        # Update inspector to reflect the change without rebuilding the entire UI
+        if self.inspector.current_node and self.inspector.current_node.get("name") == node_name:
+            # Update the node reference and refresh property widgets
+            self.inspector.update_node_reference(node_data)
+
+        # Update scene view rendering to reflect any changes
+        current_scene_widget = self.get_current_scene_widget()
+        if current_scene_widget and hasattr(current_scene_widget, 'viewport'):
+            current_scene_widget.viewport.update()
+
+        # Mark scene as modified
+        self.mark_scene_modified()
+
+    def on_inspector_property_changed(self, node_id: str, property_name: str, value):
+        """Handle property changes from inspector"""
+        # The inspector updates the scene data reference, but we also need to update
+        # the tree item data to keep everything synchronized
+
+        # Update the tree item data to match the inspector changes
+        self.scene_tree.update_tree_item_property(node_id, property_name, value)
+
+        # Update scene view rendering
+        current_scene_widget = self.get_current_scene_widget()
+        if current_scene_widget and hasattr(current_scene_widget, 'viewport'):
+            current_scene_widget.viewport.update()
+
+        # Mark scene as modified
+        self.mark_scene_modified()
+
+    def get_current_scene_widget(self):
+        """Get the currently active scene widget"""
+        current_index = self.scene_tabs.currentIndex()
+        if current_index >= 0 and current_index < self.scene_tabs.count() - 1:
+            return self.scene_tabs.widget(current_index)
+        return None
+
+    def get_current_node_reference(self, node_name: str):
+        """Get the most current reference to a node by name"""
+        if not node_name:
+            return None
+
+        # Priority: open_scenes > scene_tree > scene_view
+        if self.current_scene and self.current_scene in self.open_scenes:
+            node = self.find_node_by_name(self.open_scenes[self.current_scene], node_name)
+            if node:
+                return node
+
+        if self.scene_tree.current_scene_data:
+            node = self.find_node_by_name(self.scene_tree.current_scene_data, node_name)
+            if node:
+                return node
+
+        # Fallback to scene view
+        current_scene_widget = self.get_current_scene_widget()
+        if current_scene_widget and hasattr(current_scene_widget, 'viewport'):
+            node = self.find_node_by_name(current_scene_widget.viewport.scene_data, node_name)
+            if node:
+                return node
+
+        return None
+
+    def find_node_by_name(self, scene_data: dict, node_name: str):
+        """Find a node by name in scene data"""
+        nodes = scene_data.get("nodes", [])
+        return self._find_node_recursive(nodes, node_name)
+
+    def _find_node_recursive(self, nodes: list, node_name: str):
+        """Recursively find a node by name"""
+        for node in nodes:
+            if node.get("name") == node_name:
+                return node
+            # Check children
+            children = node.get("children", [])
+            if children:
+                found = self._find_node_recursive(children, node_name)
+                if found:
+                    return found
+        return None
+
+    def mark_scene_modified(self):
+        """Mark the current scene as modified"""
+        if self.current_scene:
+            for i in range(self.scene_tabs.count() - 1):
+                widget = self.scene_tabs.widget(i)
+                if hasattr(widget, 'scene_path') and widget.scene_path == self.current_scene:
+                    tab_text = self.scene_tabs.tabText(i)
+                    if not tab_text.endswith('*'):
+                        self.scene_tabs.setTabText(i, tab_text + '*')
+                    break
+
+    def open_input_actions(self):
+        """Open the input actions dialog"""
+        try:
+            from editor.input_actions_dialog import InputActionsDialog
+            dialog = InputActionsDialog(self.project, self)
+            dialog.exec()
+        except ImportError:
+            QMessageBox.warning(self, "Error", "Input Actions dialog not available yet.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Input Actions dialog: {e}")
 
     def closeEvent(self, event):
         """Handle window close event"""

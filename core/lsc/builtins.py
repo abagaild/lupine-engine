@@ -11,11 +11,350 @@ if TYPE_CHECKING:
     from .runtime import LSCRuntime
 
 
+class LSCVector2:
+    """2D Vector class for LSC with Godot-like methods"""
+
+    def __init__(self, x: float = 0, y: float = 0):
+        # Handle case where x or y might be Vector2 objects
+        if hasattr(x, 'x'):
+            self.x = float(x.x)
+        else:
+            self.x = float(x)
+
+        if hasattr(y, 'y'):
+            self.y = float(y.y)
+        else:
+            self.y = float(y)
+
+    def __repr__(self):
+        return f"Vector2({self.x}, {self.y})"
+
+    def __str__(self):
+        return f"({self.x}, {self.y})"
+
+    def __getitem__(self, index):
+        if index == 0:
+            return self.x
+        elif index == 1:
+            return self.y
+        else:
+            raise IndexError("Vector2 index out of range")
+
+    def __setitem__(self, index, value):
+        if index == 0:
+            self.x = float(value)
+        elif index == 1:
+            self.y = float(value)
+        else:
+            raise IndexError("Vector2 index out of range")
+
+    def __add__(self, other):
+        if isinstance(other, (LSCVector2, tuple, list)):
+            return LSCVector2(self.x + other[0], self.y + other[1])
+        return LSCVector2(self.x + other, self.y + other)
+
+    def __sub__(self, other):
+        if isinstance(other, (LSCVector2, tuple, list)):
+            return LSCVector2(self.x - other[0], self.y - other[1])
+        return LSCVector2(self.x - other, self.y - other)
+
+    def __mul__(self, other):
+        if isinstance(other, (LSCVector2, tuple, list)):
+            return LSCVector2(self.x * other[0], self.y * other[1])
+        return LSCVector2(self.x * other, self.y * other)
+
+    def __truediv__(self, other):
+        if isinstance(other, (LSCVector2, tuple, list)):
+            return LSCVector2(self.x / other[0], self.y / other[1])
+        return LSCVector2(self.x / other, self.y / other)
+
+    def __eq__(self, other):
+        if isinstance(other, (LSCVector2, tuple, list)):
+            return abs(self.x - other[0]) < 1e-6 and abs(self.y - other[1]) < 1e-6
+        return False
+
+    def length(self) -> float:
+        """Get the length of the vector"""
+        return math.sqrt(self.x * self.x + self.y * self.y)
+
+    def length_squared(self) -> float:
+        """Get the squared length of the vector"""
+        return self.x * self.x + self.y * self.y
+
+    def normalized(self) -> 'LSCVector2':
+        """Get normalized vector"""
+        length = self.length()
+        if length == 0:
+            return LSCVector2(0, 0)
+        return LSCVector2(self.x / length, self.y / length)
+
+    def normalize(self) -> 'LSCVector2':
+        """Normalize this vector in place"""
+        length = self.length()
+        if length != 0:
+            self.x /= length
+            self.y /= length
+        return self
+
+    def distance_to(self, other) -> float:
+        """Get distance to another vector"""
+        dx = self.x - other[0]
+        dy = self.y - other[1]
+        return math.sqrt(dx * dx + dy * dy)
+
+    def distance_squared_to(self, other) -> float:
+        """Get squared distance to another vector"""
+        dx = self.x - other[0]
+        dy = self.y - other[1]
+        return dx * dx + dy * dy
+
+    def dot(self, other) -> float:
+        """Dot product with another vector"""
+        return self.x * other[0] + self.y * other[1]
+
+    def cross(self, other) -> float:
+        """Cross product with another vector (returns scalar for 2D)"""
+        return self.x * other[1] - self.y * other[0]
+
+    def angle(self) -> float:
+        """Get angle of vector in radians"""
+        return math.atan2(self.y, self.x)
+
+    def angle_to(self, other) -> float:
+        """Get angle to another vector"""
+        return math.atan2(self.cross(other), self.dot(other))
+
+    def angle_to_point(self, other) -> float:
+        """Get angle to a point"""
+        return math.atan2(other[1] - self.y, other[0] - self.x)
+
+    def lerp(self, other, t: float) -> 'LSCVector2':
+        """Linear interpolation to another vector"""
+        return LSCVector2(
+            self.x + (other[0] - self.x) * t,
+            self.y + (other[1] - self.y) * t
+        )
+
+    def move_toward(self, target, delta: float) -> 'LSCVector2':
+        """Move toward target by delta amount"""
+        if isinstance(target, (LSCVector2, tuple, list)):
+            target_vec = LSCVector2(target[0], target[1])
+        else:
+            target_vec = target
+
+        diff = target_vec - self
+        distance = diff.length()
+
+        if distance <= delta:
+            return target_vec
+        else:
+            return self + diff.normalized() * delta
+
+    def slide(self, normal) -> 'LSCVector2':
+        """Slide along a surface normal"""
+        normal_vec = LSCVector2(normal[0], normal[1]) if not isinstance(normal, LSCVector2) else normal
+        return self - normal_vec * self.dot(normal_vec)
+
+    def reflect(self, normal) -> 'LSCVector2':
+        """Reflect off a surface normal"""
+        normal_vec = LSCVector2(normal[0], normal[1]) if not isinstance(normal, LSCVector2) else normal
+        return self - normal_vec * 2 * self.dot(normal_vec)
+
+    def rotated(self, angle: float) -> 'LSCVector2':
+        """Get rotated vector"""
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+        return LSCVector2(
+            self.x * cos_a - self.y * sin_a,
+            self.x * sin_a + self.y * cos_a
+        )
+
+    def abs(self) -> 'LSCVector2':
+        """Get absolute value vector"""
+        return LSCVector2(abs(self.x), abs(self.y))
+
+    def sign(self) -> 'LSCVector2':
+        """Get sign vector"""
+        return LSCVector2(
+            1 if self.x > 0 else -1 if self.x < 0 else 0,
+            1 if self.y > 0 else -1 if self.y < 0 else 0
+        )
+
+    def floor(self) -> 'LSCVector2':
+        """Get floor vector"""
+        return LSCVector2(math.floor(self.x), math.floor(self.y))
+
+    def ceil(self) -> 'LSCVector2':
+        """Get ceiling vector"""
+        return LSCVector2(math.ceil(self.x), math.ceil(self.y))
+
+    def round(self) -> 'LSCVector2':
+        """Get rounded vector"""
+        return LSCVector2(round(self.x), round(self.y))
+
+
+class Vector2Factory:
+    """Factory class for Vector2 with constants as properties"""
+
+    def __call__(self, x: float = 0, y: float = 0) -> LSCVector2:
+        """Create a new Vector2"""
+        return LSCVector2(x, y)
+
+    @property
+    def ZERO(self) -> LSCVector2:
+        return LSCVector2(0, 0)
+
+    @property
+    def ONE(self) -> LSCVector2:
+        return LSCVector2(1, 1)
+
+    @property
+    def UP(self) -> LSCVector2:
+        return LSCVector2(0, -1)
+
+    @property
+    def DOWN(self) -> LSCVector2:
+        return LSCVector2(0, 1)
+
+    @property
+    def LEFT(self) -> LSCVector2:
+        return LSCVector2(-1, 0)
+
+    @property
+    def RIGHT(self) -> LSCVector2:
+        return LSCVector2(1, 0)
+
+
+class LSCRect2:
+    """2D Rectangle class for LSC with Godot-like methods"""
+
+    def __init__(self, x=0, y=0, width=0, height=0):
+        # Handle case where x might be a Vector2 (position) and y might be a Vector2 (size)
+        if hasattr(x, 'x') and hasattr(x, 'y') and hasattr(y, 'x') and hasattr(y, 'y'):
+            # Called as Rect2(position_vector, size_vector)
+            self.position = LSCVector2(x.x, x.y)
+            self.size = LSCVector2(y.x, y.y)
+        else:
+            # Called as Rect2(x, y, width, height)
+            self.position = LSCVector2(float(x), float(y))
+            self.size = LSCVector2(float(width), float(height))
+
+    def __repr__(self):
+        return f"Rect2({self.position.x}, {self.position.y}, {self.size.x}, {self.size.y})"
+
+    def __str__(self):
+        return f"({self.position.x}, {self.position.y}, {self.size.x}, {self.size.y})"
+
+    @property
+    def x(self) -> float:
+        return self.position.x
+
+    @x.setter
+    def x(self, value: float):
+        self.position.x = value
+
+    @property
+    def y(self) -> float:
+        return self.position.y
+
+    @y.setter
+    def y(self, value: float):
+        self.position.y = value
+
+    @property
+    def width(self) -> float:
+        return self.size.x
+
+    @width.setter
+    def width(self, value: float):
+        self.size.x = value
+
+    @property
+    def height(self) -> float:
+        return self.size.y
+
+    @height.setter
+    def height(self, value: float):
+        self.size.y = value
+
+    def get_area(self) -> float:
+        """Get the area of the rectangle"""
+        return self.size.x * self.size.y
+
+    def has_point(self, point) -> bool:
+        """Check if point is inside rectangle"""
+        px, py = point[0], point[1]
+        return (px >= self.position.x and px <= self.position.x + self.size.x and
+                py >= self.position.y and py <= self.position.y + self.size.y)
+
+    def intersects(self, other) -> bool:
+        """Check if this rectangle intersects with another"""
+        return not (self.position.x + self.size.x < other.position.x or
+                   other.position.x + other.size.x < self.position.x or
+                   self.position.y + self.size.y < other.position.y or
+                   other.position.y + other.size.y < self.position.y)
+
+
+class LSCColor:
+    """Color class for LSC with Godot-like methods"""
+
+    def __init__(self, r: float = 1, g: float = 1, b: float = 1, a: float = 1):
+        self.r = float(r)
+        self.g = float(g)
+        self.b = float(b)
+        self.a = float(a)
+
+    def __repr__(self):
+        return f"Color({self.r}, {self.g}, {self.b}, {self.a})"
+
+    def __str__(self):
+        return f"({self.r}, {self.g}, {self.b}, {self.a})"
+
+    def __getitem__(self, index):
+        if index == 0: return self.r
+        elif index == 1: return self.g
+        elif index == 2: return self.b
+        elif index == 3: return self.a
+        else: raise IndexError("Color index out of range")
+
+    def __setitem__(self, index, value):
+        if index == 0: self.r = float(value)
+        elif index == 1: self.g = float(value)
+        elif index == 2: self.b = float(value)
+        elif index == 3: self.a = float(value)
+        else: raise IndexError("Color index out of range")
+
+    def lerp(self, other, t: float) -> 'LSCColor':
+        """Linear interpolation to another color"""
+        return LSCColor(
+            self.r + (other.r - self.r) * t,
+            self.g + (other.g - self.g) * t,
+            self.b + (other.b - self.b) * t,
+            self.a + (other.a - self.a) * t
+        )
+
+
+class LSCTexture:
+    """Placeholder texture class for LSC"""
+
+    def __init__(self, path: str = ""):
+        self.path = path
+        self._size = LSCVector2(64, 64)  # Default size
+
+    def get_size(self) -> LSCVector2:
+        """Get texture size"""
+        return self._size
+
+    def __repr__(self):
+        return f"Texture('{self.path}')"
+
+
 class LSCBuiltins:
     """Built-in functions for LSC language"""
-    
+
     def __init__(self, runtime: 'LSCRuntime'):
         self.runtime = runtime
+        self.vector2_factory = Vector2Factory()
         self.functions = self._create_builtin_functions()
         self.constants = self._create_constants()
 
@@ -114,35 +453,57 @@ class LSCBuiltins:
             'is_mouse_button_pressed': self.is_mouse_button_pressed,
             'get_mouse_position': self.get_mouse_position,
             'get_global_mouse_position': self.get_global_mouse_position,
-            
+
             # Time functions
             'get_time': self.get_time,
+            'get_runtime_time': self.get_runtime_time,
             'get_delta': self.get_delta,
             'get_fps': self.get_fps,
             'wait': self.wait,
-            
+
+            # Physics functions
+            '_physics_process': self._physics_process,
+
             # Signal functions
             'connect': self.connect,
             'disconnect': self.disconnect,
             'emit_signal': self.emit_signal,
             'is_connected': self.is_connected,
-            
+
             # Resource functions
             'load': self.load_resource,
             'preload': self.preload_resource,
             'save': self.save_resource,
-            
+
             # Vector functions
-            'Vector2': self.Vector2,
+            'Vector2': self.vector2_factory,
             'Vector3': self.Vector3,
             'distance': self.distance,
             'dot_product': self.dot_product,
             'cross_product': self.cross_product,
             'normalize': self.normalize,
-            
-            # Color functions
+            'move_toward': self.move_toward,
+
+            # Geometry functions
+            'Rect2': self.Rect2,
             'Color': self.Color,
+            'Texture': self.Texture,
             'color_lerp': self.color_lerp,
+
+            # Node functions
+            'get_node': self.get_node,
+            'get_node_or_null': self.get_node_or_null,
+            'get_path_to': self.get_path_to,
+            'has_method': self.has_method,
+            'has_property': self.has_property,
+            'has_signal': self.has_signal,
+            'hasattr': self.hasattr,
+
+            # Engine functions
+            'get_viewport_rect': self.get_viewport_rect,
+            'get_process_delta_time': self.get_process_delta_time,
+            'is_on_floor': self.is_on_floor,
+            'move_and_slide': self.move_and_slide,
         }
 
     def _create_constants(self) -> Dict[str, Any]:
@@ -280,9 +641,6 @@ class LSCBuiltins:
             raise AssertionError(message)
 
     # Node functions (these will be implemented by the runtime)
-    def get_node(self, path: str) -> Any:
-        """Get node by path"""
-        return self.runtime.get_node(path)
 
     def find_node(self, name: str) -> Any:
         """Find node by name"""
@@ -333,18 +691,108 @@ class LSCBuiltins:
         """Get current scene"""
         return self.runtime.get_scene()
 
-    # Input functions
-    def is_action_pressed(self, action: str) -> bool:
-        """Check if action is pressed"""
-        return self.runtime.is_action_pressed(action)
+    # Node functions
+    def get_node(self, path: str):
+        """Get node by path"""
+        # Placeholder implementation - would need proper node tree
+        return None
 
-    def is_action_just_pressed(self, action: str) -> bool:
-        """Check if action was just pressed"""
-        return self.runtime.is_action_just_pressed(action)
+    def get_node_or_null(self, path: str):
+        """Get node by path or return null"""
+        return self.get_node(path)
 
-    def is_action_just_released(self, action: str) -> bool:
-        """Check if action was just released"""
-        return self.runtime.is_action_just_released(action)
+
+
+    def get_path_to(self, node) -> str:
+        """Get path to node"""
+        # Placeholder implementation
+        return ""
+
+    def has_method(self, obj, method_name: str) -> bool:
+        """Check if object has method"""
+        return hasattr(obj, method_name) and callable(getattr(obj, method_name))
+
+    def has_property(self, obj, property_name: str) -> bool:
+        """Check if object has property"""
+        return hasattr(obj, property_name)
+
+    def hasattr(self, obj, name: str) -> bool:
+        """Check if object has attribute (Python hasattr equivalent)"""
+        return hasattr(obj, name)
+
+    def has_signal(self, obj, signal_name: str) -> bool:
+        """Check if object has signal"""
+        # Placeholder implementation
+        return hasattr(obj, signal_name)
+
+    # Engine functions
+    def get_viewport_rect(self):
+        """Get viewport rectangle"""
+        # Return default viewport size
+        return LSCRect2(0, 0, 1280, 720)
+
+    def get_process_delta_time(self) -> float:
+        """Get process delta time"""
+        if self.runtime:
+            return self.runtime.delta_time
+        return 0.016  # Default 60 FPS
+
+    def is_on_floor(self) -> bool:
+        """Check if on floor (placeholder)"""
+        return False
+
+    def move_and_slide(self, velocity, up_direction=None):
+        """Move and slide - applies velocity to node position"""
+        # Debug: Check if move_and_slide is being called
+        if hasattr(velocity, 'x') and hasattr(velocity, 'y') and (velocity.x != 0 or velocity.y != 0):
+            print(f"DEBUG: move_and_slide called with velocity: ({velocity.x}, {velocity.y})")
+
+        # Get the current node from the scope
+        if hasattr(self.runtime, 'current_scope') and self.runtime.current_scope:
+            scope = self.runtime.current_scope
+            if scope.has('node'):
+                node = scope.get('node')
+                if hasattr(node, 'position') and hasattr(velocity, 'x') and hasattr(velocity, 'y'):
+                    # Apply velocity to position (velocity is in pixels per second, so multiply by delta)
+                    delta = 1.0/60.0  # Default delta time
+                    old_pos = (node.position[0], node.position[1])
+                    node.position[0] += velocity.x * delta
+                    node.position[1] += velocity.y * delta
+
+                    if velocity.x != 0 or velocity.y != 0:
+                        print(f"DEBUG: {node.name} position: {old_pos} -> ({node.position[0]}, {node.position[1]})")
+                        # Also check if the position is actually a reference to the same object
+                        print(f"DEBUG: Position object ID: {id(node.position)}, Position type: {type(node.position)}")
+
+                    # IMPORTANT: Also update the physics body position if it exists
+                    if hasattr(node, 'physics_body') and node.physics_body:
+                        if hasattr(node.physics_body, 'pymunk_body') and node.physics_body.pymunk_body:
+                            node.physics_body.pymunk_body.position = (node.position[0], node.position[1])
+                            if velocity.x != 0 or velocity.y != 0:
+                                print(f"DEBUG: Updated physics body position to ({node.position[0]}, {node.position[1]})")
+                        else:
+                            if velocity.x != 0 or velocity.y != 0:
+                                print(f"DEBUG: Node {node.name} has physics_body but no pymunk_body")
+                    else:
+                        if velocity.x != 0 or velocity.y != 0:
+                            print(f"DEBUG: Node {node.name} has no physics_body")
+
+                    # Update any associated arcade sprite
+                    if hasattr(node, 'arcade_sprite') and node.arcade_sprite:
+                        node.arcade_sprite.center_x = node.position[0]
+                        node.arcade_sprite.center_y = node.position[1]
+
+                    # Also update child sprites (for KinematicBody2D with child Sprite nodes)
+                    if hasattr(node, 'children'):
+                        for child in node.children:
+                            if hasattr(child, 'arcade_sprite') and child.arcade_sprite:
+                                old_child_pos = (child.arcade_sprite.center_x, child.arcade_sprite.center_y)
+                                child.arcade_sprite.center_x = node.position[0] + child.position[0]
+                                child.arcade_sprite.center_y = node.position[1] + child.position[1]
+                                if velocity.x != 0 or velocity.y != 0:
+                                    print(f"DEBUG: Updated child sprite {child.name} from {old_child_pos} to ({child.arcade_sprite.center_x}, {child.arcade_sprite.center_y})")
+
+        return velocity
 
     def get_action_strength(self, action: str) -> float:
         """Get action strength (for analog inputs)"""
@@ -371,6 +819,10 @@ class LSCBuiltins:
         """Get current time"""
         return self.runtime.get_time()
 
+    def get_runtime_time(self) -> float:
+        """Get runtime time (alias for get_time)"""
+        return self.runtime.get_runtime_time()
+
     def get_delta(self) -> float:
         """Get delta time"""
         return self.runtime.get_delta()
@@ -382,6 +834,10 @@ class LSCBuiltins:
     def wait(self, seconds: float) -> None:
         """Wait for specified time"""
         self.runtime.wait(seconds)
+
+    def _physics_process(self, delta: float) -> None:
+        """Physics process method (placeholder)"""
+        pass
 
     # Signal functions
     def connect(self, signal_name: str, target: Any, method: str) -> None:
@@ -414,10 +870,6 @@ class LSCBuiltins:
         self.runtime.save_resource(resource, path)
 
     # Vector functions
-    def Vector2(self, x: float = 0, y: float = 0) -> tuple:
-        """Create 2D vector"""
-        return (x, y)
-
     def Vector3(self, x: float = 0, y: float = 0, z: float = 0) -> tuple:
         """Create 3D vector"""
         return (x, y, z)
@@ -452,11 +904,55 @@ class LSCBuiltins:
             return vector
         return tuple(x / length for x in vector)
 
-    # Color functions
-    def Color(self, r: float = 1, g: float = 1, b: float = 1, a: float = 1) -> tuple:
+    def move_toward(self, current: float, target: float, delta: float) -> float:
+        """Move toward target by delta amount"""
+        if abs(target - current) <= delta:
+            return target
+        else:
+            return current + (1 if target > current else -1) * delta
+
+    # Geometry functions
+    def Rect2(self, x: float = 0, y: float = 0, width: float = 0, height: float = 0) -> LSCRect2:
+        """Create Rect2"""
+        return LSCRect2(x, y, width, height)
+
+    def Color(self, r: float = 1, g: float = 1, b: float = 1, a: float = 1) -> LSCColor:
         """Create color"""
-        return (r, g, b, a)
+        return LSCColor(r, g, b, a)
+
+    def Texture(self, path: str = "") -> LSCTexture:
+        """Create texture"""
+        return LSCTexture(path)
 
     def color_lerp(self, a: tuple, b: tuple, t: float) -> tuple:
         """Interpolate between colors"""
         return tuple(self.lerp(a[i], b[i], t) for i in range(len(a)))
+
+    # Input functions
+    def is_action_pressed(self, action: str) -> bool:
+        """Check if action is currently pressed"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                result = input_manager.is_action_pressed(action)
+                # Debug output for movement actions
+                if result and action in ['move_left', 'move_right', 'move_up', 'move_down']:
+                    print(f"DEBUG: is_action_pressed('{action}') = {result}")
+                return result
+        return False
+
+    def is_action_just_pressed(self, action: str) -> bool:
+        """Check if action was just pressed this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_pressed(action)
+        return False
+
+    def is_action_just_released(self, action: str) -> bool:
+        """Check if action was just released this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_released(action)
+        return False

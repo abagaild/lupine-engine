@@ -54,13 +54,16 @@ class SceneTreeWidget(QWidget):
         
         # Enable drag and drop for reordering
         self.tree.setDragDropMode(QTreeWidget.DragDropMode.InternalMove)
+
+        # Connect drag and drop events
+        self.tree.model().rowsMoved.connect(self.on_rows_moved)
         
         layout.addWidget(self.tree)
     
     def set_current_scene(self, scene_path: str):
         """Set the current scene to display"""
         self.current_scene_path = scene_path
-        
+
         # Load scene data
         scene_file = self.project.get_absolute_path(scene_path)
         if scene_file.exists():
@@ -75,6 +78,23 @@ class SceneTreeWidget(QWidget):
         else:
             self.current_scene_data = None
             self.tree.clear()
+
+    def set_scene_data(self, scene_data: dict):
+        """Set scene data directly (for syncing with main editor)"""
+        # Store the currently selected node name to restore selection after refresh
+        selected_node_name = None
+        selected_items = self.tree.selectedItems()
+        if selected_items:
+            selected_node_data = selected_items[0].data(0, Qt.ItemDataRole.UserRole)
+            if selected_node_data:
+                selected_node_name = selected_node_data.get("name", "")
+
+        self.current_scene_data = scene_data
+        self.refresh_tree()
+
+        # Restore selection if we had one
+        if selected_node_name:
+            self.select_node_by_name(selected_node_name)
     
     def refresh_tree(self):
         """Refresh the tree display"""
@@ -124,7 +144,14 @@ class SceneTreeWidget(QWidget):
             item = selected_items[0]
             node_data = item.data(0, Qt.ItemDataRole.UserRole)
             if node_data:
-                self.node_selected.emit(node_data)
+                # Get the current reference from scene data instead of the tree copy
+                node_name = node_data.get("name", "")
+                current_node_ref = self.find_node_in_scene_data(node_name)
+                if current_node_ref:
+                    self.node_selected.emit(current_node_ref)
+                else:
+                    # Fallback to tree copy if not found in scene data
+                    self.node_selected.emit(node_data)
     
     def on_item_changed(self, item: QTreeWidgetItem, column: int):
         """Handle item name change"""
@@ -135,17 +162,22 @@ class SceneTreeWidget(QWidget):
                 new_name = display_text.split("(")[0].strip()
             else:
                 new_name = display_text.strip()
-            
+
             # Update node data
             node_data = item.data(0, Qt.ItemDataRole.UserRole)
             if node_data:
-                node_data["name"] = new_name
-                # Update display text to include type
-                node_type = node_data.get("type", "Node")
-                item.setText(0, f"{new_name} ({node_type})")
-                
-                # Emit change signal
-                self.node_changed.emit(node_data)
+                old_name = node_data.get("name", "")
+                if new_name != old_name:
+                    node_data["name"] = new_name
+                    # Update display text to include type
+                    node_type = node_data.get("type", "Node")
+                    item.setText(0, f"{new_name} ({node_type})")
+
+                    # Synchronize to scene data
+                    self.sync_tree_to_scene_data()
+
+                    # Emit change signal
+                    self.node_changed.emit(node_data)
     
     def show_context_menu(self, position):
         """Show context menu for tree items"""
@@ -193,21 +225,11 @@ class SceneTreeWidget(QWidget):
             # Convert to dict format
             new_node = new_node_instance.to_dict()
 
-            # Add to scene data
-            if parent_item:
-                parent_data = parent_item.data(0, Qt.ItemDataRole.UserRole)
-                if "children" not in parent_data:
-                    parent_data["children"] = []
-                parent_data["children"].append(new_node)
-            else:
-                if not self.current_scene_data:
-                    self.current_scene_data = {"name": "Scene", "nodes": []}
-                if "nodes" not in self.current_scene_data:
-                    self.current_scene_data["nodes"] = []
-                self.current_scene_data["nodes"].append(new_node)
-
-            # Add to tree
+            # Add to tree first
             tree_item = self.add_node_to_tree(new_node, parent_item)
+
+            # Synchronize tree structure back to scene data
+            self.sync_tree_to_scene_data()
 
             # Select the new item
             self.tree.setCurrentItem(tree_item)
@@ -222,30 +244,26 @@ class SceneTreeWidget(QWidget):
         """Duplicate a node"""
         if not item:
             return
-        
+
         node_data = item.data(0, Qt.ItemDataRole.UserRole)
         if not node_data:
             return
-        
+
         # Create copy of node data
         import copy
         new_node = copy.deepcopy(node_data)
         new_node["name"] = f"{new_node['name']}_copy"
-        
-        # Add to parent
+
+        # Add to tree first
         parent_item = item.parent()
-        if parent_item:
-            parent_data = parent_item.data(0, Qt.ItemDataRole.UserRole)
-            parent_data["children"].append(new_node)
-        else:
-            self.current_scene_data["nodes"].append(new_node)
-        
-        # Add to tree
         tree_item = self.add_node_to_tree(new_node, parent_item)
-        
+
+        # Synchronize tree structure back to scene data
+        self.sync_tree_to_scene_data()
+
         # Select the new item
         self.tree.setCurrentItem(tree_item)
-        
+
         # Emit change signal
         self.node_changed.emit(new_node)
     
@@ -267,28 +285,16 @@ class SceneTreeWidget(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
         
-        # Remove from scene data
+        # Remove from tree first
         parent_item = item.parent()
-        if parent_item:
-            parent_data = parent_item.data(0, Qt.ItemDataRole.UserRole)
-            if "children" in parent_data:
-                parent_data["children"] = [
-                    child for child in parent_data["children"] 
-                    if child != node_data
-                ]
-        else:
-            if self.current_scene_data and "nodes" in self.current_scene_data:
-                self.current_scene_data["nodes"] = [
-                    node for node in self.current_scene_data["nodes"]
-                    if node != node_data
-                ]
-        
-        # Remove from tree
         if parent_item:
             parent_item.removeChild(item)
         else:
             self.tree.takeTopLevelItem(self.tree.indexOfTopLevelItem(item))
-        
+
+        # Synchronize tree structure back to scene data
+        self.sync_tree_to_scene_data()
+
         # Emit change signal
         self.node_changed.emit({})
     
@@ -309,5 +315,158 @@ class SceneTreeWidget(QWidget):
         """Get the currently selected node data"""
         selected_items = self.tree.selectedItems()
         if selected_items:
-            return selected_items[0].data(0, Qt.ItemDataRole.UserRole)
+            node_data = selected_items[0].data(0, Qt.ItemDataRole.UserRole)
+            if node_data:
+                # Get the current reference from scene data instead of the tree copy
+                node_name = node_data.get("name", "")
+                current_node_ref = self.find_node_in_scene_data(node_name)
+                if current_node_ref:
+                    return current_node_ref
+                else:
+                    # Fallback to tree copy if not found in scene data
+                    return node_data
         return None
+
+    def select_node(self, node_data: dict):
+        """Select a node in the tree"""
+        if not node_data:
+            return
+
+        # Find the tree item for this node
+        node_name = node_data.get("name", "")
+        item = self.find_tree_item_by_name(self.tree.invisibleRootItem(), node_name)
+        if item:
+            self.tree.setCurrentItem(item)
+
+    def select_node_by_name(self, node_name: str):
+        """Select a node in the tree by name"""
+        if not node_name:
+            return
+
+        # Find the tree item for this node
+        item = self.find_tree_item_by_name(self.tree.invisibleRootItem(), node_name)
+        if item:
+            self.tree.setCurrentItem(item)
+
+    def find_tree_item_by_name(self, parent_item, node_name: str):
+        """Find a tree item by node name"""
+        for i in range(parent_item.childCount()):
+            child = parent_item.child(i)
+            # Extract name from display text (remove type part)
+            display_text = child.text(0)
+            if "(" in display_text:
+                item_name = display_text.split("(")[0].strip()
+            else:
+                item_name = display_text.strip()
+
+            if item_name == node_name:
+                return child
+            # Check children recursively
+            found = self.find_tree_item_by_name(child, node_name)
+            if found:
+                return found
+        return None
+
+    def find_node_in_scene_data(self, node_name: str, parent_path: str = ""):
+        """Find a node by name and parent path in the current scene data"""
+        if not self.current_scene_data or not node_name:
+            return None
+
+        def search_nodes(nodes, current_path=""):
+            for node in nodes:
+                node_path = f"{current_path}/{node.get('name')}" if current_path else node.get('name')
+
+                if node.get("name") == node_name:
+                    # If parent_path is specified, check if it matches
+                    if parent_path:
+                        expected_path = f"{parent_path}/{node_name}"
+                        if node_path == expected_path:
+                            return node
+                    else:
+                        return node
+
+                # Search children
+                children = node.get("children", [])
+                if children:
+                    result = search_nodes(children, node_path)
+                    if result:
+                        return result
+            return None
+
+        return search_nodes(self.current_scene_data.get("nodes", []))
+
+    def get_node_path(self, item: QTreeWidgetItem) -> str:
+        """Get the full path of a node from root"""
+        path_parts = []
+        current_item = item
+
+        while current_item:
+            node_data = current_item.data(0, Qt.ItemDataRole.UserRole)
+            if node_data:
+                node_name = node_data.get("name", "")
+                if node_name:
+                    path_parts.insert(0, node_name)
+            current_item = current_item.parent()
+
+        return "/".join(path_parts)
+
+    def sync_tree_to_scene_data(self):
+        """Synchronize tree widget state back to scene data"""
+        if not self.current_scene_data:
+            return
+
+        # Rebuild scene data from tree structure
+        def build_node_data(item: QTreeWidgetItem) -> dict:
+            node_data = item.data(0, Qt.ItemDataRole.UserRole)
+            if not node_data:
+                return {}
+
+            # Create a copy of the node data
+            result = dict(node_data)
+
+            # Rebuild children from tree structure
+            children = []
+            for i in range(item.childCount()):
+                child_item = item.child(i)
+                child_data = build_node_data(child_item)
+                if child_data:
+                    children.append(child_data)
+
+            result["children"] = children
+            return result
+
+        # Rebuild root nodes
+        new_nodes = []
+        for i in range(self.tree.topLevelItemCount()):
+            root_item = self.tree.topLevelItem(i)
+            node_data = build_node_data(root_item)
+            if node_data:
+                new_nodes.append(node_data)
+
+        self.current_scene_data["nodes"] = new_nodes
+
+    def update_tree_item_property(self, node_id: str, property_name: str, value):
+        """Update a property in the tree item data to match inspector changes"""
+        # Find the tree item for this node
+        item = self.find_tree_item_by_name(self.tree.invisibleRootItem(), node_id)
+        if item:
+            # Get the node data from the tree item
+            node_data = item.data(0, Qt.ItemDataRole.UserRole)
+            if node_data:
+                # Update the property in the tree item data
+                node_data[property_name] = value
+                # Store the updated data back to the tree item
+                item.setData(0, Qt.ItemDataRole.UserRole, node_data)
+
+                # Also update the scene data to keep it synchronized
+                self.sync_tree_to_scene_data()
+
+    def on_rows_moved(self, parent, start, end, destination, row):
+        """Handle drag and drop operations"""
+        # Synchronize tree structure back to scene data after drag/drop
+        self.sync_tree_to_scene_data()
+
+        # Emit change signal to notify other components
+        self.node_changed.emit({})
+
+

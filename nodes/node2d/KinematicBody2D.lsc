@@ -1,0 +1,272 @@
+# KinematicBody2D - 2D kinematic body for manual movement with collision detection
+# Perfect for player characters and manually controlled objects
+extends Node2D
+
+# Motion Properties
+export_group("Motion")
+export var motion_sync_to_physics: bool = false  # Sync motion to physics frame
+
+# Collision Properties
+export_group("Collision")
+export var collision_layer: int = 1  # Collision layer (bitmask)
+export var collision_mask: int = 1  # Collision mask (what layers to collide with)
+
+# Movement Properties
+export_group("Movement")
+export var safe_margin: float = 0.08  # Safe margin for collision detection
+
+# Internal properties
+var _velocity: Vector2 = Vector2.ZERO  # Current velocity
+var _on_floor: bool = false  # Whether body is on floor
+var _on_ceiling: bool = false  # Whether body is touching ceiling
+var _on_wall: bool = false  # Whether body is touching wall
+var _floor_normal: Vector2 = Vector2.UP  # Normal of the floor
+var _wall_normal: Vector2 = Vector2.ZERO  # Normal of the wall
+var _collisions: Array = []  # Current collision information
+
+# Floor detection
+var _floor_max_angle: float = deg2rad(45)  # Maximum angle to consider as floor
+var _floor_snap_length: float = 1.0  # Distance to snap to floor
+
+# Called when the node enters the scene tree
+func _ready():
+    # Initialize kinematic body
+    _setup_kinematic_body()
+
+# Called every physics frame
+func _physics_process(delta: float):
+    # Update collision state
+    _update_collision_state()
+
+# Setup kinematic body
+func _setup_kinematic_body():
+    # Implementation will be handled by physics system
+    pass
+
+# Move the body with collision detection
+func move_and_slide(velocity: Vector2, up_direction: Vector2 = Vector2.UP, 
+                   stop_on_slope: bool = false, max_slides: int = 4, 
+                   floor_max_angle: float = deg2rad(45), infinite_inertia: bool = true) -> Vector2:
+    
+    _velocity = velocity
+    _floor_max_angle = floor_max_angle
+    
+    # Reset collision state
+    _on_floor = false
+    _on_ceiling = false
+    _on_wall = false
+    _collisions.clear()
+    
+    var motion = velocity
+    var slides = 0
+    
+    while slides < max_slides and motion.length() > 0.001:
+        var collision = _move_and_collide(motion)
+        
+        if not collision:
+            # No collision, movement complete
+            break
+        
+        _collisions.append(collision)
+        
+        # Determine collision type
+        var collision_normal = collision.get("normal", Vector2.ZERO)
+        var collision_angle = collision_normal.angle_to(up_direction)
+        
+        if abs(collision_angle) <= _floor_max_angle:
+            _on_floor = true
+            _floor_normal = collision_normal
+        elif abs(collision_angle - PI) <= _floor_max_angle:
+            _on_ceiling = true
+        else:
+            _on_wall = true
+            _wall_normal = collision_normal
+        
+        # Calculate slide motion
+        if stop_on_slope and _on_floor:
+            motion = Vector2.ZERO
+        else:
+            motion = motion.slide(collision_normal)
+        
+        slides += 1
+    
+    return _velocity
+
+# Move the body and detect collision
+func _move_and_collide(motion: Vector2) -> Dictionary:
+    # This would be implemented by the physics system
+    # For now, return empty collision info and apply movement directly
+    var collision_info = {}
+
+    # Apply movement directly to position
+    position += motion
+
+    # Debug output to verify movement is happening
+    print("KinematicBody2D moving by: ", motion, " new position: ", position)
+
+    return collision_info
+
+# Move the body with collision detection (simple version)
+func move_and_collide(motion: Vector2) -> Dictionary:
+    return _move_and_collide(motion)
+
+# Test movement without actually moving
+func test_move(motion: Vector2) -> Dictionary:
+    # This would test movement without changing position
+    # Implementation would be handled by physics system
+    return {}
+
+# Check if body is on floor
+func is_on_floor() -> bool:
+    return _on_floor
+
+# Check if body is on ceiling
+func is_on_ceiling() -> bool:
+    return _on_ceiling
+
+# Check if body is on wall
+func is_on_wall() -> bool:
+    return _on_wall
+
+# Get floor normal
+func get_floor_normal() -> Vector2:
+    return _floor_normal
+
+# Get wall normal
+func get_wall_normal() -> Vector2:
+    return _wall_normal
+
+# Get current velocity
+func get_velocity() -> Vector2:
+    return _velocity
+
+# Set velocity
+func set_velocity(velocity: Vector2):
+    _velocity = velocity
+
+# Get slide collision count
+func get_slide_count() -> int:
+    return _collisions.size()
+
+# Get slide collision info
+func get_slide_collision(index: int) -> Dictionary:
+    if index >= 0 and index < _collisions.size():
+        return _collisions[index]
+    return {}
+
+# Update collision state
+func _update_collision_state():
+    # This would be called by the physics system
+    pass
+
+# Set collision layer bit
+func set_collision_layer_bit(bit: int, value: bool):
+    if bit >= 0 and bit < 32:
+        if value:
+            collision_layer |= (1 << bit)
+        else:
+            collision_layer &= ~(1 << bit)
+
+# Get collision layer bit
+func get_collision_layer_bit(bit: int) -> bool:
+    if bit >= 0 and bit < 32:
+        return (collision_layer & (1 << bit)) != 0
+    return false
+
+# Set collision mask bit
+func set_collision_mask_bit(bit: int, value: bool):
+    if bit >= 0 and bit < 32:
+        if value:
+            collision_mask |= (1 << bit)
+        else:
+            collision_mask &= ~(1 << bit)
+
+# Get collision mask bit
+func get_collision_mask_bit(bit: int) -> bool:
+    if bit >= 0 and bit < 32:
+        return (collision_mask & (1 << bit)) != 0
+    return false
+
+# Set safe margin
+func set_safe_margin(margin: float):
+    safe_margin = max(0.001, margin)
+
+# Get safe margin
+func get_safe_margin() -> float:
+    return safe_margin
+
+# Set floor max angle
+func set_floor_max_angle(angle: float):
+    _floor_max_angle = clamp(angle, 0, PI / 2)
+
+# Get floor max angle
+func get_floor_max_angle() -> float:
+    return _floor_max_angle
+
+# Set floor snap length
+func set_floor_snap_length(length: float):
+    _floor_snap_length = max(0, length)
+
+# Get floor snap length
+func get_floor_snap_length() -> float:
+    return _floor_snap_length
+
+# Snap to floor if close enough
+func snap_to_floor():
+    if not _on_floor and _floor_snap_length > 0:
+        var snap_motion = Vector2.DOWN * _floor_snap_length
+        var collision = test_move(snap_motion)
+        
+        if collision and collision.has("normal"):
+            var normal = collision.get("normal")
+            var angle = normal.angle_to(Vector2.UP)
+            
+            if abs(angle) <= _floor_max_angle:
+                position += snap_motion
+                _on_floor = true
+                _floor_normal = normal
+
+# Get kinematic body data for physics system
+func get_physics_data() -> Dictionary:
+    return {
+        "motion_sync_to_physics": motion_sync_to_physics,
+        "collision_layer": collision_layer,
+        "collision_mask": collision_mask,
+        "safe_margin": safe_margin,
+        "velocity": _velocity,
+        "on_floor": _on_floor,
+        "on_ceiling": _on_ceiling,
+        "on_wall": _on_wall,
+        "floor_normal": _floor_normal,
+        "wall_normal": _wall_normal,
+        "floor_max_angle": _floor_max_angle,
+        "floor_snap_length": _floor_snap_length
+    }
+
+# Helper function for platformer movement
+func apply_gravity(gravity: Vector2, delta: float):
+    if not _on_floor:
+        _velocity += gravity * delta
+
+# Helper function for platformer jumping
+func jump(jump_velocity: Vector2):
+    _velocity = jump_velocity
+    _on_floor = false
+
+# Helper function for horizontal movement
+func move_horizontal(speed: float, acceleration: float, friction: float, delta: float):
+    if speed != 0:
+        _velocity.x = move_toward(_velocity.x, speed, acceleration * delta)
+    else:
+        _velocity.x = move_toward(_velocity.x, 0, friction * delta)
+
+# Helper function to move toward a value
+func move_toward(current: float, target: float, delta: float) -> float:
+    if abs(target - current) <= delta:
+        return target
+    else:
+        return current + sign(target - current) * delta
+
+# Signals
+signal collision_detected(collision_info)  # Emitted when collision is detected
+signal floor_state_changed(on_floor)  # Emitted when floor state changes

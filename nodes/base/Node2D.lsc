@@ -1,0 +1,165 @@
+# Node2D - 2D node with transform properties
+# Base class for all 2D nodes with position, rotation, scale, and z-ordering
+extends Node
+
+# Transform properties
+export_group("Transform")
+export var position: Vector2 = Vector2(0, 0)  # Position in 2D space
+export var rotation: float = 0.0  # Rotation in radians
+export var scale: Vector2 = Vector2(1, 1)  # Scale factor
+export var skew: float = 0.0  # Skew transformation
+
+# Z-ordering properties
+export_group("Ordering")
+export var z_index: int = 0  # Z-index for rendering order
+export var z_as_relative: bool = true  # Whether z_index is relative to parent
+
+# Visibility and modulation
+export_group("Visibility")
+export var modulate: Color = Color(1, 1, 1, 1)  # Color modulation (affects children)
+export var self_modulate: Color = Color(1, 1, 1, 1)  # Self color modulation (doesn't affect children)
+
+# Called when the node enters the scene tree
+func _ready():
+    super._ready()
+
+# Set position
+func set_position(new_position: Vector2):
+    position = new_position
+
+# Get position
+func get_position() -> Vector2:
+    return position
+
+# Set global position (relative to scene root)
+func set_global_position(global_pos: Vector2):
+    if parent and parent is Node2D:
+        position = global_pos - parent.get_global_position()
+    else:
+        position = global_pos
+
+# Get global position (relative to scene root)
+func get_global_position() -> Vector2:
+    if parent and parent is Node2D:
+        return parent.get_global_position() + position
+    else:
+        return position
+
+# Set rotation in degrees
+func set_rotation_degrees(degrees: float):
+    rotation = deg_to_rad(degrees)
+
+# Get rotation in degrees
+func get_rotation_degrees() -> float:
+    return rad_to_deg(rotation)
+
+# Set rotation in radians
+func set_rotation(radians: float):
+    rotation = radians
+
+# Get rotation in radians
+func get_rotation() -> float:
+    return rotation
+
+# Set scale
+func set_scale(new_scale: Vector2):
+    scale = new_scale
+
+# Get scale
+func get_scale() -> Vector2:
+    return scale
+
+# Set global scale
+func set_global_scale(global_scale: Vector2):
+    if parent and parent is Node2D:
+        var parent_scale = parent.get_global_scale()
+        scale = Vector2(global_scale.x / parent_scale.x, global_scale.y / parent_scale.y)
+    else:
+        scale = global_scale
+
+# Get global scale
+func get_global_scale() -> Vector2:
+    if parent and parent is Node2D:
+        var parent_scale = parent.get_global_scale()
+        return Vector2(scale.x * parent_scale.x, scale.y * parent_scale.y)
+    else:
+        return scale
+
+# Set z-index
+func set_z_index(index: int):
+    z_index = index
+
+# Get z-index
+func get_z_index() -> int:
+    return z_index
+
+# Set z-as-relative
+func set_z_as_relative(relative: bool):
+    z_as_relative = relative
+
+# Get z-as-relative
+func is_z_relative() -> bool:
+    return z_as_relative
+
+# Set modulate color
+func set_modulate(color: Color):
+    modulate = color
+
+# Get modulate color
+func get_modulate() -> Color:
+    return modulate
+
+# Set self modulate color
+func set_self_modulate(color: Color):
+    self_modulate = color
+
+# Get self modulate color
+func get_self_modulate() -> Color:
+    return self_modulate
+
+# Move the node by a relative amount
+func move_local_x(delta: float):
+    position.x += delta
+
+func move_local_y(delta: float):
+    position.y += delta
+
+func translate(offset: Vector2):
+    position += offset
+
+# Rotate the node by a relative amount
+func rotate(radians: float):
+    rotation += radians
+
+# Look at a target position
+func look_at(target: Vector2):
+    var direction = target - get_global_position()
+    rotation = direction.angle()
+
+# Apply a transform to a point
+func to_local(global_point: Vector2) -> Vector2:
+    # Convert global point to local coordinates
+    var local_point = global_point - get_global_position()
+    # Apply inverse rotation and scale
+    var cos_rot = cos(-rotation)
+    var sin_rot = sin(-rotation)
+    var rotated_x = local_point.x * cos_rot - local_point.y * sin_rot
+    var rotated_y = local_point.x * sin_rot + local_point.y * cos_rot
+    return Vector2(rotated_x / scale.x, rotated_y / scale.y)
+
+# Convert local point to global coordinates
+func to_global(local_point: Vector2) -> Vector2:
+    # Apply scale and rotation
+    var scaled_point = Vector2(local_point.x * scale.x, local_point.y * scale.y)
+    var cos_rot = cos(rotation)
+    var sin_rot = sin(rotation)
+    var rotated_x = scaled_point.x * cos_rot - scaled_point.y * sin_rot
+    var rotated_y = scaled_point.x * sin_rot + scaled_point.y * cos_rot
+    return get_global_position() + Vector2(rotated_x, rotated_y)
+
+# Utility functions
+func deg_to_rad(degrees: float) -> float:
+    return degrees * PI / 180.0
+
+func rad_to_deg(radians: float) -> float:
+    return radians * 180.0 / PI

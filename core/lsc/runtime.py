@@ -41,7 +41,7 @@ class LSCScope:
     
     def has(self, name: str) -> bool:
         """Check if variable exists"""
-        return name in self.variables or (self.parent and self.parent.has(name))
+        return name in self.variables or (self.parent is not None and self.parent.has(name))
 
 
 class LSCRuntime:
@@ -74,11 +74,141 @@ class LSCRuntime:
         # Add built-in functions
         for name, func in self.builtins.functions.items():
             self.global_scope.define(name, func)
-        
+
         # Add built-in constants
         for name, value in self.builtins.constants.items():
             self.global_scope.define(name, value)
-    
+
+        # Add common default values for export variables
+        self._add_default_export_values()
+
+    def _add_default_export_values(self) -> None:
+        """Add common default values for export variables"""
+        from .builtins import LSCVector2, LSCRect2, LSCColor, LSCTexture
+
+        # Add base node class placeholders for extends statements
+        base_classes = {
+            'Node': self._create_node_class_placeholder('Node'),
+            'Node2D': self._create_node_class_placeholder('Node2D'),
+            'KinematicBody2D': self._create_node_class_placeholder('KinematicBody2D'),
+            'StaticBody2D': self._create_node_class_placeholder('StaticBody2D'),
+            'RigidBody2D': self._create_node_class_placeholder('RigidBody2D'),
+            'Area2D': self._create_node_class_placeholder('Area2D'),
+            'Control': self._create_node_class_placeholder('Control'),
+            'Sprite': self._create_node_class_placeholder('Sprite'),
+            'AnimatedSprite': self._create_node_class_placeholder('AnimatedSprite'),
+            'Camera2D': self._create_node_class_placeholder('Camera2D'),
+            'CollisionShape2D': self._create_node_class_placeholder('CollisionShape2D'),
+            'CollisionPolygon2D': self._create_node_class_placeholder('CollisionPolygon2D'),
+        }
+
+        for name, class_obj in base_classes.items():
+            self.global_scope.define(name, class_obj)
+
+        # Add Input object for Godot-like input access
+        input_obj = self._create_input_object()
+        self.global_scope.define('Input', input_obj)
+
+        # Add common default values that scripts might expect
+        defaults = {
+            'current': False,
+            'collision_mask': 1,
+            'collision_layer': 1,
+            'enable_animations': True,
+            'texture': None,
+            'null': None,
+
+            # PlayerController specific defaults
+            'controller_type': "topdown_8dir",
+            'base_speed': 200.0,
+            'acceleration': 800.0,
+            'friction': 1000.0,
+            'max_speed': 400.0,
+            'can_sprint': True,
+            'sprint_speed_multiplier': 1.5,
+            'sprint_acceleration_multiplier': 1.2,
+            'sprint_stamina_enabled': False,
+            'max_stamina': 100.0,
+            'current_stamina': 100.0,
+            'stamina_drain_rate': 20.0,
+            'stamina_regen_rate': 15.0,
+            'gravity': 980.0,
+            'jump_height': 400.0,
+            'max_fall_speed': 1000.0,
+            'coyote_time': 0.1,
+            'jump_buffer_time': 0.1,
+            'is_on_ground': False,
+            'coyote_timer': 0.0,
+            'jump_buffer_timer': 0.0,
+            'is_sprinting': False,
+            'last_direction': LSCVector2(1, 0),
+            'input_vector': LSCVector2(0, 0),
+            'velocity': LSCVector2(0, 0),
+
+            # Animation defaults
+            'idle_animation': "idle",
+            'walk_animation': "walk",
+            'run_animation': "run",
+            'jump_animation': "jump",
+            'fall_animation': "fall",
+
+            # Node references
+            'animated_sprite_node': None,
+            'sprite_node': None,
+            'collision_shape_node': None,
+            'interaction_area': None,
+            'interaction_shape': None,
+
+            # Sprite defaults
+            'frame_x': 0,
+            'frame_y': 0,
+            'hframes': 1,
+            'vframes': 1,
+            'region_rect': LSCRect2(0, 0, 0, 0),
+
+            # Camera defaults
+            'enabled': True,
+        }
+
+        for name, value in defaults.items():
+            if not self.global_scope.has(name):
+                self.global_scope.define(name, value)
+
+    def _create_node_class_placeholder(self, class_name: str):
+        """Create a placeholder class for node inheritance"""
+        class NodeClassPlaceholder:
+            def __init__(self):
+                self.class_name = class_name
+
+            def __call__(self, *args, **kwargs):
+                # Return a simple object that can be used for inheritance
+                return self
+
+            def __repr__(self):
+                return f"<class '{self.class_name}'>"
+
+        return NodeClassPlaceholder()
+
+    def _create_input_object(self):
+        """Create an Input object for Godot-like input access"""
+        class InputObject:
+            def __init__(self, runtime):
+                self.runtime = runtime
+
+            def is_action_pressed(self, action: str) -> bool:
+                return self.runtime.builtins.is_action_pressed(action)
+
+            def is_action_just_pressed(self, action: str) -> bool:
+                return self.runtime.builtins.is_action_just_pressed(action)
+
+            def is_action_just_released(self, action: str) -> bool:
+                return self.runtime.builtins.is_action_just_released(action)
+
+            def get_action_strength(self, action: str) -> float:
+                return self.runtime.builtins.get_action_strength(action)
+
+        return InputObject(self)
+
     def push_scope(self) -> LSCScope:
         """Push a new scope onto the stack"""
         new_scope = LSCScope(self.current_scope)
@@ -215,10 +345,10 @@ class LSCRuntime:
             return self.game_runtime.input_manager.get_action_strength(action)
         return 0.0
     
-    def is_key_pressed(self, key: str) -> bool:
+    def is_key_pressed(self, key) -> bool:
         """Check if key is pressed"""
-        if self.game_runtime and hasattr(self.game_runtime, 'input_manager'):
-            return self.game_runtime.input_manager.is_key_pressed(key)
+        if self.game_runtime and hasattr(self.game_runtime, 'is_key_pressed'):
+            return self.game_runtime.is_key_pressed(key)
         return False
     
     def is_mouse_button_pressed(self, button: int) -> bool:
@@ -253,7 +383,11 @@ class LSCRuntime:
         if self.delta_time > 0:
             return 1.0 / self.delta_time
         return 0.0
-    
+
+    def get_runtime_time(self) -> float:
+        """Get runtime time (alias for get_time for LSC scripts)"""
+        return self.get_time()
+
     def wait(self, seconds: float) -> None:
         """Wait for specified time (placeholder - would need coroutine system)"""
         # This would need to be implemented with a proper coroutine/async system
@@ -315,21 +449,34 @@ class LSCScriptInstance:
         """Call a method on this script instance"""
         if not self.enabled:
             return None
-        
+
         # Set up scope for method call
         old_scope = self.runtime.current_scope
         self.runtime.current_scope = self.scope
-        
+
         try:
             # Get method from scope
             if self.scope.has(method_name):
                 method = self.scope.get(method_name)
                 if callable(method):
+                    # Debug output for _physics_process
+                    if method_name == "_physics_process":
+                        print(f"Calling {method_name} with args: {args} in scope: {self.scope} on node: {self.node}")
+
                     return method(*args)
+            else:
+                # Debug output for missing methods
+                if method_name == "_physics_process":
+                    all_vars = list(self.scope.variables.keys())
+                    callable_vars = [k for k in self.scope.variables.keys() if callable(self.scope.variables.get(k, None))]
+                    print(f"Method {method_name} not found in scope: {self.scope} on node: {self.node}")
+                    print(f"All variables in scope: {all_vars}")
+                    print(f"Callable variables in scope: {callable_vars}")
+                    print(f"Node: {self.node}")
         finally:
             # Restore scope
             self.runtime.current_scope = old_scope
-        
+
         return None
     
     def set_export_variable(self, name: str, value: Any) -> None:

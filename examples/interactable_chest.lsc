@@ -1,0 +1,45 @@
+# Interactable Chest - Example interactable object for PlayerController demo
+extends StaticBody2D
+
+# Chest Properties
+export_group("Chest")
+export var is_open: bool = false  # Whether the chest is open
+export var contains_item: String = "Gold Coin"  # Item contained in chest
+export var interaction_text: String = "Press E to open chest"  # Text to display
+
+# Internal state
+var player_nearby: bool = false
+
+# Called when the node enters the scene tree
+func _ready():
+    print("Interactable chest ready")
+
+# Check if this object can be interacted with
+func can_interact() -> bool:
+    return not is_open
+
+# Handle interaction from player
+func interact(player):
+    if not is_open:
+        is_open = true
+        print("Chest opened! You found: ", contains_item)
+        
+        # Change visual appearance if possible
+        if has_method("set_modulate"):
+            set_modulate(Color(0.8, 0.8, 0.8, 1.0))  # Make it slightly gray when opened
+        
+        # Emit signal if available
+        if has_signal("chest_opened"):
+            emit_signal("chest_opened", contains_item)
+    else:
+        print("Chest is already open")
+
+# Get interaction text for UI
+func get_interaction_text() -> String:
+    if is_open:
+        return "Chest is empty"
+    else:
+        return interaction_text
+
+# Signal for when chest is opened
+signal chest_opened(item)

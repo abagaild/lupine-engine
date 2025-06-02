@@ -1,0 +1,211 @@
+# StaticBody2D - 2D static body for immovable objects
+# Perfect for walls, platforms, and other static collision objects
+extends Node2D
+
+# Physics Properties
+export_group("Physics")
+export var physics_material_override: String = ""  # Physics material resource
+
+# Collision Properties
+export_group("Collision")
+export var collision_layer: int = 1  # Collision layer (bitmask)
+export var collision_mask: int = 1  # Collision mask (what layers to detect)
+
+# Constant Motion (for moving platforms)
+export_group("Constant Motion")
+export var constant_linear_velocity: Vector2 = Vector2(0, 0)  # Constant linear velocity
+export var constant_angular_velocity: float = 0.0  # Constant angular velocity
+
+# Internal properties
+var _kinematic_motion: bool = false  # Whether body has kinematic motion
+
+# Called when the node enters the scene tree
+func _ready():
+    # Initialize static body
+    _setup_static_body()
+
+# Called every physics frame
+func _physics_process(delta: float):
+    # Apply constant motion if set
+    if _has_constant_motion():
+        _apply_constant_motion(delta)
+
+# Setup static body
+func _setup_static_body():
+    # Implementation will be handled by physics system
+    _kinematic_motion = _has_constant_motion()
+
+# Check if body has constant motion
+func _has_constant_motion() -> bool:
+    return constant_linear_velocity != Vector2.ZERO or constant_angular_velocity != 0.0
+
+# Apply constant motion
+func _apply_constant_motion(delta: float):
+    if constant_linear_velocity != Vector2.ZERO:
+        position += constant_linear_velocity * delta
+    
+    if constant_angular_velocity != 0.0:
+        rotation += constant_angular_velocity * delta
+
+# Set physics material
+func set_physics_material_override(material: String):
+    physics_material_override = material
+    _setup_static_body()
+
+# Set collision layer bit
+func set_collision_layer_bit(bit: int, value: bool):
+    if bit >= 0 and bit < 32:
+        if value:
+            collision_layer |= (1 << bit)
+        else:
+            collision_layer &= ~(1 << bit)
+
+# Get collision layer bit
+func get_collision_layer_bit(bit: int) -> bool:
+    if bit >= 0 and bit < 32:
+        return (collision_layer & (1 << bit)) != 0
+    return false
+
+# Set collision mask bit
+func set_collision_mask_bit(bit: int, value: bool):
+    if bit >= 0 and bit < 32:
+        if value:
+            collision_mask |= (1 << bit)
+        else:
+            collision_mask &= ~(1 << bit)
+
+# Get collision mask bit
+func get_collision_mask_bit(bit: int) -> bool:
+    if bit >= 0 and bit < 32:
+        return (collision_mask & (1 << bit)) != 0
+    return false
+
+# Set constant linear velocity
+func set_constant_linear_velocity(velocity: Vector2):
+    constant_linear_velocity = velocity
+    _kinematic_motion = _has_constant_motion()
+    _setup_static_body()
+
+# Get constant linear velocity
+func get_constant_linear_velocity() -> Vector2:
+    return constant_linear_velocity
+
+# Set constant angular velocity
+func set_constant_angular_velocity(velocity: float):
+    constant_angular_velocity = velocity
+    _kinematic_motion = _has_constant_motion()
+    _setup_static_body()
+
+# Get constant angular velocity
+func get_constant_angular_velocity() -> float:
+    return constant_angular_velocity
+
+# Stop all constant motion
+func stop_constant_motion():
+    constant_linear_velocity = Vector2.ZERO
+    constant_angular_velocity = 0.0
+    _kinematic_motion = false
+    _setup_static_body()
+
+# Check if body is kinematic (has motion)
+func is_kinematic() -> bool:
+    return _kinematic_motion
+
+# Get static body data for physics system
+func get_physics_data() -> Dictionary:
+    return {
+        "physics_material_override": physics_material_override,
+        "collision_layer": collision_layer,
+        "collision_mask": collision_mask,
+        "constant_linear_velocity": constant_linear_velocity,
+        "constant_angular_velocity": constant_angular_velocity,
+        "kinematic_motion": _kinematic_motion
+    }
+
+# Create a simple wall
+func create_wall(size: Vector2, wall_position: Vector2 = Vector2.ZERO):
+    # This would typically add a CollisionShape2D child
+    position = wall_position
+    
+    # Example of how to programmatically add collision shape
+    # var collision_shape = CollisionShape2D.new()
+    # collision_shape.shape = "rectangle"
+    # collision_shape.size = size
+    # add_child(collision_shape)
+
+# Create a platform with constant motion
+func create_moving_platform(size: Vector2, platform_position: Vector2, velocity: Vector2):
+    position = platform_position
+    constant_linear_velocity = velocity
+    _kinematic_motion = true
+    _setup_static_body()
+    
+    # Example of how to add collision shape
+    # var collision_shape = CollisionShape2D.new()
+    # collision_shape.shape = "rectangle"
+    # collision_shape.size = size
+    # add_child(collision_shape)
+
+# Create a rotating platform
+func create_rotating_platform(size: Vector2, platform_position: Vector2, angular_vel: float):
+    position = platform_position
+    constant_angular_velocity = angular_vel
+    _kinematic_motion = true
+    _setup_static_body()
+
+# Utility function to check collision with point
+func test_point_collision(point: Vector2) -> bool:
+    # This would be implemented by the physics system
+    # For now, return false as placeholder
+    return false
+
+# Utility function to check collision with shape
+func test_shape_collision(shape_position: Vector2, shape_size: Vector2) -> bool:
+    # This would be implemented by the physics system
+    # For now, return false as placeholder
+    return false
+
+# Get all collision shapes attached to this body
+func get_collision_shapes() -> Array:
+    var shapes = []
+    for child in get_children():
+        if child.get("type") == "CollisionShape2D" or child.get("type") == "CollisionPolygon2D":
+            shapes.append(child)
+    return shapes
+
+# Enable/disable all collision shapes
+func set_collision_enabled(enabled: bool):
+    for shape in get_collision_shapes():
+        if shape.has_method("set_disabled"):
+            shape.set_disabled(not enabled)
+
+# Check if any collision shapes are enabled
+func has_collision_shapes() -> bool:
+    var shapes = get_collision_shapes()
+    for shape in shapes:
+        if shape.has_method("get") and not shape.get("disabled"):
+            return true
+    return false
+
+# Get bounding box of all collision shapes
+func get_collision_bounds() -> Rect2:
+    var bounds = Rect2()
+    var first_shape = true
+    
+    for shape in get_collision_shapes():
+        if shape.has_method("get_shape_bounds"):
+            var shape_bounds = shape.get_shape_bounds()
+            if first_shape:
+                bounds = shape_bounds
+                first_shape = false
+            else:
+                bounds = bounds.merge(shape_bounds)
+    
+    if first_shape:
+        # No collision shapes found, return default bounds
+        return Rect2(position - Vector2(16, 16), Vector2(32, 32))
+    
+    return bounds
+
+# Signals
+signal motion_changed  # Emitted when constant motion properties change

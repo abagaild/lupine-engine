@@ -4,7 +4,7 @@ extends Node2D
 
 # Texture properties
 export_group("Texture")
-export var texture: Texture = null  # The texture to display
+export var texture: path = ""  # The texture to display (uses file browser)
 export var normal_map: Texture = null  # Normal map for lighting effects
 
 # Transform properties  

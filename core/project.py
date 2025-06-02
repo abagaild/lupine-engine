@@ -3,7 +3,6 @@ Project Management System for Lupine Engine
 Handles project creation, loading, and configuration
 """
 
-import os
 import json
 import shutil
 from typing import Dict, List, Optional, Any
@@ -30,18 +29,26 @@ class LupineProject:
             folders = [
                 "assets",
                 "assets/audio",
-                "assets/entities", 
+                "assets/entities",
                 "assets/user-interface",
                 "assets/environment",
                 "assets/misc",
                 "data",
                 "prefabs",
                 "scenes",
-                "scripts"
+                "scripts",
+                "nodes",
+                "nodes/base",
+                "nodes/node2d",
+                "nodes/ui",
+                "nodes/prefabs"
             ]
-            
+
             for folder in folders:
                 (self.project_path / folder).mkdir(parents=True, exist_ok=True)
+
+            # Copy node definitions to local project
+            self._copy_node_definitions()
             
             # Create project configuration
             self.config = {
@@ -74,10 +81,16 @@ class LupineProject:
             
             # Save project file
             self.save_project()
-            
+
+            # Copy node definitions to project
+            self._copy_node_definitions()
+
+            # Copy prefabs to project
+            self._copy_prefabs()
+
             # Create default main scene
             self.create_default_scene()
-            
+
             return True
             
         except Exception as e:
@@ -150,7 +163,91 @@ class LupineProject:
     def get_project_description(self) -> str:
         """Get project description"""
         return self.config.get("description", "")
-    
+
+    def _copy_node_definitions(self) -> None:
+        """Copy node definitions from engine to local project"""
+        try:
+            # Get the engine's nodes directory
+            engine_root = Path(__file__).parent.parent  # Go up from core/ to engine root
+            engine_nodes_dir = engine_root / "nodes"
+
+            if not engine_nodes_dir.exists():
+                print(f"Warning: Engine nodes directory not found at {engine_nodes_dir}")
+                return
+
+            # Define node categorization based on new directory structure
+            node_categories = {
+                "base": ["base/Node.lsc", "base/Node2D.lsc", "base/Timer.lsc"],
+                "node2d": ["node2d/Sprite.lsc", "node2d/AnimatedSprite.lsc", "node2d/Camera2D.lsc",
+                          "node2d/Area2D.lsc", "node2d/CollisionShape2D.lsc", "node2d/CollisionPolygon2D.lsc",
+                          "node2d/RigidBody2D.lsc", "node2d/StaticBody2D.lsc", "node2d/KinematicBody2D.lsc"],
+                "ui": ["ui/Control.lsc", "ui/Panel.lsc", "ui/Label.lsc", "ui/Button.lsc", "ui/CanvasLayer.lsc"],
+                "prefabs": []  # Will be populated with any remaining files
+            }
+
+            # Copy categorized nodes
+            for category, node_files in node_categories.items():
+                category_dir = self.project_path / "nodes" / category
+
+                for node_file in node_files:
+                    source_file = engine_nodes_dir / node_file
+                    if source_file.exists():
+                        # Extract just the filename for the destination
+                        dest_file = category_dir / Path(node_file).name
+                        shutil.copy2(source_file, dest_file)
+                        print(f"Copied {Path(node_file).name} to {category}/")
+                    else:
+                        print(f"Warning: Node file {node_file} not found in engine")
+
+            # Copy any remaining .lsc files to prefabs
+            prefabs_dir = self.project_path / "nodes" / "prefabs"
+            for lsc_file in engine_nodes_dir.glob("*.lsc"):
+                # Check if already copied to another category
+                already_copied = False
+                for category_files in node_categories.values():
+                    if lsc_file.name in category_files:
+                        already_copied = True
+                        break
+
+                if not already_copied:
+                    dest_file = prefabs_dir / lsc_file.name
+                    shutil.copy2(lsc_file, dest_file)
+                    print(f"Copied {lsc_file.name} to prefabs/")
+
+        except Exception as e:
+            print(f"Error copying node definitions: {e}")
+
+    def _copy_prefabs(self) -> None:
+        """Copy prefab definitions from engine to local project"""
+        try:
+            # Get the engine's prefabs directory
+            engine_root = Path(__file__).parent.parent  # Go up from core/ to engine root
+            engine_prefabs_dir = engine_root / "prefabs"
+
+            if not engine_prefabs_dir.exists():
+                print(f"Warning: Engine prefabs directory not found at {engine_prefabs_dir}")
+                return
+
+            # Copy prefab files only to nodes/prefabs (not to main prefabs directory)
+            nodes_prefabs_dir = self.project_path / "nodes" / "prefabs"
+
+            for prefab_file in engine_prefabs_dir.glob("*"):
+                if prefab_file.is_file():
+                    # Copy LSC files to nodes/prefabs for node registry
+                    if prefab_file.suffix == ".lsc":
+                        nodes_dest_file = nodes_prefabs_dir / prefab_file.name
+                        shutil.copy2(prefab_file, nodes_dest_file)
+                        print(f"Copied prefab script: {prefab_file.name} to nodes/prefabs/")
+
+                    # Copy other prefab files (JSON, etc.) to nodes/prefabs as well
+                    else:
+                        nodes_dest_file = nodes_prefabs_dir / prefab_file.name
+                        shutil.copy2(prefab_file, nodes_dest_file)
+                        print(f"Copied prefab: {prefab_file.name} to nodes/prefabs/")
+
+        except Exception as e:
+            print(f"Error copying prefabs: {e}")
+
     def get_main_scene(self) -> Optional[str]:
         """Get main scene path"""
         return self.config.get("main_scene")
