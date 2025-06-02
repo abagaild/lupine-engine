@@ -69,7 +69,11 @@ class LSCParser:
             # Enum declaration
             if self.match(TokenType.ENUM):
                 return self.enum_declaration()
-            
+
+            # Top-level extends (for script inheritance)
+            if self.match(TokenType.EXTENDS):
+                return self.extends_statement()
+
             # Variable declaration
             if self.match(TokenType.VAR, TokenType.CONST):
                 return self.var_declaration()
@@ -127,7 +131,26 @@ class LSCParser:
     
     def function_declaration(self) -> FunctionDef:
         """Parse function declaration"""
-        name = self.consume(TokenType.IDENTIFIER, "Expected function name").value
+        # Accept both regular identifiers and lifecycle method tokens as function names
+        if self.check(TokenType.IDENTIFIER):
+            name = self.advance().value
+        elif self.check(TokenType.READY):
+            name = "_ready"
+            self.advance()
+        elif self.check(TokenType.PROCESS):
+            name = "_process"
+            self.advance()
+        elif self.check(TokenType.INPUT):
+            name = "_input"
+            self.advance()
+        elif self.check(TokenType.PHYSICS_PROCESS):
+            name = "_physics_process"
+            self.advance()
+        elif self.check(TokenType.DRAW):
+            name = "_draw"
+            self.advance()
+        else:
+            raise ParseError("Expected function name", self.peek())
         
         self.consume(TokenType.LPAREN, "Expected '(' after function name")
         
@@ -178,18 +201,22 @@ class LSCParser:
         # Check for export type hints
         export_type = None
         export_hint = None
-        
+
         if self.match(TokenType.LPAREN):
             # Export with type hint: export(int, "range", "1,10")
             export_type = self.consume(TokenType.IDENTIFIER, "Expected export type").value
-            
+
             if self.match(TokenType.COMMA):
                 export_hint = self.consume(TokenType.STRING, "Expected export hint").value
-            
+
             self.consume(TokenType.RPAREN, "Expected ')' after export hint")
-        
+
+        # Consume the VAR or CONST token before calling var_declaration
+        if not self.match(TokenType.VAR, TokenType.CONST):
+            raise ParseError("Expected 'var' or 'const' after export", self.peek())
+
         var_decl = self.var_declaration()
-        
+
         return ExportDeclaration(var_decl, export_type, export_hint)
     
     def export_group(self) -> ExportGroup:
@@ -239,7 +266,16 @@ class LSCParser:
         self.consume_newline()
         
         return EnumDeclaration(name, values)
-    
+
+    def extends_statement(self) -> ExpressionStatement:
+        """Parse top-level extends statement"""
+        base_class = self.consume(TokenType.IDENTIFIER, "Expected base class name").value
+        self.consume_newline()
+
+        # For now, treat extends as a simple expression statement
+        # In a full implementation, this would set up inheritance
+        return ExpressionStatement(Identifier(base_class))
+
     def var_declaration(self) -> VarDeclaration:
         """Parse variable declaration"""
         is_const = self.previous().type == TokenType.CONST
@@ -345,6 +381,10 @@ class LSCParser:
     def block(self) -> List[Statement]:
         """Parse indented block of statements"""
         statements = []
+
+        # Skip any comments or newlines before the indent
+        while self.check(TokenType.COMMENT) or self.check(TokenType.NEWLINE):
+            self.advance()
 
         self.consume(TokenType.INDENT, "Expected indented block")
 

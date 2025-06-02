@@ -158,11 +158,16 @@ class MainEditor(QMainWindow):
         
         # Tools menu
         tools_menu = menubar.addMenu("Tools")
-        
+
         # Script editor
         script_editor_action = QAction("Script Editor", self)
         script_editor_action.triggered.connect(self.open_script_editor)
         tools_menu.addAction(script_editor_action)
+
+        # Input actions
+        input_actions_action = QAction("Input Actions", self)
+        input_actions_action.triggered.connect(self.open_input_actions)
+        tools_menu.addAction(input_actions_action)
         
         # Help menu
         help_menu = menubar.addMenu("Help")
@@ -653,6 +658,17 @@ class MainEditor(QMainWindow):
                     if not tab_text.endswith('*'):
                         self.scene_tabs.setTabText(i, tab_text + '*')
                     break
+
+    def open_input_actions(self):
+        """Open the input actions dialog"""
+        try:
+            from editor.input_actions_dialog import InputActionsDialog
+            dialog = InputActionsDialog(self.project, self)
+            dialog.exec()
+        except ImportError:
+            QMessageBox.warning(self, "Error", "Input Actions dialog not available yet.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Input Actions dialog: {e}")
 
     def closeEvent(self, event):
         """Handle window close event"""

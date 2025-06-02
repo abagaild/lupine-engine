@@ -39,6 +39,7 @@ export var smoothing_speed: float = 5.0  # Smoothing speed (higher = faster)
 export_group("Following")
 export var follow_target: nodepath = ""  # Node to follow (uses node picker)
 export var follow_smoothing: bool = true  # Use smoothing when following
+export var auto_follow_player: bool = false  # Automatically find and follow PlayerController
 
 # Camera Shake
 export_group("Camera Shake")
@@ -59,6 +60,10 @@ func _ready():
     # Make this camera current if no other camera is current
     if current:
         make_current()
+
+    # Auto-follow PlayerController if enabled and no follow target is set
+    if auto_follow_player and follow_target == "":
+        _auto_setup_follow_target()
 
 # Called every frame. 'delta' is the elapsed time since the previous frame
 func _process(delta):
@@ -193,6 +198,30 @@ func apply_limits():
 # Get effective camera position (including shake)
 func get_camera_position() -> Vector2:
     return position + offset + _shake_offset
+
+# Auto-setup follow target to PlayerController
+func _auto_setup_follow_target():
+    # Find PlayerController in the scene
+    var scene_root = get_tree().current_scene
+    if scene_root:
+        var player_controller = _find_player_controller(scene_root)
+        if player_controller:
+            follow_target = get_path_to(player_controller)
+            print("Camera auto-following PlayerController: " + player_controller.name)
+
+# Recursively find PlayerController node
+func _find_player_controller(node):
+    # Check if this node is a PlayerController (KinematicBody2D with PlayerController script)
+    if node.get_script() and node.get_script().get_path().ends_with("PlayerController.lsc"):
+        return node
+
+    # Check children
+    for child in node.get_children():
+        var result = _find_player_controller(child)
+        if result:
+            return result
+
+    return null
 
 # Get camera screen center in world coordinates
 func get_camera_screen_center() -> Vector2:

@@ -175,13 +175,13 @@ class LupineProject:
                 print(f"Warning: Engine nodes directory not found at {engine_nodes_dir}")
                 return
 
-            # Define node categorization
+            # Define node categorization based on new directory structure
             node_categories = {
-                "base": ["Node.lsc", "Node2D.lsc", "Control.lsc"],
-                "node2d": ["Sprite.lsc", "AnimatedSprite.lsc", "Camera2D.lsc", "Timer.lsc",
-                          "Area2D.lsc", "CollisionShape2D.lsc", "CollisionPolygon2D.lsc",
-                          "RigidBody2D.lsc", "StaticBody2D.lsc", "KinematicBody2D.lsc"],
-                "ui": ["Panel.lsc", "Label.lsc", "Button.lsc", "CanvasLayer.lsc"],
+                "base": ["base/Node.lsc", "base/Node2D.lsc", "base/Timer.lsc"],
+                "node2d": ["node2d/Sprite.lsc", "node2d/AnimatedSprite.lsc", "node2d/Camera2D.lsc",
+                          "node2d/Area2D.lsc", "node2d/CollisionShape2D.lsc", "node2d/CollisionPolygon2D.lsc",
+                          "node2d/RigidBody2D.lsc", "node2d/StaticBody2D.lsc", "node2d/KinematicBody2D.lsc"],
+                "ui": ["ui/Control.lsc", "ui/Panel.lsc", "ui/Label.lsc", "ui/Button.lsc", "ui/CanvasLayer.lsc"],
                 "prefabs": []  # Will be populated with any remaining files
             }
 
@@ -192,9 +192,10 @@ class LupineProject:
                 for node_file in node_files:
                     source_file = engine_nodes_dir / node_file
                     if source_file.exists():
-                        dest_file = category_dir / node_file
+                        # Extract just the filename for the destination
+                        dest_file = category_dir / Path(node_file).name
                         shutil.copy2(source_file, dest_file)
-                        print(f"Copied {node_file} to {category}/")
+                        print(f"Copied {Path(node_file).name} to {category}/")
                     else:
                         print(f"Warning: Node file {node_file} not found in engine")
 

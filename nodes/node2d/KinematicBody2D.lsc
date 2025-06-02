@@ -95,12 +95,15 @@ func move_and_slide(velocity: Vector2, up_direction: Vector2 = Vector2.UP,
 # Move the body and detect collision
 func _move_and_collide(motion: Vector2) -> Dictionary:
     # This would be implemented by the physics system
-    # For now, return empty collision info
+    # For now, return empty collision info and apply movement directly
     var collision_info = {}
-    
-    # Simple movement without collision for now
+
+    # Apply movement directly to position
     position += motion
-    
+
+    # Debug output to verify movement is happening
+    print("KinematicBody2D moving by: ", motion, " new position: ", position)
+
     return collision_info
 
 # Move the body with collision detection (simple version)

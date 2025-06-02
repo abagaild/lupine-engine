@@ -1,7 +1,7 @@
 {
-  "name": "PlayerControllerTestScene",
+  "name": "PlayerControllerDemo",
   "metadata": {
-    "description": "Test scene demonstrating PlayerController prefab with physics",
+    "description": "Demo scene showcasing PlayerController prefab with input, collision, interaction, and sprint",
     "version": "1.0"
   },
   "nodes": [
@@ -44,7 +44,7 @@
               "children": []
             },
             {
-              "name": "CollisionShape",
+              "name": "CollisionShape2D",
               "type": "CollisionShape2D",
               "position": [0, 0],
               "rotation": 0,
@@ -53,15 +53,9 @@
               "z_index": 0,
               "script_path": "nodes/CollisionShape2D.lsc",
               "shape": "rectangle",
-              "disabled": false,
-              "one_way_collision": false,
-              "one_way_collision_margin": 1.0,
               "size": [24, 32],
-              "radius": 16.0,
-              "height": 32.0,
-              "point_a": [0, 0],
-              "point_b": [32, 0],
-              "debug_color": [0.0, 1.0, 0.0, 0.5],
+              "disabled": false,
+              "debug_color": [0.0, 0.6, 0.7, 0.5],
               "children": []
             },
             {
@@ -77,8 +71,6 @@
               "monitorable": false,
               "collision_layer": 4,
               "collision_mask": 8,
-              "gravity_space_override": "disabled",
-              "gravity": [0, 0],
               "children": [
                 {
                   "name": "InteractionShape",
@@ -90,15 +82,9 @@
                   "z_index": 0,
                   "script_path": "nodes/CollisionShape2D.lsc",
                   "shape": "circle",
+                  "radius": 24,
                   "disabled": false,
-                  "one_way_collision": false,
-                  "one_way_collision_margin": 1.0,
-                  "size": [32, 32],
-                  "radius": 40.0,
-                  "height": 32.0,
-                  "point_a": [0, 0],
-                  "point_b": [32, 0],
-                  "debug_color": [1.0, 1.0, 0.0, 0.3],
+                  "debug_color": [0.0, 1.0, 0.0, 0.3],
                   "children": []
                 }
               ]
@@ -115,16 +101,16 @@
               "type": "StaticBody2D",
               "position": [100, 400],
               "collision_layer": 1,
-              "collision_mask": 1,
+              "collision_mask": 0,
               "children": [
                 {
-                  "name": "WallShape",
+                  "name": "WallShape1",
                   "type": "CollisionShape2D",
                   "position": [0, 0],
                   "shape": "rectangle",
-                  "size": [20, 200],
+                  "size": [200, 32],
                   "disabled": false,
-                  "debug_color": [0.7, 0.3, 0.3, 0.8],
+                  "debug_color": [0.8, 0.4, 0.0, 0.8],
                   "children": []
                 }
               ]
@@ -134,54 +120,35 @@
               "type": "StaticBody2D",
               "position": [700, 400],
               "collision_layer": 1,
-              "collision_mask": 1,
+              "collision_mask": 0,
               "children": [
                 {
-                  "name": "WallShape",
+                  "name": "WallShape2",
                   "type": "CollisionShape2D",
                   "position": [0, 0],
                   "shape": "rectangle",
-                  "size": [20, 200],
+                  "size": [200, 32],
                   "disabled": false,
-                  "debug_color": [0.7, 0.3, 0.3, 0.8],
+                  "debug_color": [0.8, 0.4, 0.0, 0.8],
                   "children": []
                 }
               ]
             },
             {
-              "name": "Floor",
+              "name": "Platform",
               "type": "StaticBody2D",
-              "position": [400, 550],
+              "position": [400, 500],
               "collision_layer": 1,
-              "collision_mask": 1,
+              "collision_mask": 0,
               "children": [
                 {
-                  "name": "FloorShape",
+                  "name": "PlatformShape",
                   "type": "CollisionShape2D",
                   "position": [0, 0],
                   "shape": "rectangle",
-                  "size": [600, 20],
+                  "size": [300, 16],
                   "disabled": false,
-                  "debug_color": [0.3, 0.7, 0.3, 0.8],
-                  "children": []
-                }
-              ]
-            },
-            {
-              "name": "Ceiling",
-              "type": "StaticBody2D",
-              "position": [400, 150],
-              "collision_layer": 1,
-              "collision_mask": 1,
-              "children": [
-                {
-                  "name": "CeilingShape",
-                  "type": "CollisionShape2D",
-                  "position": [0, 0],
-                  "shape": "rectangle",
-                  "size": [600, 20],
-                  "disabled": false,
-                  "debug_color": [0.3, 0.7, 0.3, 0.8],
+                  "debug_color": [0.6, 0.3, 0.0, 0.8],
                   "children": []
                 }
               ]
@@ -199,6 +166,7 @@
               "position": [600, 350],
               "collision_layer": 8,
               "collision_mask": 4,
+              "script_path": "examples/interactable_chest.lsc",
               "children": [
                 {
                   "name": "ChestShape",
@@ -218,6 +186,7 @@
               "position": [200, 350],
               "collision_layer": 8,
               "collision_mask": 4,
+              "script_path": "examples/interactable_npc.lsc",
               "children": [
                 {
                   "name": "NPCShape",

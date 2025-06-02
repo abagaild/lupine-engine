@@ -23,6 +23,11 @@ func _process(delta: float):
     # Override in derived classes
     pass
 
+# Called every physics frame (if physics processing is enabled)
+func _physics_process(delta: float):
+    # Override in derived classes
+    pass
+
 # Add a child node
 func add_child(child: Node):
     if child.parent:

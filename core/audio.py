@@ -37,8 +37,8 @@ class AudioManager:
             return False
         
         try:
-            # Open default device (pass None for default device)
-            self.device = openal.oalOpen(None)
+            # Open default device (pass empty string for default device instead of None)
+            self.device = openal.oalOpen("")
             if not self.device:
                 print("Failed to open OpenAL device")
                 return False

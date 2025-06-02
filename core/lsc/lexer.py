@@ -361,11 +361,18 @@ class LSCLexer:
                 break
 
             # Handle indentation at start of line
-            if at_line_start and char in ' \t':
-                indent_tokens = self.handle_indentation()
-                self.tokens.extend(indent_tokens)
-                at_line_start = False
-                continue
+            if at_line_start:
+                if char in ' \t':
+                    indent_tokens = self.handle_indentation()
+                    self.tokens.extend(indent_tokens)
+                    at_line_start = False
+                    continue
+                elif char not in '\n#':
+                    # Non-whitespace at start of line - check for dedents
+                    indent_tokens = self.handle_indentation()
+                    self.tokens.extend(indent_tokens)
+                    at_line_start = False
+                    # Don't continue - process the character normally
 
             # Newline
             if char == '\n':

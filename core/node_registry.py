@@ -166,13 +166,17 @@ class NodeRegistry:
             "base": NodeCategory.BASE,
             "node2d": NodeCategory.NODE_2D,
             "ui": NodeCategory.UI,
-            "prefabs": NodeCategory.PREFABS
         }
 
         for dir_name, category in category_mapping.items():
             category_dir = nodes_dir / dir_name
             if category_dir.exists():
                 self._load_nodes_from_directory(category_dir, category)
+
+        # Handle prefabs separately using the proper prefab loading method
+        prefabs_dir = nodes_dir / "prefabs"
+        if prefabs_dir.exists():
+            self.load_prefabs_from_directory(prefabs_dir)
 
     def _load_nodes_from_directory(self, directory: Path, category: NodeCategory):
         """Load all .lsc files from a directory as nodes"""
@@ -310,32 +314,38 @@ class NodeRegistry:
         """Load prefab nodes from directory"""
         if not prefabs_dir.exists():
             return
-        
+
         for prefab_file in prefabs_dir.glob("*.json"):
             try:
                 with open(prefab_file, 'r', encoding='utf-8') as f:
                     prefab_data = json.load(f)
-                
-                # Register prefab as a node type
+
+                # Register prefab as a node type using the actual node type from prefab data
                 prefab_name = prefab_file.stem
+                prefab_type = prefab_data.get("type", "Node")  # Get the actual node type
+
+                # Create a closure to capture prefab_data correctly
+                def create_factory(data):
+                    return lambda name: self._create_prefab_instance(name, data)
+
                 self.register_node(NodeDefinition(
                     name=prefab_name,
                     category=NodeCategory.PREFABS,
-                    class_name="Prefab",
-                    script_path=prefab_data.get("script"),
-                    description=f"Prefab: {prefab_name}",
+                    class_name=prefab_type,  # Use the actual node type instead of "Prefab"
+                    script_path=prefab_data.get("script_path"),
+                    description=f"Prefab: {prefab_name} ({prefab_type})",
                     is_builtin=False,
-                    factory_func=lambda name, data=prefab_data: self._create_prefab_instance(name, data)
+                    factory_func=create_factory(prefab_data)
                 ))
-                
+
             except Exception as e:
                 print(f"Error loading prefab {prefab_file}: {e}")
     
     def _create_prefab_instance(self, instance_name: str, prefab_data: Dict[str, Any]):
         """Create an instance from prefab data"""
         from core.scene import Node
-        
-        # Create node from prefab data
+
+        # Create node from prefab data using Node.from_dict which handles proper type creation
         root_node = Node.from_dict(prefab_data)
         root_node.name = instance_name
         return root_node

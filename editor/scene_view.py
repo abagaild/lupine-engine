@@ -1570,260 +1570,373 @@ class SceneViewport(QOpenGLWidget):
         self.update()
     
     def mousePressEvent(self, event):
-        """Handle mouse press"""
-        self.last_mouse_pos = event.position()
+        """Handle mouse press with improved safety checks"""
+        try:
+            self.last_mouse_pos = event.position()
 
-        if event.button() == Qt.MouseButton.MiddleButton:
-            self.is_panning = True
-        elif event.button() == Qt.MouseButton.LeftButton:
-            # Convert screen coordinates to world coordinates
-            world_pos = self.screen_to_world(event.position().x(), event.position().y())
+            if event.button() == Qt.MouseButton.MiddleButton:
+                self.is_panning = True
+            elif event.button() == Qt.MouseButton.LeftButton:
+                # Convert screen coordinates to world coordinates
+                world_pos = self.screen_to_world(event.position().x(), event.position().y())
 
-            # Check for gizmo interaction first
-            if self.selected_node:
-                gizmo_type = self.check_gizmo_hit(world_pos[0], world_pos[1])
-                if gizmo_type:
-                    if gizmo_type == "move":
-                        self.is_dragging = True
-                    elif gizmo_type == "rotate":
-                        self.is_rotating = True
-                    elif gizmo_type == "scale":
-                        self.is_scaling = True
+                # Check for gizmo interaction first
+                if self.selected_node and isinstance(self.selected_node, dict):
+                    gizmo_type = self.check_gizmo_hit(world_pos[0], world_pos[1])
+                    if gizmo_type:
+                        if gizmo_type == "move":
+                            self.is_dragging = True
+                        elif gizmo_type == "rotate":
+                            self.is_rotating = True
+                        elif gizmo_type == "scale":
+                            self.is_scaling = True
 
+                        self.drag_start_pos = world_pos
+                        # Safely get position with validation
+                        node_pos = self.selected_node.get("position", [0, 0])
+                        if isinstance(node_pos, list) and len(node_pos) >= 2:
+                            self.drag_start_node_pos = [float(node_pos[0]), float(node_pos[1])]
+                        else:
+                            self.drag_start_node_pos = [0.0, 0.0]
+                        return
+
+                # Check for node selection
+                clicked_node = self.get_node_at_position(world_pos[0], world_pos[1])
+                if clicked_node and isinstance(clicked_node, dict):
+                    # If we clicked on a different node, select it
+                    if self.selected_node != clicked_node:
+                        self.selected_node = clicked_node
+                        self.node_selected.emit(clicked_node)
+
+                    # Always allow dragging when clicking on a node (even if no gizmo is hit)
+                    # This allows dragging by clicking anywhere on the node body
+                    self.is_dragging = True
                     self.drag_start_pos = world_pos
-                    # All nodes now use position
-                    self.drag_start_node_pos = self.selected_node.get("position", [0, 0]).copy()
-                    return
+                    # Safely get position with validation
+                    node_pos = clicked_node.get("position", [0, 0])
+                    if isinstance(node_pos, list) and len(node_pos) >= 2:
+                        self.drag_start_node_pos = [float(node_pos[0]), float(node_pos[1])]
+                    else:
+                        self.drag_start_node_pos = [0.0, 0.0]
+                else:
+                    self.selected_node = None
 
-            # Check for node selection
-            clicked_node = self.get_node_at_position(world_pos[0], world_pos[1])
-            if clicked_node:
-                # If we clicked on a different node, select it
-                if self.selected_node != clicked_node:
-                    self.selected_node = clicked_node
-                    self.node_selected.emit(clicked_node)
-
-                # Always allow dragging when clicking on a node (even if no gizmo is hit)
-                # This allows dragging by clicking anywhere on the node body
-                self.is_dragging = True
-                self.drag_start_pos = world_pos
-                # All nodes now use position
-                self.drag_start_node_pos = clicked_node.get("position", [0, 0]).copy()
-            else:
-                self.selected_node = None
-
-            self.update()
+                self.update()
+        except Exception as e:
+            print(f"Error in mousePressEvent: {e}")
+            import traceback
+            traceback.print_exc()
+            # Reset states to prevent stuck interactions
+            self.is_dragging = False
+            self.is_rotating = False
+            self.is_scaling = False
+            self.is_panning = False
     
     def mouseMoveEvent(self, event):
-        """Handle mouse move"""
-        if self.last_mouse_pos is None:
-            self.last_mouse_pos = event.position()
-            return
+        """Handle mouse move with improved safety checks"""
+        try:
+            if self.last_mouse_pos is None:
+                self.last_mouse_pos = event.position()
+                return
 
-        if self.is_panning:
-            delta_x = event.position().x() - self.last_mouse_pos.x()
-            delta_y = event.position().y() - self.last_mouse_pos.y()
+            if self.is_panning:
+                delta_x = event.position().x() - self.last_mouse_pos.x()
+                delta_y = event.position().y() - self.last_mouse_pos.y()
 
-            # Convert screen delta to world delta
-            scale = (self.view_width / self.width()) / self.zoom
-            self.pan_x -= delta_x * scale
-            self.pan_y += delta_y * scale  # Flip Y axis
+                # Convert screen delta to world delta
+                scale = (self.view_width / self.width()) / self.zoom
+                self.pan_x -= delta_x * scale
+                self.pan_y += delta_y * scale  # Flip Y axis
 
-            self.update()
-        elif self.is_dragging and self.selected_node:
-            # Handle node dragging - all nodes now use world coordinates
-            world_pos = self.screen_to_world(event.position().x(), event.position().y())
-            print(f"DEBUG: Mouse move - dragging, world_pos={world_pos}")
+                self.update()
+            elif self.is_dragging and self.selected_node and isinstance(self.selected_node, dict):
+                # Handle node dragging with safety checks
+                world_pos = self.screen_to_world(event.position().x(), event.position().y())
 
-            if self.drag_start_pos and self.drag_start_node_pos is not None:
-                delta_x = world_pos[0] - self.drag_start_pos[0]
-                delta_y = world_pos[1] - self.drag_start_pos[1]
+                if (self.drag_start_pos and self.drag_start_node_pos is not None and
+                    isinstance(self.drag_start_pos, (list, tuple)) and len(self.drag_start_pos) >= 2 and
+                    isinstance(self.drag_start_node_pos, list) and len(self.drag_start_node_pos) >= 2):
 
-                # All nodes use position
-                new_pos = [
-                    self.drag_start_node_pos[0] + delta_x,
-                    self.drag_start_node_pos[1] + delta_y
-                ]
+                    delta_x = world_pos[0] - self.drag_start_pos[0]
+                    delta_y = world_pos[1] - self.drag_start_pos[1]
 
-                print(f"DEBUG: Updating position from {self.selected_node.get('position')} to {new_pos}")
+                    # Calculate new position
+                    new_pos = [
+                        self.drag_start_node_pos[0] + delta_x,
+                        self.drag_start_node_pos[1] + delta_y
+                    ]
 
-                # Update the node's position
-                self.selected_node["position"] = new_pos
+                    # Update the node's position safely
+                    self.selected_node["position"] = new_pos
 
-                # Apply recursive transformation to children
-                # For position changes, children should move with the parent
-                try:
-                    self.apply_recursive_transform(self.selected_node, "position", [delta_x, delta_y])
-                except Exception as e:
-                    print(f"Error in recursive transform: {e}")
-                    import traceback
-                    traceback.print_exc()
-
-                # Emit signal for inspector update
-                self.node_modified.emit(self.selected_node, "position", new_pos)
-            else:
-                print(f"DEBUG: Dragging conditions not met - drag_start_pos={self.drag_start_pos}, drag_start_node_pos={self.drag_start_node_pos}")
-
-            self.update()
-        elif self.is_rotating and self.selected_node:
-            # Handle node rotation
-            world_pos = self.screen_to_world(event.position().x(), event.position().y())
-
-            if self.drag_start_pos:
-                node_pos = self.selected_node.get("position", [0, 0])
-
-                # Calculate angles from node center
-                start_angle = math.atan2(self.drag_start_pos[1] - node_pos[1], self.drag_start_pos[0] - node_pos[0])
-                current_angle = math.atan2(world_pos[1] - node_pos[1], world_pos[0] - node_pos[0])
-
-                # Calculate rotation delta
-                rotation_delta = current_angle - start_angle
-
-                # Update node rotation
-                current_rotation = self.selected_node.get("rotation", 0.0)
-                new_rotation = current_rotation + rotation_delta
-                self.selected_node["rotation"] = new_rotation
-
-                # Apply recursive transformation to children
-                try:
-                    self.apply_recursive_transform(self.selected_node, "rotation", rotation_delta)
-                except Exception as e:
-                    print(f"Error in recursive transform: {e}")
-                    import traceback
-                    traceback.print_exc()
-
-                # Update start angle for next frame
-                self.drag_start_pos = world_pos
-
-                # Emit signal for inspector update
-                self.node_modified.emit(self.selected_node, "rotation", new_rotation)
-
-            self.update()
-        elif self.is_scaling and self.selected_node:
-            # Handle node scaling
-            world_pos = self.screen_to_world(event.position().x(), event.position().y())
-
-            if self.drag_start_pos:
-                node_pos = self.selected_node.get("position", [0, 0])
-
-                # Calculate distances from node center
-                start_distance = math.sqrt((self.drag_start_pos[0] - node_pos[0])**2 + (self.drag_start_pos[1] - node_pos[1])**2)
-                current_distance = math.sqrt((world_pos[0] - node_pos[0])**2 + (world_pos[1] - node_pos[1])**2)
-
-                if start_distance > 0:
-                    # Calculate scale factor
-                    scale_factor = current_distance / start_distance
-
-                    # Update node scale
-                    current_scale = self.selected_node.get("scale", [1.0, 1.0])
-                    new_scale = [current_scale[0] * scale_factor, current_scale[1] * scale_factor]
-                    self.selected_node["scale"] = new_scale
-
-                    # Apply recursive transformation to children
+                    # Apply recursive transformation to children with safety checks
                     try:
-                        self.apply_recursive_transform(self.selected_node, "scale", [scale_factor, scale_factor])
+                        self.apply_recursive_transform(self.selected_node, "position", [delta_x, delta_y])
                     except Exception as e:
-                        print(f"Error in recursive transform: {e}")
-                        import traceback
-                        traceback.print_exc()
-
-                    # Update start position for next frame
-                    self.drag_start_pos = world_pos
+                        print(f"Error in recursive transform during drag: {e}")
+                        # Continue without crashing - just skip child updates
 
                     # Emit signal for inspector update
-                    self.node_modified.emit(self.selected_node, "scale", new_scale)
+                    try:
+                        self.node_modified.emit(self.selected_node, "position", new_pos)
+                    except Exception as e:
+                        print(f"Error emitting node_modified signal: {e}")
 
-            self.update()
+                self.update()
+            elif self.is_rotating and self.selected_node and isinstance(self.selected_node, dict):
+                # Handle node rotation with safety checks
+                world_pos = self.screen_to_world(event.position().x(), event.position().y())
 
-        self.last_mouse_pos = event.position()
+                if self.drag_start_pos and isinstance(self.drag_start_pos, (list, tuple)) and len(self.drag_start_pos) >= 2:
+                    node_pos = self.selected_node.get("position", [0, 0])
+                    if isinstance(node_pos, list) and len(node_pos) >= 2:
+                        # Calculate angles from node center
+                        start_angle = math.atan2(self.drag_start_pos[1] - node_pos[1], self.drag_start_pos[0] - node_pos[0])
+                        current_angle = math.atan2(world_pos[1] - node_pos[1], world_pos[0] - node_pos[0])
 
-    def apply_recursive_transform(self, parent_node: Dict[str, Any], transform_type: str, delta):
-        """Apply transformation recursively to all children"""
+                        # Calculate rotation delta
+                        rotation_delta = current_angle - start_angle
+
+                        # Update node rotation
+                        current_rotation = self.selected_node.get("rotation", 0.0)
+                        new_rotation = current_rotation + rotation_delta
+                        self.selected_node["rotation"] = new_rotation
+
+                        # Apply recursive transformation to children
+                        try:
+                            self.apply_recursive_transform(self.selected_node, "rotation", rotation_delta)
+                        except Exception as e:
+                            print(f"Error in recursive transform during rotation: {e}")
+
+                        # Update start angle for next frame
+                        self.drag_start_pos = world_pos
+
+                        # Emit signal for inspector update
+                        try:
+                            self.node_modified.emit(self.selected_node, "rotation", new_rotation)
+                        except Exception as e:
+                            print(f"Error emitting rotation signal: {e}")
+
+                self.update()
+            elif self.is_scaling and self.selected_node and isinstance(self.selected_node, dict):
+                # Handle node scaling with safety checks
+                world_pos = self.screen_to_world(event.position().x(), event.position().y())
+
+                if self.drag_start_pos and isinstance(self.drag_start_pos, (list, tuple)) and len(self.drag_start_pos) >= 2:
+                    node_pos = self.selected_node.get("position", [0, 0])
+                    if isinstance(node_pos, list) and len(node_pos) >= 2:
+                        # Calculate distances from node center
+                        start_distance = math.sqrt((self.drag_start_pos[0] - node_pos[0])**2 + (self.drag_start_pos[1] - node_pos[1])**2)
+                        current_distance = math.sqrt((world_pos[0] - node_pos[0])**2 + (world_pos[1] - node_pos[1])**2)
+
+                        if start_distance > 0:
+                            # Calculate scale factor
+                            scale_factor = current_distance / start_distance
+
+                            # Update node scale
+                            current_scale = self.selected_node.get("scale", [1.0, 1.0])
+                            if isinstance(current_scale, list) and len(current_scale) >= 2:
+                                new_scale = [current_scale[0] * scale_factor, current_scale[1] * scale_factor]
+                                self.selected_node["scale"] = new_scale
+
+                                # Apply recursive transformation to children
+                                try:
+                                    self.apply_recursive_transform(self.selected_node, "scale", [scale_factor, scale_factor])
+                                except Exception as e:
+                                    print(f"Error in recursive transform during scaling: {e}")
+
+                                # Update start position for next frame
+                                self.drag_start_pos = world_pos
+
+                                # Emit signal for inspector update
+                                try:
+                                    self.node_modified.emit(self.selected_node, "scale", new_scale)
+                                except Exception as e:
+                                    print(f"Error emitting scale signal: {e}")
+
+                self.update()
+
+            self.last_mouse_pos = event.position()
+        except Exception as e:
+            print(f"Error in mouseMoveEvent: {e}")
+            import traceback
+            traceback.print_exc()
+            # Reset states to prevent stuck interactions
+            self.is_dragging = False
+            self.is_rotating = False
+            self.is_scaling = False
+
+    def apply_recursive_transform(self, parent_node: Dict[str, Any], transform_type: str, delta, visited_nodes=None):
+        """Apply transformation recursively to all children with improved safety checks"""
+        # Prevent infinite recursion by tracking visited nodes
+        if visited_nodes is None:
+            visited_nodes = set()
+
+        # Get a unique identifier for this node (using id() since nodes are dict objects)
+        node_id = id(parent_node)
+        if node_id in visited_nodes:
+            print(f"Warning: Circular reference detected in node hierarchy, skipping node")
+            return
+
+        visited_nodes.add(node_id)
+
         try:
-            # Apply transformation to all children
+            # Validate input parameters
+            if not isinstance(parent_node, dict):
+                print(f"Warning: Invalid parent node type: {type(parent_node)}")
+                return
+
+            if transform_type not in ["position", "rotation", "scale"]:
+                print(f"Warning: Invalid transform type: {transform_type}")
+                return
+
+            # Get children safely
             children = parent_node.get("children", [])
+            if not isinstance(children, list):
+                print(f"Warning: Invalid children type: {type(children)}")
+                return
+
+            # Process each child
             for child in children:
                 if not isinstance(child, dict):
-                    continue  # Skip invalid child nodes
+                    print(f"Warning: Skipping invalid child node type: {type(child)}")
+                    continue
 
-                # Store original values for proper transformation
-                original_pos = child.get("position", [0, 0]).copy() if isinstance(child.get("position", [0, 0]), list) else [0, 0]
-                original_rotation = child.get("rotation", 0.0)
-                original_scale = child.get("scale", [1.0, 1.0]).copy() if isinstance(child.get("scale", [1.0, 1.0]), list) else [1.0, 1.0]
+                # Ensure child has required properties with safe defaults
+                self._ensure_node_properties(child)
 
+                # Apply transformation based on type
                 if transform_type == "position":
-                    # For position changes, children move with parent (maintaining relative position)
-                    if (isinstance(original_pos, list) and len(original_pos) >= 2 and
-                        isinstance(delta, list) and len(delta) >= 2):
-                        new_pos = [original_pos[0] + delta[0], original_pos[1] + delta[1]]
-                        child["position"] = new_pos
-
-                        # Emit signal for this child if it's currently selected
-                        if child == self.selected_node:
-                            self.node_modified.emit(child, "position", new_pos)
-
+                    self._apply_position_transform(child, delta)
                 elif transform_type == "rotation":
-                    # For rotation, children rotate around parent's center and also rotate their positions
-                    parent_pos = parent_node.get("position", [0, 0])
-
-                    if (isinstance(parent_pos, list) and len(parent_pos) >= 2 and
-                        isinstance(original_pos, list) and len(original_pos) >= 2 and
-                        isinstance(delta, (int, float))):
-
-                        # Calculate relative position from parent
-                        rel_x = original_pos[0] - parent_pos[0]
-                        rel_y = original_pos[1] - parent_pos[1]
-
-                        # Rotate the relative position
-                        import math
-                        cos_delta = math.cos(delta)
-                        sin_delta = math.sin(delta)
-                        new_rel_x = rel_x * cos_delta - rel_y * sin_delta
-                        new_rel_y = rel_x * sin_delta + rel_y * cos_delta
-
-                        # Update child position
-                        new_pos = [parent_pos[0] + new_rel_x, parent_pos[1] + new_rel_y]
-                        child["position"] = new_pos
-
-                        # Update child rotation
-                        new_rotation = original_rotation + delta
-                        child["rotation"] = new_rotation
-
-                        # Emit signals for this child if it's currently selected
-                        if child == self.selected_node:
-                            self.node_modified.emit(child, "position", new_pos)
-                            self.node_modified.emit(child, "rotation", new_rotation)
-
+                    self._apply_rotation_transform(parent_node, child, delta)
                 elif transform_type == "scale":
-                    # For scale, children scale with parent and their positions scale relative to parent
-                    parent_pos = parent_node.get("position", [0, 0])
+                    self._apply_scale_transform(parent_node, child, delta)
 
-                    if (isinstance(parent_pos, list) and len(parent_pos) >= 2 and
-                        isinstance(original_pos, list) and len(original_pos) >= 2 and
-                        isinstance(delta, list) and len(delta) >= 2):
+                # Recursively apply to grandchildren (with visited tracking)
+                self.apply_recursive_transform(child, transform_type, delta, visited_nodes.copy())
 
-                        # Scale position relative to parent
-                        rel_x = original_pos[0] - parent_pos[0]
-                        rel_y = original_pos[1] - parent_pos[1]
-                        new_pos = [parent_pos[0] + rel_x * delta[0], parent_pos[1] + rel_y * delta[1]]
-                        child["position"] = new_pos
-
-                        # Scale the child's scale
-                        if isinstance(original_scale, list) and len(original_scale) >= 2:
-                            new_scale = [original_scale[0] * delta[0], original_scale[1] * delta[1]]
-                            child["scale"] = new_scale
-
-                            # Emit signals for this child if it's currently selected
-                            if child == self.selected_node:
-                                self.node_modified.emit(child, "position", new_pos)
-                                self.node_modified.emit(child, "scale", new_scale)
-
-                # Recursively apply to grandchildren
-                self.apply_recursive_transform(child, transform_type, delta)
         except Exception as e:
             print(f"Error in apply_recursive_transform: {e}")
             import traceback
             traceback.print_exc()
+        finally:
+            # Clean up visited tracking for this branch
+            visited_nodes.discard(node_id)
+
+    def _ensure_node_properties(self, node: Dict[str, Any]):
+        """Ensure node has all required properties with safe defaults"""
+        if "position" not in node or not isinstance(node["position"], list) or len(node["position"]) < 2:
+            node["position"] = [0.0, 0.0]
+
+        if "rotation" not in node or not isinstance(node["rotation"], (int, float)):
+            node["rotation"] = 0.0
+
+        if "scale" not in node or not isinstance(node["scale"], list) or len(node["scale"]) < 2:
+            node["scale"] = [1.0, 1.0]
+
+        # Ensure position and scale are mutable lists with float values
+        try:
+            node["position"] = [float(node["position"][0]), float(node["position"][1])]
+            node["scale"] = [float(node["scale"][0]), float(node["scale"][1])]
+            node["rotation"] = float(node["rotation"])
+        except (ValueError, TypeError, IndexError) as e:
+            print(f"Warning: Failed to convert node properties to float: {e}")
+            # Reset to safe defaults
+            node["position"] = [0.0, 0.0]
+            node["scale"] = [1.0, 1.0]
+            node["rotation"] = 0.0
+
+    def _apply_position_transform(self, child: Dict[str, Any], delta):
+        """Apply position transformation to a child node"""
+        try:
+            if not isinstance(delta, list) or len(delta) < 2:
+                print(f"Warning: Invalid position delta: {delta}")
+                return
+
+            current_pos = child["position"]
+            new_pos = [current_pos[0] + float(delta[0]), current_pos[1] + float(delta[1])]
+            child["position"] = new_pos
+
+            # Emit signal for this child if it's currently selected
+            if child == self.selected_node:
+                self.node_modified.emit(child, "position", new_pos)
+
+        except Exception as e:
+            print(f"Error applying position transform: {e}")
+
+    def _apply_rotation_transform(self, parent_node: Dict[str, Any], child: Dict[str, Any], delta):
+        """Apply rotation transformation to a child node"""
+        try:
+            if not isinstance(delta, (int, float)):
+                print(f"Warning: Invalid rotation delta: {delta}")
+                return
+
+            parent_pos = parent_node.get("position", [0.0, 0.0])
+            if not isinstance(parent_pos, list) or len(parent_pos) < 2:
+                parent_pos = [0.0, 0.0]
+
+            current_pos = child["position"]
+            current_rotation = child["rotation"]
+
+            # Calculate relative position from parent
+            rel_x = current_pos[0] - parent_pos[0]
+            rel_y = current_pos[1] - parent_pos[1]
+
+            # Rotate the relative position
+            import math
+            cos_delta = math.cos(float(delta))
+            sin_delta = math.sin(float(delta))
+            new_rel_x = rel_x * cos_delta - rel_y * sin_delta
+            new_rel_y = rel_x * sin_delta + rel_y * cos_delta
+
+            # Update child position and rotation
+            new_pos = [parent_pos[0] + new_rel_x, parent_pos[1] + new_rel_y]
+            new_rotation = current_rotation + float(delta)
+
+            child["position"] = new_pos
+            child["rotation"] = new_rotation
+
+            # Emit signals for this child if it's currently selected
+            if child == self.selected_node:
+                self.node_modified.emit(child, "position", new_pos)
+                self.node_modified.emit(child, "rotation", new_rotation)
+
+        except Exception as e:
+            print(f"Error applying rotation transform: {e}")
+
+    def _apply_scale_transform(self, parent_node: Dict[str, Any], child: Dict[str, Any], delta):
+        """Apply scale transformation to a child node"""
+        try:
+            if not isinstance(delta, list) or len(delta) < 2:
+                print(f"Warning: Invalid scale delta: {delta}")
+                return
+
+            parent_pos = parent_node.get("position", [0.0, 0.0])
+            if not isinstance(parent_pos, list) or len(parent_pos) < 2:
+                parent_pos = [0.0, 0.0]
+
+            current_pos = child["position"]
+            current_scale = child["scale"]
+
+            # Scale position relative to parent
+            rel_x = current_pos[0] - parent_pos[0]
+            rel_y = current_pos[1] - parent_pos[1]
+            new_pos = [parent_pos[0] + rel_x * float(delta[0]), parent_pos[1] + rel_y * float(delta[1])]
+
+            # Scale the child's scale
+            new_scale = [current_scale[0] * float(delta[0]), current_scale[1] * float(delta[1])]
+
+            child["position"] = new_pos
+            child["scale"] = new_scale
+
+            # Emit signals for this child if it's currently selected
+            if child == self.selected_node:
+                self.node_modified.emit(child, "position", new_pos)
+                self.node_modified.emit(child, "scale", new_scale)
+
+        except Exception as e:
+            print(f"Error applying scale transform: {e}")
 
     def mouseReleaseEvent(self, event):
         """Handle mouse release"""

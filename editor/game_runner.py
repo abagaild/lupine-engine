@@ -74,6 +74,14 @@ import arcade
 import json
 from pathlib import Path
 
+# Import input constants at module level
+try:
+    from core.input_constants import *
+    INPUT_CONSTANTS_AVAILABLE = True
+except ImportError as e:
+    print(f"Input constants not available: {e}")
+    INPUT_CONSTANTS_AVAILABLE = False
+
 # Import LSC runtime for script execution
 try:
     from core.lsc import LSCRuntime, LSCInterpreter
@@ -85,8 +93,11 @@ except ImportError as e:
     LSC_AVAILABLE = False
 
 class LupineGameWindow(arcade.Window):
-    def __init__(self):
+    def __init__(self, project_path: str):
+        print("DEBUG: LupineGameWindow.__init__() called")
         super().__init__(1280, 720, "Lupine Engine - Game Runner", resizable=True)  # 16:9 aspect ratio, smaller and resizable
+        print("DEBUG: Arcade window initialized")
+        self.project_path = project_path  # Store project path for texture loading
         self.scene = None
         self.scene_data = None
         self.camera = None
@@ -105,6 +116,36 @@ class LupineGameWindow(arcade.Window):
             self.physics_world = None
             self.physics_enabled = False
 
+        # Input system
+        try:
+            from core.input_manager import InputManager
+            from pathlib import Path
+            project_path_obj = Path(self.project_path)
+            self.input_manager = InputManager(project_path_obj)
+            self.pressed_keys = set()
+            self.mouse_buttons = set()
+            self.mouse_position = (0, 0)
+            self.current_modifiers = set()
+            print("Input system initialized")
+
+            # Debug: Show available actions
+            actions = self.input_manager.get_all_actions()
+            print(f"Available input actions: {list(actions.keys())}")
+
+            # Debug: Show move_left action details
+            move_left = actions.get("move_left")
+            if move_left:
+                print(f"move_left action events: {[f'type={e.type}, code={e.code}' for e in move_left.events]}")
+
+        except ImportError as e:
+            print(f"Input system not available: {e}")
+            self.input_manager = None
+        except Exception as e:
+            print(f"Error initializing input system: {e}")
+            import traceback
+            traceback.print_exc()
+            self.input_manager = None
+
         # LSC Runtime for script execution
         if LSC_AVAILABLE:
             self.lsc_runtime = LSCRuntime(game_runtime=self)
@@ -113,7 +154,9 @@ class LupineGameWindow(arcade.Window):
         else:
             self.lsc_runtime = None
 
+        print("DEBUG: About to call load_scene()")
         self.load_scene()
+        print("DEBUG: load_scene() completed")
 
     def setup_lsc_builtins(self):
         """Setup additional built-in functions for LSC scripts"""
@@ -132,7 +175,69 @@ class LupineGameWindow(arcade.Window):
             "get_delta_time": lambda: self.lsc_runtime.delta_time if self.lsc_runtime else 0.0,
             "get_runtime_time": lambda: self.lsc_runtime.get_runtime_time() if self.lsc_runtime else 0.0,
             "get_fps": lambda: 1.0 / self.lsc_runtime.delta_time if self.lsc_runtime and self.lsc_runtime.delta_time > 0 else 0.0,
+
+            # Input action functions
+            "is_action_pressed": self.is_action_pressed,
+            "is_action_just_pressed": self.is_action_just_pressed,
+            "is_action_just_released": self.is_action_just_released,
+            "get_action_strength": self.get_action_strength,
+            "is_mouse_button_pressed": self.is_mouse_button_pressed,
+            "get_mouse_position": self.get_mouse_position,
+            "get_global_mouse_position": self.get_global_mouse_position,
         }
+
+        # Add input constants if available
+        if INPUT_CONSTANTS_AVAILABLE:
+            input_constants = {
+                # Mouse button constants
+                "MOUSE_BUTTON_LEFT": MOUSE_BUTTON_LEFT,
+                "MOUSE_BUTTON_RIGHT": MOUSE_BUTTON_RIGHT,
+                "MOUSE_BUTTON_MIDDLE": MOUSE_BUTTON_MIDDLE,
+                "MOUSE_BUTTON_WHEEL_UP": MOUSE_BUTTON_WHEEL_UP,
+                "MOUSE_BUTTON_WHEEL_DOWN": MOUSE_BUTTON_WHEEL_DOWN,
+
+                # Common key constants
+                "KEY_ESCAPE": KEY_ESCAPE,
+                "KEY_ENTER": KEY_ENTER,
+                "KEY_SPACE": KEY_SPACE,
+                "KEY_SHIFT": KEY_SHIFT,
+                "KEY_CTRL": KEY_CTRL,
+                "KEY_ALT": KEY_ALT,
+
+                # Arrow keys
+                "KEY_LEFT": KEY_LEFT,
+                "KEY_RIGHT": KEY_RIGHT,
+                "KEY_UP": KEY_UP,
+                "KEY_DOWN": KEY_DOWN,
+
+                # WASD keys
+                "KEY_W": KEY_W,
+                "KEY_A": KEY_A,
+                "KEY_S": KEY_S,
+                "KEY_D": KEY_D,
+
+                # Other common keys
+                "KEY_E": KEY_E,
+                "KEY_F": KEY_F,
+                "KEY_Q": KEY_Q,
+                "KEY_R": KEY_R,
+                "KEY_T": KEY_T,
+
+                # Function keys
+                "KEY_F1": KEY_F1,
+                "KEY_F2": KEY_F2,
+                "KEY_F3": KEY_F3,
+                "KEY_F4": KEY_F4,
+                "KEY_F5": KEY_F5,
+                "KEY_F6": KEY_F6,
+                "KEY_F7": KEY_F7,
+                "KEY_F8": KEY_F8,
+                "KEY_F9": KEY_F9,
+                "KEY_F10": KEY_F10,
+                "KEY_F11": KEY_F11,
+                "KEY_F12": KEY_F12,
+            }
+            builtins.update(input_constants)
 
         for name, func in builtins.items():
             self.lsc_runtime.global_scope.define(name, func)
@@ -151,31 +256,61 @@ class LupineGameWindow(arcade.Window):
         return self.text_objects[key]
 
     def draw_cached_text(self, text, x, y, color=arcade.color.WHITE, font_size=12):
-        """Draw text using the most reliable method"""
+        """Draw text using cached Text objects for better performance"""
         try:
-            # Use arcade.draw_text for maximum compatibility
-            arcade.draw_text(text, x, y, color, font_size)
+            # Create a cache key
+            cache_key = f"{text}_{font_size}_{color}"
+
+            # Check if we have a cached text object
+            if cache_key not in self.text_objects:
+                # Create new Text object with correct parameters for arcade 3.2.0
+                self.text_objects[cache_key] = arcade.Text(
+                    text=str(text),
+                    x=0,
+                    y=0,
+                    color=color,
+                    font_size=font_size
+                )
+
+            # Update position and draw
+            text_obj = self.text_objects[cache_key]
+            text_obj.x = x
+            text_obj.y = y
+            text_obj.draw()
+
         except Exception as e:
             print(f"Error drawing text '{text}': {e}")
-            # Fallback - try with basic parameters
+            # Fallback to basic draw_text
             try:
                 arcade.draw_text(str(text), float(x), float(y), arcade.color.WHITE, 12)
             except Exception as e2:
                 print(f"Text drawing fallback also failed: {e2}")
 
     def load_scene(self):
+        print("DEBUG: load_scene() called")
         try:
             scene_file = r"{scene_file_path}"
+            print(f"DEBUG: Scene file path: {scene_file}")
             with open(scene_file, 'r') as f:
                 self.scene_data = json.load(f)
+            print(f"DEBUG: JSON loaded successfully")
             print(f"Loaded scene: {self.scene_data.get('name', 'Unknown')}")
             print(f"Scene file: {scene_file}")
             print(f"Scene nodes: {len(self.scene_data.get('nodes', []))}")
 
             # Load scene using proper Scene class
             if LSC_AVAILABLE:
-                self.scene = Scene.load_from_file(scene_file)
-                self.setup_scene()
+                print("LSC is available, attempting to load Scene object...")
+                try:
+                    self.scene = Scene.load_from_file(scene_file)
+                    print(f"Scene object loaded successfully! Root nodes: {len(self.scene.root_nodes)}")
+                    self.setup_scene()
+                except Exception as scene_error:
+                    print(f"Failed to load Scene object: {scene_error}")
+                    import traceback
+                    traceback.print_exc()
+                    print("Falling back to basic scene rendering")
+                    self.scene = None
             else:
                 print("LSC not available, using basic scene rendering")
 
@@ -250,42 +385,66 @@ class LupineGameWindow(arcade.Window):
     def setup_node(self, node):
         """Setup a node and its children, including script loading"""
         try:
+            print(f"Setting up node: {node.name} (type: {getattr(node, 'type', 'Unknown')})")
+
             # Load and execute node script if it exists
-            if node.script_path and self.lsc_runtime:
-                script_file = Path(r"{project_path}") / node.script_path
-                if script_file.exists():
-                    with open(script_file, 'r') as f:
-                        script_content = f.read()
+            if hasattr(node, 'script_path') and node.script_path:
+                print(f"Node {node.name} has script_path: {node.script_path}")
+                if self.lsc_runtime:
+                    script_file = Path(r"{project_path}") / node.script_path
+                    print(f"Looking for script file: {script_file}")
+                    if script_file.exists():
+                        print(f"Script file exists, loading...")
+                        with open(script_file, 'r') as f:
+                            script_content = f.read()
 
-                    # Create script instance for this node
-                    from core.lsc.runtime import LSCScriptInstance
-                    script_instance = LSCScriptInstance(node, node.script_path, self.lsc_runtime)
+                        # Create script instance for this node
+                        from core.lsc.runtime import LSCScriptInstance
+                        script_instance = LSCScriptInstance(node, node.script_path, self.lsc_runtime)
 
-                    # Execute the script in the script instance's scope
-                    old_scope = self.lsc_runtime.current_scope
-                    self.lsc_runtime.current_scope = script_instance.scope
+                        # Execute the script in the script instance's scope
+                        old_scope = self.lsc_runtime.current_scope
+                        self.lsc_runtime.current_scope = script_instance.scope
 
-                    try:
-                        # Add node reference to script scope
-                        script_instance.scope.define('self', node)
-                        script_instance.scope.define('node', node)
+                        try:
+                            # Add node reference to script scope
+                            script_instance.scope.define('self', node)
+                            script_instance.scope.define('node', node)
 
-                        # Execute script
-                        execute_lsc_script(script_content, self.lsc_runtime)
+                            # Expose common node properties directly to scope
+                            # Note: Don't expose position directly as it can cause reference issues
+                            # Scripts should use self.position or node.position instead
 
-                        # Attach script instance to node
-                        node.script_instance = script_instance
+                            # Execute script
+                            execute_lsc_script(script_content, self.lsc_runtime)
 
-                        # Call on_ready if it exists
-                        if script_instance.scope.has('on_ready'):
-                            script_instance.call_method('on_ready')
-                            script_instance.ready_called = True
+                            # Attach script instance to node
+                            node.script_instance = script_instance
 
-                        print(f"Loaded script for {node.name}: {node.script_path}")
+                            # Call on_ready if it exists
+                            if script_instance.scope.has('on_ready'):
+                                print(f"Calling on_ready for {node.name}")
+                                script_instance.call_method('on_ready')
+                                script_instance.ready_called = True
+                            else:
+                                print(f"No on_ready method found for {node.name}")
 
-                    finally:
-                        # Restore scope
-                        self.lsc_runtime.current_scope = old_scope
+                            print(f"SUCCESS: Loaded script for {node.name}: {node.script_path}")
+
+                        except Exception as e:
+                            print(f"Error loading script for {node.name}: {e}")
+                            # Don't crash the entire game - continue with other nodes
+                            # Create a minimal script instance so the node still works
+                            node.script_instance = script_instance
+                        finally:
+                            # Restore scope
+                            self.lsc_runtime.current_scope = old_scope
+                    else:
+                        print(f"Script file not found: {script_file}")
+                else:
+                    print(f"LSC runtime not available for {node.name}")
+            else:
+                print(f"Node {node.name} has no script_path")
 
             # Setup sprite nodes (including AnimatedSprite)
             if isinstance(node, Sprite):
@@ -389,7 +548,7 @@ class LupineGameWindow(arcade.Window):
                 arcade_sprite.center_y = sprite_node.position[1]
                 # Create a unique placeholder texture for each sprite
                 placeholder_name = f"placeholder_{sprite_node.name}_{id(sprite_node)}"
-                arcade_sprite.texture = arcade.Texture.create_filled(placeholder_name, (64, 64), arcade.color.GREEN)
+                arcade_sprite.texture = arcade.Texture.create_empty(placeholder_name, (64, 64))
 
                 # Store reference to original node for updates
                 arcade_sprite.lupine_node = sprite_node
@@ -863,6 +1022,13 @@ class LupineGameWindow(arcade.Window):
 
     def on_update(self, delta_time):
         """Update game logic and run scripts"""
+        # Update input manager every frame (important for "just pressed/released" detection)
+        if self.input_manager:
+            self.input_manager.update_input_state(
+                self.pressed_keys, self.mouse_buttons,
+                self.mouse_position, self.current_modifiers
+            )
+
         # Update LSC runtime timing
         if self.lsc_runtime:
             self.lsc_runtime.update_time(delta_time)
@@ -889,6 +1055,8 @@ class LupineGameWindow(arcade.Window):
             if hasattr(node, 'script_instance'):
                 # Call _process method (Godot-style update method)
                 node.script_instance.call_method('_process', delta_time)
+                # Call _physics_process method (Godot-style physics update method)
+                node.script_instance.call_method('_physics_process', delta_time)
                 # Also call on_update for compatibility
                 node.script_instance.call_method('on_update', delta_time)
         except Exception as e:
@@ -908,12 +1076,14 @@ class LupineGameWindow(arcade.Window):
             return  # Don't draw disabled shapes
 
         # Set debug color
-        arcade.draw_rectangle_outline(x, y, 32, 32, arcade.color.CYAN, 2)
+        rect = arcade.XYWH(x - 16, y - 16, 32, 32)
+        arcade.draw_rect_outline(rect, arcade.color.CYAN, 2)
 
         if shape_type == "rectangle":
             size = node_data.get("size", [32, 32])
             width, height = size[0], size[1]
-            arcade.draw_rectangle_outline(x, y, width, height, arcade.color.CYAN, 2)
+            rect = arcade.XYWH(x - width/2, y - height/2, width, height)
+            arcade.draw_rect_outline(rect, arcade.color.CYAN, 2)
 
         elif shape_type == "circle":
             radius = node_data.get("radius", 16.0)
@@ -960,22 +1130,42 @@ class LupineGameWindow(arcade.Window):
         if key == arcade.key.ESCAPE:
             self.close()
 
-        # Forward input to LSC runtime for script handling
-        if self.lsc_runtime:
-            # Store key state for script access
-            if not hasattr(self, 'pressed_keys'):
-                self.pressed_keys = set()
-            self.pressed_keys.add(key)
+        # Debug: Show key press
+        print(f"Key pressed: {key} (A={arcade.key.A}, LEFT={arcade.key.LEFT})")
 
-            # Call script input handlers
-            if self.scene:
-                for root_node in self.scene.root_nodes:
-                    self.handle_node_input(root_node, 'on_key_press', key, modifiers)
+        # Update input state
+        self.pressed_keys.add(key)
+        self._update_modifiers(modifiers)
+
+        # Update input manager
+        if self.input_manager:
+            self.input_manager.update_input_state(
+                self.pressed_keys, self.mouse_buttons,
+                self.mouse_position, self.current_modifiers
+            )
+
+            # Debug: Check if actions are triggered
+            if self.input_manager.is_action_pressed("move_left"):
+                print("move_left action is now active!")
+            if self.input_manager.is_action_pressed("ui_left"):
+                print("ui_left action is now active!")
+
+        # Forward input to LSC runtime for script handling
+        if self.lsc_runtime and self.scene:
+            for root_node in self.scene.root_nodes:
+                self.handle_node_input(root_node, 'on_key_press', key, modifiers)
 
     def on_key_release(self, key, modifiers):
         """Handle key release events"""
-        if hasattr(self, 'pressed_keys'):
-            self.pressed_keys.discard(key)
+        self.pressed_keys.discard(key)
+        self._update_modifiers(modifiers)
+
+        # Update input manager
+        if self.input_manager:
+            self.input_manager.update_input_state(
+                self.pressed_keys, self.mouse_buttons,
+                self.mouse_position, self.current_modifiers
+            )
 
         # Forward input to LSC runtime
         if self.lsc_runtime and self.scene:
@@ -984,6 +1174,18 @@ class LupineGameWindow(arcade.Window):
 
     def on_mouse_press(self, x, y, button, modifiers):
         """Handle mouse press events"""
+        # Update mouse state
+        self.mouse_buttons.add(button)
+        self.mouse_position = (x, y)
+        self._update_modifiers(modifiers)
+
+        # Update input manager
+        if self.input_manager:
+            self.input_manager.update_input_state(
+                self.pressed_keys, self.mouse_buttons,
+                self.mouse_position, self.current_modifiers
+            )
+
         # Forward to UI nodes for button interactions
         if self.scene:
             for root_node in self.scene.root_nodes:
@@ -991,6 +1193,18 @@ class LupineGameWindow(arcade.Window):
 
     def on_mouse_release(self, x, y, button, modifiers):
         """Handle mouse release events"""
+        # Update mouse state
+        self.mouse_buttons.discard(button)
+        self.mouse_position = (x, y)
+        self._update_modifiers(modifiers)
+
+        # Update input manager
+        if self.input_manager:
+            self.input_manager.update_input_state(
+                self.pressed_keys, self.mouse_buttons,
+                self.mouse_position, self.current_modifiers
+            )
+
         # Forward to UI nodes for button interactions
         if self.scene:
             for root_node in self.scene.root_nodes:
@@ -998,6 +1212,16 @@ class LupineGameWindow(arcade.Window):
 
     def on_mouse_motion(self, x, y, dx, dy):
         """Handle mouse motion events"""
+        # Update mouse position
+        self.mouse_position = (x, y)
+
+        # Update input manager
+        if self.input_manager:
+            self.input_manager.update_input_state(
+                self.pressed_keys, self.mouse_buttons,
+                self.mouse_position, self.current_modifiers
+            )
+
         # Update hover states for UI nodes
         if self.scene:
             for root_node in self.scene.root_nodes:
@@ -1098,9 +1322,72 @@ class LupineGameWindow(arcade.Window):
         for child in node.children:
             self.handle_node_input(child, method_name, *args)
 
+    def _update_modifiers(self, modifiers):
+        """Update current modifier keys state"""
+        self.current_modifiers.clear()
+
+        # Convert arcade modifiers to string set
+        if modifiers & arcade.key.MOD_SHIFT:
+            self.current_modifiers.add("shift")
+        if modifiers & arcade.key.MOD_CTRL:
+            self.current_modifiers.add("ctrl")
+        if modifiers & arcade.key.MOD_ALT:
+            self.current_modifiers.add("alt")
+        if modifiers & arcade.key.MOD_ACCEL:  # Meta/Cmd key
+            self.current_modifiers.add("meta")
+
     def is_key_pressed(self, key):
         """Check if a key is currently pressed (for script access)"""
-        return hasattr(self, 'pressed_keys') and key in self.pressed_keys
+        return key in self.pressed_keys
+
+    # Input action methods for LSC scripts
+    def is_action_pressed(self, action_name):
+        """Check if an action is currently pressed"""
+        if self.input_manager:
+            result = self.input_manager.is_action_pressed(action_name)
+            # Debug output for troubleshooting
+            if result and action_name in ["move_left", "move_right", "move_up", "move_down", "ui_left", "ui_right", "ui_up", "ui_down"]:
+                print(f"Action '{action_name}' is pressed! Keys: {self.pressed_keys}")
+            return result
+        else:
+            print("Warning: Input manager not available")
+            return False
+
+    def is_action_just_pressed(self, action_name):
+        """Check if an action was just pressed this frame"""
+        if self.input_manager:
+            return self.input_manager.is_action_just_pressed(action_name)
+        return False
+
+    def is_action_just_released(self, action_name):
+        """Check if an action was just released this frame"""
+        if self.input_manager:
+            return self.input_manager.is_action_just_released(action_name)
+        return False
+
+    def get_action_strength(self, action_name):
+        """Get the strength of an action (0.0 to 1.0)"""
+        if self.input_manager:
+            return self.input_manager.get_action_strength(action_name)
+        return 0.0
+
+    def is_mouse_button_pressed(self, button):
+        """Check if a mouse button is currently pressed"""
+        if self.input_manager:
+            return self.input_manager.is_mouse_button_pressed(button)
+        return False
+
+    def get_mouse_position(self):
+        """Get current mouse position"""
+        if self.input_manager:
+            return self.input_manager.get_mouse_position()
+        return (0, 0)
+
+    def get_global_mouse_position(self):
+        """Get global mouse position"""
+        if self.input_manager:
+            return self.input_manager.get_global_mouse_position()
+        return (0, 0)
 
     # Game runtime methods for LSC scripts
     def change_scene(self, scene_path):
@@ -1164,7 +1451,7 @@ class LupineGameWindow(arcade.Window):
         """Create a new sprite at runtime"""
         try:
             if texture_path not in self.textures:
-                full_path = Path(r"{project_path}") / texture_path
+                full_path = Path(self.project_path) / texture_path
                 if full_path.exists():
                     self.textures[texture_path] = arcade.load_texture(str(full_path))
 
@@ -1181,7 +1468,7 @@ class LupineGameWindow(arcade.Window):
 
 def main():
     try:
-        game = LupineGameWindow()
+        game = LupineGameWindow(r"{project_path}")
         game.setup()
         arcade.run()
     except Exception as e:

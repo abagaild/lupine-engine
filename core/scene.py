@@ -237,6 +237,13 @@ class Node:
             node.process_mode = data.get("process_mode", "idle")
         elif node_type == "Area2D":
             node = Area2D(data.get("name", "Area2D"))
+        elif node_type == "KinematicBody2D":
+            node = KinematicBody2D(data.get("name", "KinematicBody2D"))
+            # Set KinematicBody2D-specific properties
+            node.collision_layer = data.get("collision_layer", 1)
+            node.collision_mask = data.get("collision_mask", 1)
+            node.safe_margin = data.get("safe_margin", 0.08)
+            node.motion_sync_to_physics = data.get("motion_sync_to_physics", False)
         elif node_type == "Control":
             node = Control(data.get("name", "Control"))
             # Set Control-specific properties - using 'position' instead of 'rect_position' per user preference
@@ -675,7 +682,7 @@ class CollisionShape2D(Node2D):
         self.debug_color = [0.0, 0.6, 0.7, 0.5]  # RGBA
 
         # Set default script
-        self.script_path = "nodes/CollisionShape2D.lsc"
+        self.script_path = "nodes/node2d/CollisionShape2D.lsc"
 
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
@@ -762,7 +769,7 @@ class Area2D(Node2D):
         self.audio_bus_name = "Master"
 
         # Set default script
-        self.script_path = "nodes/Area2D.lsc"
+        self.script_path = "nodes/node2d/Area2D.lsc"
 
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
