@@ -1,0 +1,253 @@
+# ProgressBar Node - UI node that displays a progress bar with customizable appearance
+# Equivalent to Godot's ProgressBar with full functionality and styling options
+extends Control
+
+# Progress Properties
+export_group("Progress")
+export var min_value: float = 0.0  # Minimum value
+export var max_value: float = 100.0  # Maximum value
+export var value: float = 0.0  # Current value
+export var step: float = 1.0  # Step increment for value changes
+
+# Appearance Properties
+export_group("Appearance")
+export var fill_mode: String = "left_to_right"  # Fill direction
+export var show_percentage: bool = false  # Show percentage text
+
+# Style Properties
+export_group("Style")
+export var background_color: Color = Color(0.2, 0.2, 0.2, 1.0)  # Background color
+export var fill_color: Color = Color(0.3, 0.6, 0.3, 1.0)  # Fill color (green by default)
+export var border_color: Color = Color(0.5, 0.5, 0.5, 1.0)  # Border color
+export var border_width: float = 1.0  # Border thickness
+export var corner_radius: float = 2.0  # Rounded corners
+
+# Text Properties
+export_group("Text")
+export var font_color: Color = Color(1.0, 1.0, 1.0, 1.0)  # Text color
+export var font_size: int = 12  # Font size
+
+# Texture Properties (Optional)
+export_group("Textures")
+export var background_texture: Texture = null  # Background texture
+export var fill_texture: Texture = null  # Fill texture
+export var progress_texture: Texture = null  # Progress texture overlay
+
+# Fill mode constants (matching Godot's ProgressBar)
+const FILL_LEFT_TO_RIGHT = "left_to_right"
+const FILL_RIGHT_TO_LEFT = "right_to_left"
+const FILL_TOP_TO_BOTTOM = "top_to_bottom"
+const FILL_BOTTOM_TO_TOP = "bottom_to_top"
+const FILL_CENTER_EXPAND = "center_expand"
+
+# Called when the node enters the scene tree for the first time
+func _ready():
+    super._ready()
+    
+    # Set default size if not specified
+    if rect_size == Vector2.ZERO:
+        rect_size = Vector2(200, 24)
+    
+    # Clamp initial value
+    value = clamp(value, min_value, max_value)
+
+# Called every frame. 'delta' is the elapsed time since the previous frame
+func _process(delta: float):
+    pass
+
+# Set the current value
+func set_value(new_value: float):
+    var old_value = value
+    value = clamp(new_value, min_value, max_value)
+    
+    if value != old_value:
+        emit_signal("value_changed", value)
+        emit_signal("appearance_changed")
+
+# Get the current value
+func get_value() -> float:
+    return value
+
+# Set minimum value
+func set_min_value(new_min: float):
+    min_value = new_min
+    if max_value < min_value:
+        max_value = min_value
+    value = clamp(value, min_value, max_value)
+    emit_signal("appearance_changed")
+
+# Get minimum value
+func get_min_value() -> float:
+    return min_value
+
+# Set maximum value
+func set_max_value(new_max: float):
+    max_value = new_max
+    if min_value > max_value:
+        min_value = max_value
+    value = clamp(value, min_value, max_value)
+    emit_signal("appearance_changed")
+
+# Get maximum value
+func get_max_value() -> float:
+    return max_value
+
+# Set step value
+func set_step(new_step: float):
+    step = max(0.0, new_step)
+
+# Get step value
+func get_step() -> float:
+    return step
+
+# Get progress as ratio (0.0 to 1.0)
+func get_ratio() -> float:
+    if max_value <= min_value:
+        return 0.0
+    return (value - min_value) / (max_value - min_value)
+
+# Set progress as ratio (0.0 to 1.0)
+func set_ratio(ratio: float):
+    ratio = clamp(ratio, 0.0, 1.0)
+    set_value(min_value + ratio * (max_value - min_value))
+
+# Get progress as percentage (0 to 100)
+func get_percentage() -> float:
+    return get_ratio() * 100.0
+
+# Set progress as percentage (0 to 100)
+func set_percentage(percentage: float):
+    set_ratio(percentage / 100.0)
+
+# Set fill mode
+func set_fill_mode(mode: String):
+    if is_valid_fill_mode(mode):
+        fill_mode = mode
+        emit_signal("appearance_changed")
+    else:
+        print("Warning: Invalid fill mode: " + mode)
+
+# Get fill mode
+func get_fill_mode() -> String:
+    return fill_mode
+
+# Check if fill mode is valid
+func is_valid_fill_mode(mode: String) -> bool:
+    return mode in [
+        FILL_LEFT_TO_RIGHT,
+        FILL_RIGHT_TO_LEFT,
+        FILL_TOP_TO_BOTTOM,
+        FILL_BOTTOM_TO_TOP,
+        FILL_CENTER_EXPAND
+    ]
+
+# Set show percentage
+func set_show_percentage(show: bool):
+    show_percentage = show
+    emit_signal("appearance_changed")
+
+# Get show percentage
+func get_show_percentage() -> bool:
+    return show_percentage
+
+# Set background color
+func set_background_color(color: Color):
+    background_color = color
+    emit_signal("appearance_changed")
+
+# Get background color
+func get_background_color() -> Color:
+    return background_color
+
+# Set fill color
+func set_fill_color(color: Color):
+    fill_color = color
+    emit_signal("appearance_changed")
+
+# Get fill color
+func get_fill_color() -> Color:
+    return fill_color
+
+# Set border color
+func set_border_color(color: Color):
+    border_color = color
+    emit_signal("appearance_changed")
+
+# Get border color
+func get_border_color() -> Color:
+    return border_color
+
+# Increment value by step
+func increment():
+    set_value(value + step)
+
+# Decrement value by step
+func decrement():
+    set_value(value - step)
+
+# Animate to target value over time
+func animate_to_value(target_value: float, duration: float):
+    # This would be implemented by the engine's tween system
+    # For now, just set the value directly
+    set_value(target_value)
+
+# Reset to minimum value
+func reset():
+    set_value(min_value)
+
+# Set to maximum value
+func complete():
+    set_value(max_value)
+
+# Check if progress is complete
+func is_complete() -> bool:
+    return value >= max_value
+
+# Check if progress is at minimum
+func is_empty() -> bool:
+    return value <= min_value
+
+# Get the fill rectangle for drawing
+func get_fill_rect() -> Rect2:
+    var ratio = get_ratio()
+    var full_rect = Rect2(Vector2.ZERO, rect_size)
+    
+    match fill_mode:
+        FILL_LEFT_TO_RIGHT:
+            return Rect2(full_rect.position, Vector2(full_rect.size.x * ratio, full_rect.size.y))
+        FILL_RIGHT_TO_LEFT:
+            var fill_width = full_rect.size.x * ratio
+            return Rect2(Vector2(full_rect.size.x - fill_width, 0), Vector2(fill_width, full_rect.size.y))
+        FILL_TOP_TO_BOTTOM:
+            return Rect2(full_rect.position, Vector2(full_rect.size.x, full_rect.size.y * ratio))
+        FILL_BOTTOM_TO_TOP:
+            var fill_height = full_rect.size.y * ratio
+            return Rect2(Vector2(0, full_rect.size.y - fill_height), Vector2(full_rect.size.x, fill_height))
+        FILL_CENTER_EXPAND:
+            var fill_width = full_rect.size.x * ratio
+            var offset_x = (full_rect.size.x - fill_width) * 0.5
+            return Rect2(Vector2(offset_x, 0), Vector2(fill_width, full_rect.size.y))
+        _:
+            return Rect2(full_rect.position, Vector2(full_rect.size.x * ratio, full_rect.size.y))
+
+# Get percentage text
+func get_percentage_text() -> String:
+    if show_percentage:
+        return str(int(get_percentage())) + "%"
+    return ""
+
+# Convenience methods for common progress values
+func set_quarter():
+    set_percentage(25.0)
+
+func set_half():
+    set_percentage(50.0)
+
+func set_three_quarters():
+    set_percentage(75.0)
+
+# Signals
+signal value_changed(new_value: float)  # Emitted when value changes
+signal appearance_changed  # Emitted when visual properties change
+signal progress_completed  # Emitted when progress reaches maximum
+signal progress_started  # Emitted when progress starts from minimum

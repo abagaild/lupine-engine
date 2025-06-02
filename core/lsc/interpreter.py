@@ -291,7 +291,20 @@ class LSCInterpreter(ASTVisitor):
                     current = getattr(obj, node.target.member)
                     if node.operator == "+=":
                         setattr(obj, node.target.member, current + value)
-                    # ... other compound operators
+                    elif node.operator == "-=":
+                        setattr(obj, node.target.member, current - value)
+                    elif node.operator == "*=":
+                        setattr(obj, node.target.member, current * value)
+                    elif node.operator == "/=":
+                        if value == 0:
+                            raise LSCRuntimeError("Division by zero")
+                        setattr(obj, node.target.member, current / value)
+                    elif node.operator == "%=":
+                        setattr(obj, node.target.member, current % value)
+                    elif node.operator == "**=":
+                        setattr(obj, node.target.member, current ** value)
+                    else:
+                        raise LSCRuntimeError(f"Unknown compound assignment operator '{node.operator}'")
             else:
                 raise LSCRuntimeError(f"'{type(obj).__name__}' object has no attribute '{node.target.member}'")
         

@@ -41,6 +41,7 @@ class LupineProject:
                 "nodes/base",
                 "nodes/node2d",
                 "nodes/ui",
+                "nodes/audio",
                 "nodes/prefabs"
             ]
 
@@ -181,7 +182,11 @@ class LupineProject:
                 "node2d": ["node2d/Sprite.lsc", "node2d/AnimatedSprite.lsc", "node2d/Camera2D.lsc",
                           "node2d/Area2D.lsc", "node2d/CollisionShape2D.lsc", "node2d/CollisionPolygon2D.lsc",
                           "node2d/RigidBody2D.lsc", "node2d/StaticBody2D.lsc", "node2d/KinematicBody2D.lsc"],
-                "ui": ["ui/Control.lsc", "ui/Panel.lsc", "ui/Label.lsc", "ui/Button.lsc", "ui/CanvasLayer.lsc"],
+                "ui": ["ui/Control.lsc", "ui/Panel.lsc", "ui/Label.lsc", "ui/Button.lsc", "ui/CanvasLayer.lsc",
+                       "ui/ColorRect.lsc", "ui/TextureRect.lsc", "ui/ProgressBar.lsc",
+                       "ui/VBoxContainer.lsc", "ui/HBoxContainer.lsc", "ui/CenterContainer.lsc", "ui/GridContainer.lsc",
+                       "ui/RichTextLabel.lsc", "ui/PanelContainer.lsc", "ui/NinePatchRect.lsc", "ui/ItemList.lsc"],
+                "audio": ["audio/AudioStreamPlayer.lsc", "audio/AudioStreamPlayer2D.lsc"],
                 "prefabs": []  # Will be populated with any remaining files
             }
 

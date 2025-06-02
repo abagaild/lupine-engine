@@ -210,11 +210,11 @@ class Vector2Factory:
 
     @property
     def UP(self) -> LSCVector2:
-        return LSCVector2(0, -1)
+        return LSCVector2(0, 1)  # Y+ is up in our coordinate system
 
     @property
     def DOWN(self) -> LSCVector2:
-        return LSCVector2(0, 1)
+        return LSCVector2(0, -1)  # Y- is down in our coordinate system
 
     @property
     def LEFT(self) -> LSCVector2:
@@ -382,7 +382,22 @@ class LSCBuiltins:
             'lerp': self.lerp,
             'clamp': self.clamp,
             'sign': self.sign,
-            
+            'move_toward': self.move_toward,
+            'smoothstep': self.smoothstep,
+
+            # Debug functions
+            'print': self.lsc_print,
+            'print_error': self.lsc_print_error,
+
+            # Type conversion
+            'bool': bool,
+            'int': int,
+            'float': float,
+
+            # Vector operations
+            'Vector2': self.vector2_factory,
+            'vec2': self.vector2_factory,
+
             # Random functions
             'rand_range': self.rand_range,
             'rand_int': self.rand_int,
@@ -755,21 +770,43 @@ class LSCBuiltins:
                 if hasattr(node, 'position') and hasattr(velocity, 'x') and hasattr(velocity, 'y'):
                     # Apply velocity to position (velocity is in pixels per second, so multiply by delta)
                     delta = 1.0/60.0  # Default delta time
-                    old_pos = (node.position[0], node.position[1])
-                    node.position[0] += velocity.x * delta
-                    node.position[1] += velocity.y * delta
+
+                    # Ensure position is persistent - use a special attribute to store the actual position
+                    if not hasattr(node, '_runtime_position'):
+                        # Initialize runtime position from current position
+                        if hasattr(node.position, 'x'):  # Vector2
+                            node._runtime_position = LSCVector2(node.position.x, node.position.y)
+                        elif isinstance(node.position, (list, tuple)) and len(node.position) >= 2:
+                            node._runtime_position = LSCVector2(node.position[0], node.position[1])
+                        else:
+                            node._runtime_position = LSCVector2(0.0, 0.0)
+
+                    old_pos = (node._runtime_position.x, node._runtime_position.y)
+
+                    # Apply movement to runtime position
+                    node._runtime_position.x += velocity.x * delta
+                    node._runtime_position.y += velocity.y * delta
+
+                    # Update the node's position to match runtime position
+                    # IMPORTANT: Always create a new Vector2 to ensure the position is properly updated
+                    node.position = LSCVector2(node._runtime_position.x, node._runtime_position.y)
 
                     if velocity.x != 0 or velocity.y != 0:
-                        print(f"DEBUG: {node.name} position: {old_pos} -> ({node.position[0]}, {node.position[1]})")
-                        # Also check if the position is actually a reference to the same object
-                        print(f"DEBUG: Position object ID: {id(node.position)}, Position type: {type(node.position)}")
+                        print(f"DEBUG: Updated node.position to ({node.position.x}, {node.position.y})")
 
-                    # IMPORTANT: Also update the physics body position if it exists
+                    if velocity.x != 0 or velocity.y != 0:
+                        new_pos = (node._runtime_position.x, node._runtime_position.y)
+                        print(f"DEBUG: {node.name} position: {old_pos} -> {new_pos}")
+                        print(f"DEBUG: Runtime position object ID: {id(node._runtime_position)}, Position type: {type(node._runtime_position)}")
+
+                    # Check if node has physics body and sync position if needed
                     if hasattr(node, 'physics_body') and node.physics_body:
                         if hasattr(node.physics_body, 'pymunk_body') and node.physics_body.pymunk_body:
-                            node.physics_body.pymunk_body.position = (node.position[0], node.position[1])
+                            # Sync position from physics body
+                            node.position = (node.physics_body.pymunk_body.position.x,
+                                            node.physics_body.pymunk_body.position.y)
                             if velocity.x != 0 or velocity.y != 0:
-                                print(f"DEBUG: Updated physics body position to ({node.position[0]}, {node.position[1]})")
+                                print(f"DEBUG: Synced position from physics body: ({node.position[0]}, {node.position[1]})")
                         else:
                             if velocity.x != 0 or velocity.y != 0:
                                 print(f"DEBUG: Node {node.name} has physics_body but no pymunk_body")
@@ -779,18 +816,37 @@ class LSCBuiltins:
 
                     # Update any associated arcade sprite
                     if hasattr(node, 'arcade_sprite') and node.arcade_sprite:
-                        node.arcade_sprite.center_x = node.position[0]
-                        node.arcade_sprite.center_y = node.position[1]
+                        old_sprite_pos = (node.arcade_sprite.center_x, node.arcade_sprite.center_y)
+
+                        # Handle both Vector2 and list positions
+                        if hasattr(node.position, 'x'):  # Vector2
+                            new_x, new_y = node.position.x, node.position.y
+                        else:  # List/tuple
+                            new_x, new_y = node.position[0], node.position[1]
+
+                        node.arcade_sprite.center_x = new_x
+                        node.arcade_sprite.center_y = new_y
+
+                        # Debug output for movement
+                        if velocity.x != 0 or velocity.y != 0:
+                            print(f"MOVE: Updated parent sprite {node.name} from {old_sprite_pos} to ({new_x}, {new_y})")
+                    else:
+                        if velocity.x != 0 or velocity.y != 0:
+                            print(f"DEBUG: Node {node.name} has no arcade_sprite")
 
                     # Also update child sprites (for KinematicBody2D with child Sprite nodes)
                     if hasattr(node, 'children'):
                         for child in node.children:
                             if hasattr(child, 'arcade_sprite') and child.arcade_sprite:
                                 old_child_pos = (child.arcade_sprite.center_x, child.arcade_sprite.center_y)
-                                child.arcade_sprite.center_x = node.position[0] + child.position[0]
-                                child.arcade_sprite.center_y = node.position[1] + child.position[1]
+                                # Child sprites should be positioned relative to their parent
+                                child_world_x = node.position[0] + child.position[0]
+                                child_world_y = node.position[1] + child.position[1]
+                                child.arcade_sprite.center_x = child_world_x
+                                child.arcade_sprite.center_y = child_world_y
+
                                 if velocity.x != 0 or velocity.y != 0:
-                                    print(f"DEBUG: Updated child sprite {child.name} from {old_child_pos} to ({child.arcade_sprite.center_x}, {child.arcade_sprite.center_y})")
+                                    print(f"MOVE: Updated child sprite {child.name} from {old_child_pos} to ({child_world_x}, {child_world_y})")
 
         return velocity
 
@@ -956,3 +1012,674 @@ class LSCBuiltins:
             if input_manager:
                 return input_manager.is_action_just_released(action)
         return False
+
+    def move_toward(self, current: float, target: float, max_delta: float) -> float:
+        """Move towards target value"""
+        if abs(target - current) <= max_delta:
+            return target
+        return current + math.copysign(max_delta, target - current)
+
+    def smoothstep(self, start: float, end: float, t: float) -> float:
+        """Smooth interpolation between values"""
+        t = clamp((t - start) / (end - start), 0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    def lsc_print(self, *args):
+        """Built-in print function with LSC runtime logging"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC] {message}")
+
+    def lsc_print_error(self, *args):
+        """Error-level print function"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC ERROR] {message}", file=sys.stderr)
+
+    # Geometry functions
+    def Rect2(self, x: float = 0, y: float = 0, width: float = 0, height: float = 0) -> LSCRect2:
+        """Create Rect2"""
+        return LSCRect2(x, y, width, height)
+
+    def Color(self, r: float = 1, g: float = 1, b: float = 1, a: float = 1) -> LSCColor:
+        """Create color"""
+        return LSCColor(r, g, b, a)
+
+    def Texture(self, path: str = "") -> LSCTexture:
+        """Create texture"""
+        return LSCTexture(path)
+
+    def color_lerp(self, a: tuple, b: tuple, t: float) -> tuple:
+        """Interpolate between colors"""
+        return tuple(self.lerp(a[i], b[i], t) for i in range(len(a)))
+
+    # Input functions
+    def is_action_pressed(self, action: str) -> bool:
+        """Check if action is currently pressed"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                result = input_manager.is_action_pressed(action)
+                # Debug output for movement actions
+                if result and action in ['move_left', 'move_right', 'move_up', 'move_down']:
+                    print(f"DEBUG: is_action_pressed('{action}') = {result}")
+                return result
+        return False
+
+    def is_action_just_pressed(self, action: str) -> bool:
+        """Check if action was just pressed this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_pressed(action)
+        return False
+
+    def is_action_just_released(self, action: str) -> bool:
+        """Check if action was just released this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_released(action)
+        return False
+
+    def move_toward(self, current: float, target: float, max_delta: float) -> float:
+        """Move towards target value"""
+        if abs(target - current) <= max_delta:
+            return target
+        return current + math.copysign(max_delta, target - current)
+
+    def smoothstep(self, start: float, end: float, t: float) -> float:
+        """Smooth interpolation between values"""
+        t = clamp((t - start) / (end - start), 0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    def lsc_print(self, *args):
+        """Built-in print function with LSC runtime logging"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC] {message}")
+
+    def lsc_print_error(self, *args):
+        """Error-level print function"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC ERROR] {message}", file=sys.stderr)
+
+    # Geometry functions
+    def Rect2(self, x: float = 0, y: float = 0, width: float = 0, height: float = 0) -> LSCRect2:
+        """Create Rect2"""
+        return LSCRect2(x, y, width, height)
+
+    def Color(self, r: float = 1, g: float = 1, b: float = 1, a: float = 1) -> LSCColor:
+        """Create color"""
+        return LSCColor(r, g, b, a)
+
+    def Texture(self, path: str = "") -> LSCTexture:
+        """Create texture"""
+        return LSCTexture(path)
+
+    def color_lerp(self, a: tuple, b: tuple, t: float) -> tuple:
+        """Interpolate between colors"""
+        return tuple(self.lerp(a[i], b[i], t) for i in range(len(a)))
+
+    # Input functions
+    def is_action_pressed(self, action: str) -> bool:
+        """Check if action is currently pressed"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                result = input_manager.is_action_pressed(action)
+                # Debug output for movement actions
+                if result and action in ['move_left', 'move_right', 'move_up', 'move_down']:
+                    print(f"DEBUG: is_action_pressed('{action}') = {result}")
+                return result
+        return False
+
+    def is_action_just_pressed(self, action: str) -> bool:
+        """Check if action was just pressed this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_pressed(action)
+        return False
+
+    def is_action_just_released(self, action: str) -> bool:
+        """Check if action was just released this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_released(action)
+        return False
+
+    def move_toward(self, current: float, target: float, max_delta: float) -> float:
+        """Move towards target value"""
+        if abs(target - current) <= max_delta:
+            return target
+        return current + math.copysign(max_delta, target - current)
+
+    def smoothstep(self, start: float, end: float, t: float) -> float:
+        """Smooth interpolation between values"""
+        t = clamp((t - start) / (end - start), 0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    def lsc_print(self, *args):
+        """Built-in print function with LSC runtime logging"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC] {message}")
+
+    def lsc_print_error(self, *args):
+        """Error-level print function"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC ERROR] {message}", file=sys.stderr)
+
+    # Geometry functions
+    def Rect2(self, x: float = 0, y: float = 0, width: float = 0, height: float = 0) -> LSCRect2:
+        """Create Rect2"""
+        return LSCRect2(x, y, width, height)
+
+    def Color(self, r: float = 1, g: float = 1, b: float = 1, a: float = 1) -> LSCColor:
+        """Create color"""
+        return LSCColor(r, g, b, a)
+
+    def Texture(self, path: str = "") -> LSCTexture:
+        """Create texture"""
+        return LSCTexture(path)
+
+    def color_lerp(self, a: tuple, b: tuple, t: float) -> tuple:
+        """Interpolate between colors"""
+        return tuple(self.lerp(a[i], b[i], t) for i in range(len(a)))
+
+    # Input functions
+    def is_action_pressed(self, action: str) -> bool:
+        """Check if action is currently pressed"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                result = input_manager.is_action_pressed(action)
+                # Debug output for movement actions
+                if result and action in ['move_left', 'move_right', 'move_up', 'move_down']:
+                    print(f"DEBUG: is_action_pressed('{action}') = {result}")
+                return result
+        return False
+
+    def is_action_just_pressed(self, action: str) -> bool:
+        """Check if action was just pressed this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_pressed(action)
+        return False
+
+    def is_action_just_released(self, action: str) -> bool:
+        """Check if action was just released this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_released(action)
+        return False
+
+    def move_toward(self, current: float, target: float, max_delta: float) -> float:
+        """Move towards target value"""
+        if abs(target - current) <= max_delta:
+            return target
+        return current + math.copysign(max_delta, target - current)
+
+    def smoothstep(self, start: float, end: float, t: float) -> float:
+        """Smooth interpolation between values"""
+        t = clamp((t - start) / (end - start), 0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    def lsc_print(self, *args):
+        """Built-in print function with LSC runtime logging"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC] {message}")
+
+    def lsc_print_error(self, *args):
+        """Error-level print function"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC ERROR] {message}", file=sys.stderr)
+
+    # Geometry functions
+    def Rect2(self, x: float = 0, y: float = 0, width: float = 0, height: float = 0) -> LSCRect2:
+        """Create Rect2"""
+        return LSCRect2(x, y, width, height)
+
+    def Color(self, r: float = 1, g: float = 1, b: float = 1, a: float = 1) -> LSCColor:
+        """Create color"""
+        return LSCColor(r, g, b, a)
+
+    def Texture(self, path: str = "") -> LSCTexture:
+        """Create texture"""
+        return LSCTexture(path)
+
+    def color_lerp(self, a: tuple, b: tuple, t: float) -> tuple:
+        """Interpolate between colors"""
+        return tuple(self.lerp(a[i], b[i], t) for i in range(len(a)))
+
+    # Input functions
+    def is_action_pressed(self, action: str) -> bool:
+        """Check if action is currently pressed"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                result = input_manager.is_action_pressed(action)
+                # Debug output for movement actions
+                if result and action in ['move_left', 'move_right', 'move_up', 'move_down']:
+                    print(f"DEBUG: is_action_pressed('{action}') = {result}")
+                return result
+        return False
+
+    def is_action_just_pressed(self, action: str) -> bool:
+        """Check if action was just pressed this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_pressed(action)
+        return False
+
+    def is_action_just_released(self, action: str) -> bool:
+        """Check if action was just released this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_released(action)
+        return False
+
+    def move_toward(self, current: float, target: float, max_delta: float) -> float:
+        """Move towards target value"""
+        if abs(target - current) <= max_delta:
+            return target
+        return current + math.copysign(max_delta, target - current)
+
+    def smoothstep(self, start: float, end: float, t: float) -> float:
+        """Smooth interpolation between values"""
+        t = clamp((t - start) / (end - start), 0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    def lsc_print(self, *args):
+        """Built-in print function with LSC runtime logging"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC] {message}")
+
+    def lsc_print_error(self, *args):
+        """Error-level print function"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC ERROR] {message}", file=sys.stderr)
+
+    # Geometry functions
+    def Rect2(self, x: float = 0, y: float = 0, width: float = 0, height: float = 0) -> LSCRect2:
+        """Create Rect2"""
+        return LSCRect2(x, y, width, height)
+
+    def Color(self, r: float = 1, g: float = 1, b: float = 1, a: float = 1) -> LSCColor:
+        """Create color"""
+        return LSCColor(r, g, b, a)
+
+    def Texture(self, path: str = "") -> LSCTexture:
+        """Create texture"""
+        return LSCTexture(path)
+
+    def color_lerp(self, a: tuple, b: tuple, t: float) -> tuple:
+        """Interpolate between colors"""
+        return tuple(self.lerp(a[i], b[i], t) for i in range(len(a)))
+
+    # Input functions
+    def is_action_pressed(self, action: str) -> bool:
+        """Check if action is currently pressed"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                result = input_manager.is_action_pressed(action)
+                # Debug output for movement actions
+                if result and action in ['move_left', 'move_right', 'move_up', 'move_down']:
+                    print(f"DEBUG: is_action_pressed('{action}') = {result}")
+                return result
+        return False
+
+    def is_action_just_pressed(self, action: str) -> bool:
+        """Check if action was just pressed this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_pressed(action)
+        return False
+
+    def is_action_just_released(self, action: str) -> bool:
+        """Check if action was just released this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_released(action)
+        return False
+
+    def move_toward(self, current: float, target: float, max_delta: float) -> float:
+        """Move towards target value"""
+        if abs(target - current) <= max_delta:
+            return target
+        return current + math.copysign(max_delta, target - current)
+
+    def smoothstep(self, start: float, end: float, t: float) -> float:
+        """Smooth interpolation between values"""
+        t = clamp((t - start) / (end - start), 0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    def lsc_print(self, *args):
+        """Built-in print function with LSC runtime logging"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC] {message}")
+
+    def lsc_print_error(self, *args):
+        """Error-level print function"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC ERROR] {message}", file=sys.stderr)
+
+    # Geometry functions
+    def Rect2(self, x: float = 0, y: float = 0, width: float = 0, height: float = 0) -> LSCRect2:
+        """Create Rect2"""
+        return LSCRect2(x, y, width, height)
+
+    def Color(self, r: float = 1, g: float = 1, b: float = 1, a: float = 1) -> LSCColor:
+        """Create color"""
+        return LSCColor(r, g, b, a)
+
+    def Texture(self, path: str = "") -> LSCTexture:
+        """Create texture"""
+        return LSCTexture(path)
+
+    def color_lerp(self, a: tuple, b: tuple, t: float) -> tuple:
+        """Interpolate between colors"""
+        return tuple(self.lerp(a[i], b[i], t) for i in range(len(a)))
+
+    # Input functions
+    def is_action_pressed(self, action: str) -> bool:
+        """Check if action is currently pressed"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                result = input_manager.is_action_pressed(action)
+                # Debug output for movement actions
+                if result and action in ['move_left', 'move_right', 'move_up', 'move_down']:
+                    print(f"DEBUG: is_action_pressed('{action}') = {result}")
+                return result
+        return False
+
+    def is_action_just_pressed(self, action: str) -> bool:
+        """Check if action was just pressed this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_pressed(action)
+        return False
+
+    def is_action_just_released(self, action: str) -> bool:
+        """Check if action was just released this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_released(action)
+        return False
+
+    def move_toward(self, current: float, target: float, max_delta: float) -> float:
+        """Move towards target value"""
+        if abs(target - current) <= max_delta:
+            return target
+        return current + math.copysign(max_delta, target - current)
+
+    def smoothstep(self, start: float, end: float, t: float) -> float:
+        """Smooth interpolation between values"""
+        t = clamp((t - start) / (end - start), 0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    def lsc_print(self, *args):
+        """Built-in print function with LSC runtime logging"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC] {message}")
+
+    def lsc_print_error(self, *args):
+        """Error-level print function"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC ERROR] {message}", file=sys.stderr)
+
+    # Geometry functions
+    def Rect2(self, x: float = 0, y: float = 0, width: float = 0, height: float = 0) -> LSCRect2:
+        """Create Rect2"""
+        return LSCRect2(x, y, width, height)
+
+    def Color(self, r: float = 1, g: float = 1, b: float = 1, a: float = 1) -> LSCColor:
+        """Create color"""
+        return LSCColor(r, g, b, a)
+
+    def Texture(self, path: str = "") -> LSCTexture:
+        """Create texture"""
+        return LSCTexture(path)
+
+    def color_lerp(self, a: tuple, b: tuple, t: float) -> tuple:
+        """Interpolate between colors"""
+        return tuple(self.lerp(a[i], b[i], t) for i in range(len(a)))
+
+    # Input functions
+    def is_action_pressed(self, action: str) -> bool:
+        """Check if action is currently pressed"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                result = input_manager.is_action_pressed(action)
+                # Debug output for movement actions
+                if result and action in ['move_left', 'move_right', 'move_up', 'move_down']:
+                    print(f"DEBUG: is_action_pressed('{action}') = {result}")
+                return result
+        return False
+
+    def is_action_just_pressed(self, action: str) -> bool:
+        """Check if action was just pressed this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_pressed(action)
+        return False
+
+    def is_action_just_released(self, action: str) -> bool:
+        """Check if action was just released this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_released(action)
+        return False
+
+    def move_toward(self, current: float, target: float, max_delta: float) -> float:
+        """Move towards target value"""
+        if abs(target - current) <= max_delta:
+            return target
+        return current + math.copysign(max_delta, target - current)
+
+    def smoothstep(self, start: float, end: float, t: float) -> float:
+        """Smooth interpolation between values"""
+        t = clamp((t - start) / (end - start), 0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    def lsc_print(self, *args):
+        """Built-in print function with LSC runtime logging"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC] {message}")
+
+    def lsc_print_error(self, *args):
+        """Error-level print function"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC ERROR] {message}", file=sys.stderr)
+
+    # Geometry functions
+    def Rect2(self, x: float = 0, y: float = 0, width: float = 0, height: float = 0) -> LSCRect2:
+        """Create Rect2"""
+        return LSCRect2(x, y, width, height)
+
+    def Color(self, r: float = 1, g: float = 1, b: float = 1, a: float = 1) -> LSCColor:
+        """Create color"""
+        return LSCColor(r, g, b, a)
+
+    def Texture(self, path: str = "") -> LSCTexture:
+        """Create texture"""
+        return LSCTexture(path)
+
+    def color_lerp(self, a: tuple, b: tuple, t: float) -> tuple:
+        """Interpolate between colors"""
+        return tuple(self.lerp(a[i], b[i], t) for i in range(len(a)))
+
+    # Input functions
+    def is_action_pressed(self, action: str) -> bool:
+        """Check if action is currently pressed"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                result = input_manager.is_action_pressed(action)
+                # Debug output for movement actions
+                if result and action in ['move_left', 'move_right', 'move_up', 'move_down']:
+                    print(f"DEBUG: is_action_pressed('{action}') = {result}")
+                return result
+        return False
+
+    def is_action_just_pressed(self, action: str) -> bool:
+        """Check if action was just pressed this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_pressed(action)
+        return False
+
+    def is_action_just_released(self, action: str) -> bool:
+        """Check if action was just released this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_released(action)
+        return False
+
+    def move_toward(self, current: float, target: float, max_delta: float) -> float:
+        """Move towards target value"""
+        if abs(target - current) <= max_delta:
+            return target
+        return current + math.copysign(max_delta, target - current)
+
+    def smoothstep(self, start: float, end: float, t: float) -> float:
+        """Smooth interpolation between values"""
+        t = clamp((t - start) / (end - start), 0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    def lsc_print(self, *args):
+        """Built-in print function with LSC runtime logging"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC] {message}")
+
+    def lsc_print_error(self, *args):
+        """Error-level print function"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC ERROR] {message}", file=sys.stderr)
+
+    # Geometry functions
+    def Rect2(self, x: float = 0, y: float = 0, width: float = 0, height: float = 0) -> LSCRect2:
+        """Create Rect2"""
+        return LSCRect2(x, y, width, height)
+
+    def Color(self, r: float = 1, g: float = 1, b: float = 1, a: float = 1) -> LSCColor:
+        """Create color"""
+        return LSCColor(r, g, b, a)
+
+    def Texture(self, path: str = "") -> LSCTexture:
+        """Create texture"""
+        return LSCTexture(path)
+
+    def color_lerp(self, a: tuple, b: tuple, t: float) -> tuple:
+        """Interpolate between colors"""
+        return tuple(self.lerp(a[i], b[i], t) for i in range(len(a)))
+
+    # Input functions
+    def is_action_pressed(self, action: str) -> bool:
+        """Check if action is currently pressed"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                result = input_manager.is_action_pressed(action)
+                # Debug output for movement actions
+                if result and action in ['move_left', 'move_right', 'move_up', 'move_down']:
+                    print(f"DEBUG: is_action_pressed('{action}') = {result}")
+                return result
+        return False
+
+    def is_action_just_pressed(self, action: str) -> bool:
+        """Check if action was just pressed this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_pressed(action)
+        return False
+
+    def is_action_just_released(self, action: str) -> bool:
+        """Check if action was just released this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_released(action)
+        return False
+
+    def move_toward(self, current: float, target: float, max_delta: float) -> float:
+        """Move towards target value"""
+        if abs(target - current) <= max_delta:
+            return target
+        return current + math.copysign(max_delta, target - current)
+
+    def smoothstep(self, start: float, end: float, t: float) -> float:
+        """Smooth interpolation between values"""
+        t = clamp((t - start) / (end - start), 0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    def lsc_print(self, *args):
+        """Built-in print function with LSC runtime logging"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC] {message}")
+
+    def lsc_print_error(self, *args):
+        """Error-level print function"""
+        message = ' '.join(str(arg) for arg in args)
+        print(f"[LSC ERROR] {message}", file=sys.stderr)
+
+    # Geometry functions
+    def Rect2(self, x: float = 0, y: float = 0, width: float = 0, height: float = 0) -> LSCRect2:
+        """Create Rect2"""
+        return LSCRect2(x, y, width, height)
+
+    def Color(self, r: float = 1, g: float = 1, b: float = 1, a: float = 1) -> LSCColor:
+        """Create color"""
+        return LSCColor(r, g, b, a)
+
+    def Texture(self, path: str = "") -> LSCTexture:
+        """Create texture"""
+        return LSCTexture(path)
+
+    def color_lerp(self, a: tuple, b: tuple, t: float) -> tuple:
+        """Interpolate between colors"""
+        return tuple(self.lerp(a[i], b[i], t) for i in range(len(a)))
+
+    # Input functions
+    def is_action_pressed(self, action: str) -> bool:
+        """Check if action is currently pressed"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                result = input_manager.is_action_pressed(action)
+                return result
+        return False
+
+    def is_action_just_pressed(self, action: str) -> bool:
+        """Check if action was just pressed this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_pressed(action)
+        return False
+
+    def is_action_just_released(self, action: str) -> bool:
+        """Check if action was just released this frame"""
+        if self.runtime.game_runtime and hasattr(self.runtime.game_runtime, 'input_manager'):
+            input_manager = self.runtime.game_runtime.input_manager
+            if input_manager:
+                return input_manager.is_action_just_released(action)
+        return False
+
+    def get_action_strength(self, action: str) -> float:
+        """Get action strength (for analog inputs)"""
+        return self.runtime.get_action_strength(action)

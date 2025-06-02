@@ -70,9 +70,16 @@ import os
 sys.path.insert(0, r"{lupine_engine_path}")
 sys.path.insert(0, r"{project_path}")
 
-import arcade
+import pygame
 import json
 from pathlib import Path
+from pygame.locals import *
+from OpenGL.GL import *
+from OpenGL.GLU import *
+
+# Import our new rendering and audio systems
+from core.opengl_renderer import OpenGLRenderer
+from core.openal_audio import OpenALAudioSystem
 
 # Import input constants at module level
 try:
@@ -92,18 +99,45 @@ except ImportError as e:
     print(f"LSC not available: {e}")
     LSC_AVAILABLE = False
 
-class LupineGameWindow(arcade.Window):
+class LupineGameWindow:
     def __init__(self, project_path: str):
         print("DEBUG: LupineGameWindow.__init__() called")
-        super().__init__(1280, 720, "Lupine Engine - Game Runner", resizable=True)  # 16:9 aspect ratio, smaller and resizable
-        print("DEBUG: Arcade window initialized")
+
+        # Initialize Pygame
+        pygame.init()
+
+        # Set up OpenGL context
+        pygame.display.gl_set_attribute(pygame.GL_DOUBLEBUFFER, 1)
+        pygame.display.gl_set_attribute(pygame.GL_DEPTH_SIZE, 24)
+        pygame.display.gl_set_attribute(pygame.GL_ALPHA_SIZE, 8)
+
+        # Create window
+        self.width = 1280
+        self.height = 720
+        self.screen = pygame.display.set_mode((self.width, self.height), DOUBLEBUF | OPENGL | RESIZABLE)
+        pygame.display.set_caption("Lupine Engine - Game Runner")
+
+        # Game bounds for UI scaling (from project settings or default)
+        self.game_bounds_width = 1920  # Base resolution width
+        self.game_bounds_height = 1080  # Base resolution height
+        self.load_game_bounds_from_project()
+
+        print("DEBUG: Pygame window initialized")
         self.project_path = project_path  # Store project path for texture loading
         self.scene = None
         self.scene_data = None
         self.camera = None
-        self.sprite_lists = {}
+        self.running = True
+        self.clock = pygame.time.Clock()
+
+        # Initialize rendering and audio systems
+        self.renderer = OpenGLRenderer(self.width, self.height)
+        self.audio_system = OpenALAudioSystem()
+
+        # Initialize texture cache for fallback rendering
         self.textures = {}
-        self.text_objects = {}  # Cache for text objects to improve performance
+
+        print("DEBUG: Renderer and audio systems initialized")
 
         # Physics system
         try:
@@ -242,49 +276,28 @@ class LupineGameWindow(arcade.Window):
         for name, func in builtins.items():
             self.lsc_runtime.global_scope.define(name, func)
 
-    def get_text_object(self, text, font_size=12, color=arcade.color.WHITE):
-        """Get or create a cached text object for better performance"""
-        key = f"{text}_{font_size}_{color}"
-        if key not in self.text_objects:
-            self.text_objects[key] = arcade.Text(
-                text=text,
-                x=0,
-                y=0,
-                color=color,
-                font_size=font_size
-            )
-        return self.text_objects[key]
-
-    def draw_cached_text(self, text, x, y, color=arcade.color.WHITE, font_size=12):
-        """Draw text using cached Text objects for better performance"""
+    def load_game_bounds_from_project(self):
+        """Load game bounds from project settings"""
         try:
-            # Create a cache key
-            cache_key = f"{text}_{font_size}_{color}"
+            project_file = Path(self.project_path) / "project.lupine"
+            if project_file.exists():
+                with open(project_file, 'r') as f:
+                    project_data = json.load(f)
 
-            # Check if we have a cached text object
-            if cache_key not in self.text_objects:
-                # Create new Text object with correct parameters for arcade 3.2.0
-                self.text_objects[cache_key] = arcade.Text(
-                    text=str(text),
-                    x=0,
-                    y=0,
-                    color=color,
-                    font_size=font_size
-                )
+                # Get display settings
+                display_settings = project_data.get("settings", {}).get("display", {})
+                self.game_bounds_width = display_settings.get("width", 1920)
+                self.game_bounds_height = display_settings.get("height", 1080)
 
-            # Update position and draw
-            text_obj = self.text_objects[cache_key]
-            text_obj.x = x
-            text_obj.y = y
-            text_obj.draw()
-
+                print(f"Loaded game bounds from project: {self.game_bounds_width}x{self.game_bounds_height}")
+            else:
+                print(f"Project file not found, using default game bounds: {self.game_bounds_width}x{self.game_bounds_height}")
         except Exception as e:
-            print(f"Error drawing text '{text}': {e}")
-            # Fallback to basic draw_text
-            try:
-                arcade.draw_text(str(text), float(x), float(y), arcade.color.WHITE, 12)
-            except Exception as e2:
-                print(f"Text drawing fallback also failed: {e2}")
+            print(f"Error loading project settings: {e}, using default game bounds")
+            self.game_bounds_width = 1920
+            self.game_bounds_height = 1080
+
+
 
     def load_scene(self):
         print("DEBUG: load_scene() called")
@@ -328,12 +341,10 @@ class LupineGameWindow(arcade.Window):
             }
 
     def setup_scene(self):
-        """Setup the scene with proper sprite lists and cameras"""
-        # Create sprite lists for different node types
-        self.sprite_lists = {
-            "sprites": arcade.SpriteList(),
-            "ui": arcade.SpriteList()
-        }
+        """Setup the scene with proper rendering and cameras"""
+        # Initialize sprite tracking (no longer using Arcade sprite lists)
+        self.sprites = []
+        self.ui_elements = []
 
         # Find cameras in the scene
         if self.scene:
@@ -352,27 +363,28 @@ class LupineGameWindow(arcade.Window):
         # Handle both node objects and scene data dictionaries
         if hasattr(node, 'type') and node.type == "Camera2D" and getattr(node, 'current', False):
             # Node object case
-            self.camera = arcade.Camera2D()
-            # Use world coordinates directly - no screen offset conversion
-            self.camera.position = (node.position[0], node.position[1])
+            self.camera = self.renderer.camera
+            # Use world coordinates directly
+            self.camera.set_position(node.position[0], node.position[1])
             if hasattr(node, 'zoom'):
-                self.camera.zoom = node.zoom[0] if isinstance(node.zoom, list) else node.zoom
+                zoom_val = node.zoom[0] if isinstance(node.zoom, list) else node.zoom
+                self.camera.set_zoom(zoom_val)
             print(f"Found active camera: {node.name} at {node.position}")
         elif isinstance(node, dict) and node.get("type") == "Camera2D" and node.get("current", False):
             # Scene data dictionary case
-            self.camera = arcade.Camera2D()
+            self.camera = self.renderer.camera
             position = node.get("position", [0.0, 0.0])
             zoom = node.get("zoom", [1.0, 1.0])
             offset = node.get("offset", [0.0, 0.0])
 
-            # Arcade Camera2D position is the center of the view in world coordinates
-            # Apply camera offset - no Y inversion needed as Arcade uses same coordinate system
+            # Apply camera offset
             camera_x = position[0] + offset[0]
             camera_y = position[1] + offset[1]
 
-            self.camera.position = (camera_x, camera_y)
-            self.camera.zoom = zoom[0] if isinstance(zoom, list) else zoom  # Use X zoom for uniform scaling
-            print(f"Found active camera: {node.get('name', 'Camera2D')} at world {position}, arcade {(camera_x, camera_y)} with zoom {zoom}")
+            self.camera.set_position(camera_x, camera_y)
+            zoom_val = zoom[0] if isinstance(zoom, list) else zoom  # Use X zoom for uniform scaling
+            self.camera.set_zoom(zoom_val)
+            print(f"Found active camera: {node.get('name', 'Camera2D')} at world {position}, final {(camera_x, camera_y)} with zoom {zoom}")
 
         # Recursively check children
         if hasattr(node, 'children'):
@@ -391,7 +403,7 @@ class LupineGameWindow(arcade.Window):
             if hasattr(node, 'script_path') and node.script_path:
                 print(f"Node {node.name} has script_path: {node.script_path}")
                 if self.lsc_runtime:
-                    script_file = Path(r"{project_path}") / node.script_path
+                    script_file = Path(self.project_path) / node.script_path
                     print(f"Looking for script file: {script_file}")
                     if script_file.exists():
                         print(f"Script file exists, loading...")
@@ -411,9 +423,15 @@ class LupineGameWindow(arcade.Window):
                             script_instance.scope.define('self', node)
                             script_instance.scope.define('node', node)
 
-                            # Expose common node properties directly to scope
-                            # Note: Don't expose position directly as it can cause reference issues
-                            # Scripts should use self.position or node.position instead
+                            # Expose common node properties directly to scope for easier access
+                            if hasattr(node, 'position'):
+                                script_instance.scope.define('position', node.position)
+                            if hasattr(node, 'rotation'):
+                                script_instance.scope.define('rotation', node.rotation)
+                            if hasattr(node, 'scale'):
+                                script_instance.scope.define('scale', node.scale)
+                            if hasattr(node, 'name'):
+                                script_instance.scope.define('name', node.name)
 
                             # Execute script
                             execute_lsc_script(script_content, self.lsc_runtime)
@@ -449,6 +467,15 @@ class LupineGameWindow(arcade.Window):
             # Setup sprite nodes (including AnimatedSprite)
             if isinstance(node, Sprite):
                 self.setup_sprite_node(node)
+
+            # Setup UI nodes for rendering
+            if hasattr(node, 'type'):
+                if node.type == "TextureRect":
+                    self.setup_texture_rect_node(node)
+                elif node.type == "Panel":
+                    self.setup_panel_node(node)
+                elif node.type in ["Button", "Label", "ColorRect"]:
+                    self.setup_ui_node(node)
 
             # Setup physics nodes
             if self.physics_enabled and self.physics_world:
@@ -492,536 +519,634 @@ class LupineGameWindow(arcade.Window):
             print(f"Error setting up physics for {node.name}: {e}")
 
     def setup_sprite_node(self, sprite_node):
-        """Setup a sprite node with proper texture loading"""
+        """Setup a sprite node with proper texture loading - simplified"""
         try:
+            print(f"Setting up sprite: {sprite_node.name}")
+
+            # Get texture path
             texture_path = getattr(sprite_node, 'texture', None)
+
+            # Get actual texture size if available
+            actual_width = 64  # Default
+            actual_height = 64  # Default
+
             if texture_path:
-                # Load texture if not already loaded
-                full_texture_path = Path(self.project_path) / texture_path
-                if full_texture_path.exists():
-                    texture_key = str(full_texture_path)
-                    if texture_key not in self.textures:
-                        self.textures[texture_key] = arcade.load_texture(str(full_texture_path))
-                        print(f"Loaded texture: {full_texture_path}")
+                # Try to get actual texture dimensions
+                try:
+                    from PIL import Image
+                    full_path = str(Path(self.project_path) / texture_path)
+                    if Path(full_path).exists():
+                        with Image.open(full_path) as img:
+                            actual_width, actual_height = img.size
+                        print(f"Loaded texture size: {actual_width}x{actual_height}")
+                except Exception as e:
+                    print(f"Could not get texture size: {e}")
 
-                    # Create arcade sprite with proper properties
-                    if texture_key in self.textures:
-                        arcade_sprite = arcade.Sprite()
-                        # Each sprite gets its own texture reference to avoid sharing issues
-                        arcade_sprite.texture = self.textures[texture_key]
+            # Create sprite data using actual texture size
+            sprite_data = {
+                'texture_path': texture_path,
+                'position': [sprite_node.position[0], sprite_node.position[1]],
+                'size': [actual_width, actual_height],
+                'rotation': getattr(sprite_node, 'rotation', 0),
+                'alpha': 1.0
+            }
 
-                        # Set position using world coordinates directly
-                        arcade_sprite.center_x = sprite_node.position[0]
-                        arcade_sprite.center_y = sprite_node.position[1]
+            # Apply scale if present
+            if hasattr(sprite_node, 'scale') and sprite_node.scale:
+                sprite_data['size'] = [actual_width * sprite_node.scale[0], actual_height * sprite_node.scale[1]]
 
-                        # Set rotation and scale
-                        arcade_sprite.angle = getattr(sprite_node, 'rotation', 0)
-                        scale = getattr(sprite_node, 'scale', [1.0, 1.0])
-                        arcade_sprite.scale = scale[0] if isinstance(scale, list) else scale
+            # Apply modulation (alpha)
+            if hasattr(sprite_node, 'modulate') and sprite_node.modulate and len(sprite_node.modulate) > 3:
+                sprite_data['alpha'] = sprite_node.modulate[3]
 
-                        # Set modulation/color if available
-                        modulate = getattr(sprite_node, 'modulate', [1.0, 1.0, 1.0, 1.0])
-                        if len(modulate) >= 3:
-                            # Convert to 0-255 range
-                            arcade_sprite.color = (
-                                int(modulate[0] * 255),
-                                int(modulate[1] * 255),
-                                int(modulate[2] * 255)
-                            )
+            # Store reference to original node for updates
+            sprite_data['lupine_node'] = sprite_node
+            sprite_node.sprite_data = sprite_data
 
-                        # Set alpha if available
-                        if len(modulate) >= 4:
-                            arcade_sprite.alpha = int(modulate[3] * 255)
-
-                        # Store reference to original node for updates
-                        arcade_sprite.lupine_node = sprite_node
-                        sprite_node.arcade_sprite = arcade_sprite
-
-                        self.sprite_lists["sprites"].append(arcade_sprite)
-                        print(f"Created arcade sprite for {sprite_node.name} with texture {texture_path} at world ({sprite_node.position[0]}, {sprite_node.position[1]})")
-                else:
-                    print(f"Texture file not found: {full_texture_path}")
-            else:
-                # Create a placeholder sprite without texture
-                arcade_sprite = arcade.Sprite()
-                arcade_sprite.center_x = sprite_node.position[0]
-                arcade_sprite.center_y = sprite_node.position[1]
-                # Create a unique placeholder texture for each sprite
-                placeholder_name = f"placeholder_{sprite_node.name}_{id(sprite_node)}"
-                arcade_sprite.texture = arcade.Texture.create_empty(placeholder_name, (64, 64))
-
-                # Store reference to original node for updates
-                arcade_sprite.lupine_node = sprite_node
-                sprite_node.arcade_sprite = arcade_sprite
-
-                self.sprite_lists["sprites"].append(arcade_sprite)
-                print(f"Created placeholder sprite for {sprite_node.name} (no texture)")
+            # Add to sprite list
+            self.sprites.append(sprite_data)
+            print(f"Added sprite {sprite_node.name} with size {sprite_data['size']} at position {sprite_data['position']}")
 
         except Exception as e:
             print(f"Error setting up sprite {sprite_node.name}: {e}")
             import traceback
             traceback.print_exc()
 
+    def setup_texture_rect_node(self, texture_rect_node):
+        """Setup a TextureRect node for UI rendering"""
+        try:
+            print(f"Setting up TextureRect: {texture_rect_node.name}")
+
+            # Get texture path
+            texture_path = getattr(texture_rect_node, 'texture', None)
+
+            # Get position and size from UI node properties
+            world_position = getattr(texture_rect_node, 'position', [0, 0])
+            rect_size = getattr(texture_rect_node, 'rect_size', [100, 100])
+
+            # Get anchor properties
+            anchor_left = getattr(texture_rect_node, 'anchor_left', 0.0)
+            anchor_top = getattr(texture_rect_node, 'anchor_top', 0.0)
+            anchor_right = getattr(texture_rect_node, 'anchor_right', 0.0)
+            anchor_bottom = getattr(texture_rect_node, 'anchor_bottom', 0.0)
+
+            # Get margin properties
+            margin_left = getattr(texture_rect_node, 'margin_left', 0.0)
+            margin_top = getattr(texture_rect_node, 'margin_top', 0.0)
+            margin_right = getattr(texture_rect_node, 'margin_right', 0.0)
+            margin_bottom = getattr(texture_rect_node, 'margin_bottom', 0.0)
+
+            # Special handling for full-screen background textures
+            # If the texture rect is sized to match the game bounds and positioned at center,
+            # treat it as a background that should fill the entire screen
+            is_background = (
+                rect_size[0] >= self.game_bounds_width * 0.9 and  # Close to full width
+                rect_size[1] >= self.game_bounds_height * 0.9 and  # Close to full height
+                abs(world_position[0]) < 50 and  # Close to center X
+                abs(world_position[1]) < 50 and  # Close to center Y
+                anchor_left == 0.0 and anchor_top == 0.0 and
+                anchor_right == 0.0 and anchor_bottom == 0.0  # Default anchors
+            )
+
+            if is_background:
+                # For background textures, position at (0,0) and use full game bounds size
+                ui_position = [0, 0]
+                actual_width = self.game_bounds_width
+                actual_height = self.game_bounds_height
+                print(f"Detected background texture {texture_rect_node.name}, using full screen: {actual_width}x{actual_height}")
+            else:
+                # Calculate final position using anchors and margins
+                ui_position = self.calculate_ui_position_with_anchors(
+                    world_position, rect_size,
+                    anchor_left, anchor_top, anchor_right, anchor_bottom,
+                    margin_left, margin_top, margin_right, margin_bottom
+                )
+
+                # Get actual texture size if available
+                actual_width = rect_size[0]
+                actual_height = rect_size[1]
+
+            if texture_path and not is_background:
+                # Try to get actual texture dimensions (only for non-background textures)
+                try:
+                    from PIL import Image
+                    full_path = str(Path(self.project_path) / texture_path)
+                    if Path(full_path).exists():
+                        with Image.open(full_path) as img:
+                            tex_width, tex_height = img.size
+                        print(f"Loaded texture size: {tex_width}x{tex_height}")
+
+                        # For TextureRect, use the rect_size unless it's default
+                        if rect_size == [100, 100]:  # Default size
+                            actual_width, actual_height = tex_width, tex_height
+                except Exception as e:
+                    print(f"Could not get texture size: {e}")
+
+            # Create UI element data for TextureRect
+            ui_element_data = {
+                'type': 'TextureRect',
+                'texture_path': texture_path,
+                'position': [ui_position[0], ui_position[1]],
+                'size': [actual_width, actual_height],
+                'stretch_mode': getattr(texture_rect_node, 'stretch_mode', 'stretch'),
+                'flip_h': getattr(texture_rect_node, 'flip_h', False),
+                'flip_v': getattr(texture_rect_node, 'flip_v', False),
+                'alpha': 1.0
+            }
+
+            # Store reference to original node for updates
+            ui_element_data['lupine_node'] = texture_rect_node
+            texture_rect_node.ui_element_data = ui_element_data
+
+            # Add to UI elements list
+            self.ui_elements.append(ui_element_data)
+            print(f"Added TextureRect {texture_rect_node.name} with size {ui_element_data['size']} at position {ui_element_data['position']}")
+
+        except Exception as e:
+            print(f"Error setting up TextureRect {texture_rect_node.name}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def setup_panel_node(self, panel_node):
+        """Setup a Panel node for UI rendering"""
+        try:
+            print(f"Setting up Panel: {panel_node.name}")
+
+            # Get panel properties
+            world_position = getattr(panel_node, 'position', [0, 0])
+            rect_size = getattr(panel_node, 'rect_size', [100, 100])
+
+            # Get anchor properties
+            anchor_left = getattr(panel_node, 'anchor_left', 0.0)
+            anchor_top = getattr(panel_node, 'anchor_top', 0.0)
+            anchor_right = getattr(panel_node, 'anchor_right', 0.0)
+            anchor_bottom = getattr(panel_node, 'anchor_bottom', 0.0)
+
+            # Get margin properties
+            margin_left = getattr(panel_node, 'margin_left', 0.0)
+            margin_top = getattr(panel_node, 'margin_top', 0.0)
+            margin_right = getattr(panel_node, 'margin_right', 0.0)
+            margin_bottom = getattr(panel_node, 'margin_bottom', 0.0)
+
+            # Calculate final position using anchors and margins
+            ui_position = self.calculate_ui_position_with_anchors(
+                world_position, rect_size,
+                anchor_left, anchor_top, anchor_right, anchor_bottom,
+                margin_left, margin_top, margin_right, margin_bottom
+            )
+
+            panel_color = getattr(panel_node, 'panel_color', [0.2, 0.2, 0.2, 1.0])
+            corner_radius = getattr(panel_node, 'corner_radius', 0.0)
+            border_width = getattr(panel_node, 'border_width', 0.0)
+            border_color = getattr(panel_node, 'border_color', [0.0, 0.0, 0.0, 1.0])
+
+            # Create UI element data for Panel
+            ui_element_data = {
+                'type': 'Panel',
+                'position': [ui_position[0], ui_position[1]],
+                'size': [rect_size[0], rect_size[1]],
+                'panel_color': panel_color,
+                'corner_radius': corner_radius,
+                'border_width': border_width,
+                'border_color': border_color,
+                'alpha': panel_color[3] if len(panel_color) > 3 else 1.0
+            }
+
+            # Store reference to original node for updates
+            ui_element_data['lupine_node'] = panel_node
+            panel_node.ui_element_data = ui_element_data
+
+            # Add to UI elements list
+            self.ui_elements.append(ui_element_data)
+            print(f"Added Panel {panel_node.name} with size {ui_element_data['size']} at position {ui_element_data['position']}")
+
+        except Exception as e:
+            print(f"Error setting up Panel {panel_node.name}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def setup_ui_node(self, ui_node):
+        """Setup a generic UI node for rendering"""
+        try:
+            print(f"Setting up UI node: {ui_node.name} ({ui_node.type})")
+
+            # Get common UI properties
+            world_position = getattr(ui_node, 'position', [0, 0])
+            rect_size = getattr(ui_node, 'rect_size', [100, 100])
+
+            # Get anchor properties
+            anchor_left = getattr(ui_node, 'anchor_left', 0.0)
+            anchor_top = getattr(ui_node, 'anchor_top', 0.0)
+            anchor_right = getattr(ui_node, 'anchor_right', 0.0)
+            anchor_bottom = getattr(ui_node, 'anchor_bottom', 0.0)
+
+            # Get margin properties
+            margin_left = getattr(ui_node, 'margin_left', 0.0)
+            margin_top = getattr(ui_node, 'margin_top', 0.0)
+            margin_right = getattr(ui_node, 'margin_right', 0.0)
+            margin_bottom = getattr(ui_node, 'margin_bottom', 0.0)
+
+            # Calculate final position using anchors and margins
+            ui_position = self.calculate_ui_position_with_anchors(
+                world_position, rect_size,
+                anchor_left, anchor_top, anchor_right, anchor_bottom,
+                margin_left, margin_top, margin_right, margin_bottom
+            )
+
+            # Create UI element data
+            ui_element_data = {
+                'type': ui_node.type,
+                'position': [ui_position[0], ui_position[1]],
+                'size': [rect_size[0], rect_size[1]],
+                'alpha': 1.0
+            }
+
+            # Add type-specific properties
+            if ui_node.type == "Button":
+                ui_element_data.update({
+                    'text': getattr(ui_node, 'text', 'Button'),
+                    'button_color': getattr(ui_node, 'button_color', [0.4, 0.4, 0.4, 1.0]),
+                    'text_color': getattr(ui_node, 'text_color', [1.0, 1.0, 1.0, 1.0]),
+                    'font_size': getattr(ui_node, 'font_size', 16)
+                })
+            elif ui_node.type == "Label":
+                ui_element_data.update({
+                    'text': getattr(ui_node, 'text', 'Label'),
+                    'font_size': getattr(ui_node, 'font_size', 14),
+                    'text_color': getattr(ui_node, 'text_color', [1.0, 1.0, 1.0, 1.0])
+                })
+            elif ui_node.type == "ColorRect":
+                ui_element_data.update({
+                    'color': getattr(ui_node, 'color', [1.0, 1.0, 1.0, 1.0])
+                })
+
+            # Store reference to original node for updates
+            ui_element_data['lupine_node'] = ui_node
+            ui_node.ui_element_data = ui_element_data
+
+            # Add to UI elements list
+            self.ui_elements.append(ui_element_data)
+            print(f"Added {ui_node.type} {ui_node.name} with size {ui_element_data['size']} at position {ui_element_data['position']}")
+
+        except Exception as e:
+            print(f"Error setting up UI node {ui_node.name}: {e}")
+            import traceback
+            traceback.print_exc()
+
     def setup(self):
-        arcade.set_background_color(arcade.color.DARK_GRAY)
-
-        # Set proper OpenGL blend mode to avoid white film
-        self.ctx.enable(self.ctx.BLEND)
-        self.ctx.blend_func = self.ctx.SRC_ALPHA, self.ctx.ONE_MINUS_SRC_ALPHA
-
-        # Initialize camera viewport if camera exists
-        if self.camera:
-            # Use Arcade's match_window method for proper camera setup
-            self.camera.match_window(viewport=True, projection=True, scissor=True, position=False)
-            print(f"Camera initialized with viewport: {self.camera.viewport}, position: {self.camera.position}")
-
+        """Initialize the game"""
         print("Game setup complete")
         print("ESC to exit")
 
-    def on_draw(self):
-        self.clear()
+    def run(self):
+        """Main game loop"""
+        print("Starting game loop...")
 
-        # Set proper blend mode for rendering
-        self.ctx.enable(self.ctx.BLEND)
-        self.ctx.blend_func = self.ctx.SRC_ALPHA, self.ctx.ONE_MINUS_SRC_ALPHA
+        while self.running:
+            # Calculate delta time
+            delta_time = self.clock.tick(60) / 1000.0  # 60 FPS, convert to seconds
+
+            # Handle events
+            self.handle_events()
+
+            # Update game logic
+            self.update(delta_time)
+
+            # Render
+            self.draw()
+
+            # Swap buffers
+            pygame.display.flip()
+
+        # Cleanup
+        self.cleanup()
+        pygame.quit()
+
+    def handle_events(self):
+        """Handle Pygame events"""
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                self.running = False
+            elif event.type == KEYDOWN:
+                self.on_key_press(event.key, pygame.key.get_mods())
+            elif event.type == KEYUP:
+                self.on_key_release(event.key, pygame.key.get_mods())
+            elif event.type == MOUSEBUTTONDOWN:
+                self.on_mouse_press(event.pos[0], event.pos[1], event.button, 0)
+            elif event.type == MOUSEBUTTONUP:
+                self.on_mouse_release(event.pos[0], event.pos[1], event.button, 0)
+            elif event.type == MOUSEMOTION:
+                self.on_mouse_motion(event.pos[0], event.pos[1], event.rel[0], event.rel[1])
+            elif event.type == VIDEORESIZE:
+                self.on_resize(event.w, event.h)
+
+    def on_mouse_press(self, x, y, button, modifiers):
+        """Handle mouse button press"""
+        self.mouse_buttons.add(button)
+        self.mouse_position = (x, y)
+
+        # Update input manager
+        if self.input_manager:
+            self.input_manager.update_input_state(
+                self.pressed_keys, self.mouse_buttons,
+                self.mouse_position, self.current_modifiers
+            )
+
+        # Forward to LSC runtime
+        if self.lsc_runtime and self.scene:
+            for root_node in self.scene.root_nodes:
+                self.handle_node_input(root_node, 'on_mouse_press', button, pos)
+
+    def on_mouse_release(self, x, y, button, modifiers):
+        """Handle mouse button release"""
+        self.mouse_buttons.discard(button)
+        self.mouse_position = (x, y)
+
+        # Update input manager
+        if self.input_manager:
+            self.input_manager.update_input_state(
+                self.pressed_keys, self.mouse_buttons,
+                self.mouse_position, self.current_modifiers
+            )
+
+    def on_mouse_motion(self, x, y, dx, dy):
+        """Handle mouse motion"""
+        self.mouse_position = (x, y)
+
+    def on_resize(self, width, height):
+        """Handle window resize"""
+        self.width = width
+        self.height = height
+        self.renderer.resize(width, height)
+        print(f"Window resized to {width}x{height}")
+
+    def get_ui_scale_factors(self):
+        """Get UI scaling factors based on current window size vs game bounds"""
+        scale_x = self.width / self.game_bounds_width
+        scale_y = self.height / self.game_bounds_height
+        return scale_x, scale_y
+
+    def scale_ui_position(self, position):
+        """Scale UI position from game bounds to current window size"""
+        scale_x, scale_y = self.get_ui_scale_factors()
+        return [position[0] * scale_x, position[1] * scale_y]
+
+    def scale_ui_size(self, size):
+        """Scale UI size from game bounds to current window size"""
+        scale_x, scale_y = self.get_ui_scale_factors()
+        return [size[0] * scale_x, size[1] * scale_y]
+
+    def world_to_ui_coordinates(self, world_position):
+        """Convert world coordinates to UI coordinates"""
+        # For UI nodes, the scene view position should directly translate to UI coordinates
+        # The scene view shows UI elements as they should appear in the game bounds
+        # So we need to map the scene view coordinate system to the UI coordinate system
+
+        # Scene view coordinates: (0,0) = center, Y increases upward
+        # UI coordinates: (0,0) = top-left, Y increases downward
+        # Game bounds represent the UI coordinate space
+
+        # Convert from scene view space to UI space
+        ui_x = world_position[0] + self.game_bounds_width / 2
+        ui_y = self.game_bounds_height / 2 - world_position[1]
+
+        return [ui_x, ui_y]
+
+    def calculate_ui_position_with_anchors(self, world_position, rect_size,
+                                         anchor_left, anchor_top, anchor_right, anchor_bottom,
+                                         margin_left, margin_top, margin_right, margin_bottom):
+        """Calculate UI position using anchors and margins like Godot"""
+        # Parent size is the game bounds (viewport size)
+        parent_width = self.game_bounds_width
+        parent_height = self.game_bounds_height
+
+        # Calculate anchor positions
+        anchor_left_pos = anchor_left * parent_width
+        anchor_top_pos = anchor_top * parent_height
+        anchor_right_pos = anchor_right * parent_width
+        anchor_bottom_pos = anchor_bottom * parent_height
+
+        # If anchors are the same (normal positioning), use position + margins
+        if anchor_left == anchor_right and anchor_top == anchor_bottom:
+            # For default anchors (0,0,0,0), directly convert scene position to UI coordinates
+            if anchor_left == 0.0 and anchor_top == 0.0:
+                # Direct translation from scene view to UI coordinates
+                ui_pos = self.world_to_ui_coordinates(world_position)
+                final_x = ui_pos[0] + margin_left
+                final_y = ui_pos[1] + margin_top
+            else:
+                # For non-zero anchors, position relative to anchor point
+                ui_pos = self.world_to_ui_coordinates(world_position)
+                final_x = anchor_left_pos + ui_pos[0] + margin_left
+                final_y = anchor_top_pos + ui_pos[1] + margin_top
+        else:
+            # Stretched anchors - calculate based on anchor rectangle
+            final_x = anchor_left_pos + margin_left
+            final_y = anchor_top_pos + margin_top
+
+            # For stretched elements, size is determined by anchor rectangle
+            if anchor_left != anchor_right:
+                rect_size[0] = anchor_right_pos - anchor_left_pos - margin_left - margin_right
+            if anchor_top != anchor_bottom:
+                rect_size[1] = anchor_bottom_pos - anchor_top_pos - margin_top - margin_bottom
+
+        return [final_x, final_y]
+
+    def cleanup(self):
+        """Clean up resources"""
+        if self.renderer:
+            self.renderer.cleanup()
+        if self.audio_system:
+            self.audio_system.cleanup()
+
+    def draw(self):
+        """Main draw method - simplified"""
+        # Clear the screen
+        self.renderer.clear()
 
         # Use camera if available
         if self.camera:
-            self.camera.use()
-            # Debug: Print camera info occasionally
-            if hasattr(self, '_debug_counter'):
-                self._debug_counter += 1
-            else:
-                self._debug_counter = 0
+            self.renderer.begin_camera()
 
-            if self._debug_counter % 60 == 0:  # Print every 60 frames (1 second at 60fps)
-                print(f"Camera position: {self.camera.position}, viewport: {self.camera.viewport}")
+        # Draw sprites directly - no complex fallback systems
+        for sprite_data in self.sprites:
+            self.draw_sprite_data(sprite_data)
 
-        # Draw sprite lists (proper game objects with textures)
-        for sprite_list in self.sprite_lists.values():
-            sprite_list.draw()
-
-        # Draw scene nodes (fallback for basic rendering with texture support)
-        if self.scene_data:
-            nodes = self.scene_data.get("nodes", [])
-            for node in nodes:
-                self.draw_node_fallback(node)
-
-        # Draw UI overlay (always drawn without camera)
+        # End camera rendering
         if self.camera:
-            # Reset to default camera for UI
-            if hasattr(self.ctx, 'default_camera'):
-                self.ctx.default_camera.use()
-            elif hasattr(self.ctx, '_default_camera'):
-                self.ctx._default_camera.use()
-            else:
-                # Fallback - create a new camera for UI
-                ui_camera = arcade.Camera2D()
-                ui_camera.match_window()
-                ui_camera.use()
+            self.renderer.end_camera()
 
+        # Draw minimal UI overlay
         self.draw_ui()
 
-    def calculate_ui_position(self, position, rect_size=None):
-        """Calculate UI position relative to game viewport with support for percentage positioning"""
-        game_area = getattr(self, 'game_area', {"width": self.width, "height": self.height, "offset_x": 0, "offset_y": 0})
+    def draw_sprite_data(self, sprite_data):
+        """Draw a sprite using our renderer"""
+        try:
+            texture_path = sprite_data.get('texture_path')
+            position = sprite_data.get('position', [0, 0])
+            size = sprite_data.get('size', [64, 64])
+            rotation = sprite_data.get('rotation', 0)
+            alpha = sprite_data.get('alpha', 1.0)
 
-        # Support for percentage-based positioning (0.0-1.0 range)
-        # If position values are between 0 and 1, treat as percentages
-        x_pos = position[0]
-        y_pos = position[1]
-
-        # Convert percentage to absolute position
-        if 0.0 <= x_pos <= 1.0:
-            x_pos = x_pos * game_area['width']
-        if 0.0 <= y_pos <= 1.0:
-            y_pos = y_pos * game_area['height']
-
-        # Calculate final screen position
-        ui_x = game_area['offset_x'] + x_pos
-        ui_y = game_area['offset_y'] + y_pos
-
-        return ui_x, ui_y
-
-    def calculate_ui_size(self, rect_size, base_size=None):
-        """Calculate UI size with support for percentage-based sizing"""
-        game_area = getattr(self, 'game_area', {"width": self.width, "height": self.height, "offset_x": 0, "offset_y": 0})
-
-        width = rect_size[0]
-        height = rect_size[1]
-
-        # Support percentage-based sizing (0.0-1.0 range)
-        if 0.0 <= width <= 1.0:
-            width = width * game_area['width']
-        if 0.0 <= height <= 1.0:
-            height = height * game_area['height']
-
-        return width, height
-
-    def draw_node_fallback(self, node_data):
-        """Fallback node rendering with proper texture support"""
-        position = node_data.get("position", [0, 0])
-        node_type = node_data.get("type", "Node")
-
-        # Use world coordinates directly
-        x = position[0]
-        y = position[1]
-
-        if node_type == "Node2D":
-            # Node2D nodes are invisible containers - no rendering needed
-            pass
-        elif node_type == "Sprite":
-            self.draw_sprite_fallback(node_data, x, y)
-        elif node_type == "AnimatedSprite":
-            self.draw_animated_sprite_fallback(node_data, x, y)
-        elif node_type == "Camera2D":
-            # Camera2D nodes are invisible in game - no rendering needed
-            pass
-        elif node_type == "Area2D":
-            # Area2D nodes are invisible in game - no rendering needed
-            pass
-        elif node_type == "CollisionShape2D":
-            self.draw_collision_shape_fallback(node_data, x, y)
-        elif node_type == "CollisionPolygon2D":
-            self.draw_collision_polygon_fallback(node_data, x, y)
-        elif node_type == "RigidBody2D" or node_type == "StaticBody2D" or node_type == "KinematicBody2D":
-            # Physics bodies are invisible containers - no rendering needed
-            pass
-        elif node_type == "Control":
-            self.draw_control_fallback(node_data, x, y)
-        elif node_type == "Panel":
-            self.draw_panel_fallback(node_data, x, y)
-        elif node_type == "Label":
-            self.draw_label_fallback(node_data, x, y)
-        elif node_type == "Button":
-            self.draw_button_fallback(node_data, x, y)
-        elif node_type == "CanvasLayer":
-            self.draw_canvas_layer_fallback(node_data, x, y)
-
-        # Draw children
-        for child in node_data.get("children", []):
-            self.draw_node_fallback(child)
-
-    def draw_sprite_fallback(self, node_data, x, y):
-        """Draw sprite with actual texture if available"""
-        texture_path = node_data.get("texture", "")
-        size = node_data.get("size", [64, 64])
-
-        # Try to load and draw the actual texture
-        if texture_path:
-            try:
-                # Load texture if not already loaded
-                full_path = Path(r"{project_path}") / texture_path
-                if full_path.exists():
-                    if str(full_path) not in self.textures:
-                        self.textures[str(full_path)] = arcade.load_texture(str(full_path))
-                        print(f"Loaded fallback texture: {full_path}")
-
-                    # Draw the texture
-                    if str(full_path) in self.textures:
-                        texture = self.textures[str(full_path)]
-
-                        # Get actual texture size
-                        tex_width = texture.width
-                        tex_height = texture.height
-
-                        # Use texture size or specified size
-                        draw_width = size[0] if size != [64, 64] else tex_width
-                        draw_height = size[1] if size != [64, 64] else tex_height
-
-                        # Draw texture using arcade's correct function
-                        try:
-                            # Create rectangle for texture drawing (centered on x, y)
-                            rect = arcade.LBWH(x - draw_width//2, y - draw_height//2, draw_width, draw_height)
-                            # Use the correct arcade.draw_texture_rect function
-                            arcade.draw_texture_rect(texture, rect)
-                        except Exception as e:
-                            print(f"Error drawing texture: {e}")
-                            # Fallback - draw a colored rectangle instead
-                            arcade.draw_lbwh_rectangle_filled(x - draw_width//2, y - draw_height//2, draw_width, draw_height, arcade.color.BLUE)
-                        return
-
-            except Exception as e:
-                print(f"Error loading texture {texture_path}: {e}")
-
-        # Fallback to colored rectangle if no texture
-        arcade.draw_lbwh_rectangle_filled(x - size[0]//2, y - size[1]//2, size[0], size[1], arcade.color.GREEN)
-
-    def draw_animated_sprite_fallback(self, node_data, x, y):
-        """Draw AnimatedSprite with animation indicators"""
-        # First draw as a regular sprite
-        self.draw_sprite_fallback(node_data, x, y)
-
-        # Add animation indicators
-        playing = node_data.get("playing", False)
-        anim_name = node_data.get("animation", "default")
-
-        # Draw animation status indicator
-        if playing:
-            # Draw play triangle (green)
-            arcade.draw_triangle_filled(x - 40, y - 8, x - 40, y + 8, x - 32, y, arcade.color.GREEN)
-        else:
-            # Draw pause bars (yellow)
-            arcade.draw_lbwh_rectangle_filled(x - 42, y - 8, 3, 16, arcade.color.YELLOW)
-            arcade.draw_lbwh_rectangle_filled(x - 37, y - 8, 3, 16, arcade.color.YELLOW)
-
-        # Draw animation name (simplified)
-        self.draw_cached_text(f"Anim: {anim_name}", x - 60, y - 20, arcade.color.CYAN, 10)
-
-    def draw_control_fallback(self, node_data, x, y):
-        """Draw Control node (base UI node)"""
-        # Get control properties - Controls use position (UI coordinate system)
-        position = node_data.get("position", [0.0, 0.0])
-        rect_size = node_data.get("rect_size", [100.0, 100.0])
-
-        # Calculate UI position and size with percentage support
-        ui_x, ui_y = self.calculate_ui_position(position, rect_size)
-        ui_width, ui_height = self.calculate_ui_size(rect_size)
-
-        # Control nodes are typically invisible containers - no rendering needed
-        # But we store the calculated position for child elements if needed
-
-    def draw_panel_fallback(self, node_data, x, y):
-        """Draw Panel node"""
-        # Get panel properties - Panels use position (UI coordinate system)
-        position = node_data.get("position", [0.0, 0.0])
-        rect_size = node_data.get("rect_size", [100.0, 100.0])
-        panel_color = node_data.get("panel_color", [0.2, 0.2, 0.2, 1.0])
-        border_width = node_data.get("border_width", 0.0)
-        border_color = node_data.get("border_color", [0.0, 0.0, 0.0, 1.0])
-
-        # Calculate UI position and size with percentage support
-        ui_x, ui_y = self.calculate_ui_position(position, rect_size)
-        ui_width, ui_height = self.calculate_ui_size(rect_size)
-
-        # Convert colors to arcade format (0-255)
-        panel_arcade_color = (
-            int(panel_color[0] * 255),
-            int(panel_color[1] * 255),
-            int(panel_color[2] * 255),
-            int(panel_color[3] * 255)
-        )
-
-        # Draw panel background
-        arcade.draw_lbwh_rectangle_filled(
-            ui_x, ui_y, ui_width, ui_height,
-            panel_arcade_color
-        )
-
-        # Draw border if enabled
-        if border_width > 0:
-            border_arcade_color = (
-                int(border_color[0] * 255),
-                int(border_color[1] * 255),
-                int(border_color[2] * 255)
-            )
-            arcade.draw_lbwh_rectangle_outline(
-                ui_x, ui_y, ui_width, ui_height,
-                border_arcade_color, int(border_width)
-            )
+            if texture_path:
+                full_path = str(Path(self.project_path) / texture_path)
+                self.renderer.draw_sprite(
+                    full_path, position[0], position[1],
+                    size[0], size[1], rotation, alpha
+                )
+            else:
+                # Draw placeholder rectangle
+                color = sprite_data.get('color', (0.0, 1.0, 0.0, alpha))
+                self.renderer.draw_rectangle(
+                    position[0], position[1], size[0], size[1],
+                    color, filled=True
+                )
+        except Exception as e:
+            print(f"Error drawing sprite: {e}")
 
 
 
-    def draw_label_fallback(self, node_data, x, y):
-        """Draw Label node"""
-        # Get label properties - Labels can use either position or rect_position
-        position = node_data.get("position", node_data.get("rect_position", [0.0, 0.0]))
-        rect_size = node_data.get("rect_size", [100.0, 50.0])
-        text = node_data.get("text", "Label")
-        font_color = node_data.get("font_color", [1.0, 1.0, 1.0, 1.0])
-        h_align = node_data.get("h_align", "Left")
-        v_align = node_data.get("v_align", "Top")
 
-        # Calculate UI position and size with percentage support
-        ui_x, ui_y = self.calculate_ui_position(position, rect_size)
-        ui_width, ui_height = self.calculate_ui_size(rect_size)
 
-        # Convert font color to arcade format
-        font_arcade_color = (
-            int(font_color[0] * 255),
-            int(font_color[1] * 255),
-            int(font_color[2] * 255)
-        )
 
-        # Calculate text position based on alignment within the rect (centered on position)
-        text_x = ui_x - ui_width/2 + 5  # Default left alignment with padding
-        if h_align == "Center":
-            # Center text within the rect
-            text_x = ui_x
-        elif h_align == "Right":
-            # Right align text within the rect
-            text_x = ui_x + ui_width/2 - 5
 
-        text_y = ui_y + ui_height/2 - 15  # Default top alignment (arcade uses bottom-left origin)
-        if v_align == "Center":
-            # Center text vertically within the rect
-            text_y = ui_y
-        elif v_align == "Bottom":
-            # Bottom align text within the rect
-            text_y = ui_y - ui_height/2 + 15
 
-        # Draw the actual text with proper font size and font
-        actual_font_size = node_data.get("font_size", 14)
-        font_name = node_data.get("font", "Arial")  # Default to Arial
 
-        # Support percentage-based font sizing (relative to game height)
-        if 0.0 <= actual_font_size <= 1.0:
-            game_area = getattr(self, 'game_area', {"width": self.width, "height": self.height, "offset_x": 0, "offset_y": 0})
-            actual_font_size = actual_font_size * game_area['height']
 
-        # For now, use the font size - font family support would require more complex text rendering
-        self.draw_cached_text(text, text_x, text_y, font_arcade_color, actual_font_size)
 
-    def draw_button_fallback(self, node_data, x, y):
-        """Draw Button node with interactive states"""
-        # Get button properties - Buttons use position (UI coordinate system)
-        position = node_data.get("position", [0.0, 0.0])
-        rect_size = node_data.get("rect_size", [100.0, 30.0])
-        text = node_data.get("text", "Button")
-        font_color = node_data.get("font_color", [1.0, 1.0, 1.0, 1.0])
 
-        # Get button state colors
-        normal_color = node_data.get("normal_color", [0.3, 0.3, 0.3, 1.0])
-        hover_color = node_data.get("hover_color", [0.4, 0.4, 0.4, 1.0])
-        pressed_color = node_data.get("pressed_color", [0.2, 0.2, 0.2, 1.0])
-        disabled_color = node_data.get("disabled_color", [0.15, 0.15, 0.15, 1.0])
-
-        # Get button state
-        disabled = node_data.get("disabled", False)
-        toggle_mode = node_data.get("toggle_mode", False)
-        pressed = node_data.get("pressed", False)
-        is_hovered = node_data.get("_is_hovered", False)
-        is_mouse_pressed = node_data.get("_is_mouse_pressed", False)
-
-        # Get style properties
-        border_width = node_data.get("border_width", 1.0)
-        border_color = node_data.get("border_color", [0.5, 0.5, 0.5, 1.0])
-        corner_radius = node_data.get("corner_radius", 4.0)
-
-        # Calculate UI position and size with percentage support
-        ui_x, ui_y = self.calculate_ui_position(position, rect_size)
-        ui_width, ui_height = self.calculate_ui_size(rect_size)
-
-        # Determine current button color based on state
-        if disabled:
-            current_color = disabled_color
-        elif is_mouse_pressed or (toggle_mode and pressed):
-            current_color = pressed_color
-        elif is_hovered:
-            current_color = hover_color
-        else:
-            current_color = normal_color
-
-        # Convert colors to arcade format (0-255)
-        button_arcade_color = (
-            int(current_color[0] * 255),
-            int(current_color[1] * 255),
-            int(current_color[2] * 255),
-            int(current_color[3] * 255)
-        )
-
-        font_arcade_color = (
-            int(font_color[0] * 255),
-            int(font_color[1] * 255),
-            int(font_color[2] * 255)
-        )
-
-        # Draw button background
-        arcade.draw_lbwh_rectangle_filled(
-            ui_x, ui_y, ui_width, ui_height,
-            button_arcade_color
-        )
-
-        # Draw border if enabled
-        if border_width > 0:
-            border_arcade_color = (
-                int(border_color[0] * 255),
-                int(border_color[1] * 255),
-                int(border_color[2] * 255)
-            )
-            arcade.draw_lbwh_rectangle_outline(
-                ui_x, ui_y, ui_width, ui_height,
-                border_arcade_color, int(border_width)
-            )
-
-        # Draw button text (centered)
-        text_x = ui_x + ui_width / 2
-        text_y = ui_y + ui_height / 2
-
-        # Handle font size
-        actual_font_size = node_data.get("font_size", 14)
-
-        # Support percentage-based font sizing (relative to game height)
-        if 0.0 <= actual_font_size <= 1.0:
-            game_area = getattr(self, 'game_area', {"width": self.width, "height": self.height, "offset_x": 0, "offset_y": 0})
-            actual_font_size = actual_font_size * game_area['height']
-
-        # Draw the button text centered
-        self.draw_cached_text(text, text_x, text_y, font_arcade_color, actual_font_size)
-
-    def draw_canvas_layer_fallback(self, node_data, x, y):
-        """Draw CanvasLayer node"""
-        # Get canvas layer properties
-        layer_index = node_data.get("layer", 1)
-        offset = node_data.get("offset", [0.0, 0.0])
-        rotation = node_data.get("rotation", 0.0)
-        scale = node_data.get("scale", [1.0, 1.0])
-        follow_viewport_enable = node_data.get("follow_viewport_enable", False)
-
-        # Adjust position for layer coordinates
-        layer_x = x + offset[0]
-        layer_y = y + offset[1]
-
-        # CanvasLayer nodes are invisible containers for UI layering - no rendering needed
 
     def draw_ui(self):
-        """Draw UI overlay - minimal for clean game view"""
-        # Only show essential controls
-        self.draw_cached_text("ESC: Exit", 10, 10, arcade.color.WHITE, 12)
+        """Draw UI elements including TextureRect"""
+        # Draw TextureRect and other UI elements
+        for ui_element in self.ui_elements:
+            self.draw_ui_element(ui_element)
+
+    def draw_ui_element(self, ui_element):
+        """Draw a UI element using our renderer with proper scaling"""
+        try:
+            element_type = ui_element.get('type', 'Unknown')
+
+            # Get base position and size
+            base_position = ui_element.get('position', [0, 0])
+            base_size = ui_element.get('size', [100, 100])
+
+            # Apply UI scaling
+            scaled_position = self.scale_ui_position(base_position)
+            scaled_size = self.scale_ui_size(base_size)
+
+            if element_type == 'TextureRect':
+                texture_path = ui_element.get('texture_path')
+                alpha = ui_element.get('alpha', 1.0)
+
+                if texture_path:
+                    full_path = str(Path(self.project_path) / texture_path)
+                    # Use UI coordinate system (no camera transformation)
+                    self.renderer.draw_ui_sprite(
+                        full_path, scaled_position[0], scaled_position[1],
+                        scaled_size[0], scaled_size[1], 0.0, alpha
+                    )
+                else:
+                    # Draw placeholder rectangle for TextureRect without texture
+                    color = (0.8, 0.8, 0.8, alpha)
+                    self.renderer.draw_ui_rectangle(
+                        scaled_position[0], scaled_position[1], scaled_size[0], scaled_size[1],
+                        color, filled=True
+                    )
+
+            elif element_type == 'Panel':
+                panel_color = ui_element.get('panel_color', [0.2, 0.2, 0.2, 1.0])
+                border_width = ui_element.get('border_width', 0.0)
+                border_color = ui_element.get('border_color', [0.0, 0.0, 0.0, 1.0])
+
+                # Draw panel background
+                self.renderer.draw_ui_rectangle(
+                    scaled_position[0], scaled_position[1], scaled_size[0], scaled_size[1],
+                    tuple(panel_color), filled=True
+                )
+
+                # Draw border if specified
+                if border_width > 0:
+                    scaled_border_width = border_width * min(self.get_ui_scale_factors())
+                    # Draw border as outline
+                    self.renderer.draw_ui_rectangle(
+                        scaled_position[0], scaled_position[1], scaled_size[0], scaled_size[1],
+                        tuple(border_color), filled=False
+                    )
+
+            elif element_type == 'Button':
+                button_color = ui_element.get('button_color', [0.4, 0.4, 0.4, 1.0])
+                text = ui_element.get('text', 'Button')
+                text_color = ui_element.get('text_color', [1.0, 1.0, 1.0, 1.0])
+
+                # Draw button background
+                self.renderer.draw_ui_rectangle(
+                    scaled_position[0], scaled_position[1], scaled_size[0], scaled_size[1],
+                    tuple(button_color), filled=True
+                )
+
+                # Draw button text
+                if text:
+                    # Get font size from UI element or use default
+                    base_font_size = ui_element.get('font_size', 16)
+
+                    # Scale font size with UI scaling
+                    scale_x, scale_y = self.get_ui_scale_factors()
+                    scaled_font_size = int(base_font_size * min(scale_x, scale_y))
+
+                    # Get actual text dimensions for proper centering
+                    font = self.renderer.get_font(None, scaled_font_size)
+                    text_width, text_height = font.size(text)
+
+                    # Center text in button
+                    text_x = scaled_position[0] + (scaled_size[0] - text_width) / 2
+                    text_y = scaled_position[1] + (scaled_size[1] - text_height) / 2
+                    self.renderer.draw_ui_text(
+                        text, text_x, text_y,
+                        font_size=scaled_font_size, color=tuple(text_color)
+                    )
+
+            elif element_type == 'ColorRect':
+                color = ui_element.get('color', [1.0, 1.0, 1.0, 1.0])
+
+                # Draw colored rectangle
+                self.renderer.draw_ui_rectangle(
+                    scaled_position[0], scaled_position[1], scaled_size[0], scaled_size[1],
+                    tuple(color), filled=True
+                )
+
+            elif element_type == 'Label':
+                text = ui_element.get('text', 'Label')
+                text_color = ui_element.get('text_color', [1.0, 1.0, 1.0, 1.0])
+                base_font_size = ui_element.get('font_size', 14)
+
+                # Draw label text
+                if text:
+                    # Scale font size with UI scaling
+                    scale_x, scale_y = self.get_ui_scale_factors()
+                    scaled_font_size = int(base_font_size * min(scale_x, scale_y))
+
+                    self.renderer.draw_ui_text(
+                        text, scaled_position[0], scaled_position[1],
+                        font_size=scaled_font_size, color=tuple(text_color)
+                    )
+
+        except Exception as e:
+            print(f"Error drawing UI element: {e}")
 
     def on_resize(self, width, height):
-        """Handle window resize events with aspect ratio maintenance"""
-        super().on_resize(width, height)
+        """Handle window resize - simplified"""
+        self.width = width
+        self.height = height
+        self.renderer.resize(width, height)
+        print(f"Window resized to {width}x{height}")
 
-        # Clear text cache when window is resized to avoid positioning issues
-        self.text_objects.clear()
-
-        # Maintain 16:9 aspect ratio with letterboxing/pillarboxing
-        target_aspect = 16.0 / 9.0
-        current_aspect = width / height
-
-        if current_aspect > target_aspect:
-            # Window is too wide - add pillarboxing (black bars on sides)
-            game_height = height
-            game_width = int(height * target_aspect)
-            offset_x = (width - game_width) // 2
-            offset_y = 0
-        else:
-            # Window is too tall - add letterboxing (black bars on top/bottom)
-            game_width = width
-            game_height = int(width / target_aspect)
-            offset_x = 0
-            offset_y = (height - game_height) // 2
-
-        # Store the game area dimensions for UI positioning
-        self.game_area = {
-            "width": game_width,
-            "height": game_height,
-            "offset_x": offset_x,
-            "offset_y": offset_y
-        }
-
-        # Update camera viewport if camera exists
-        if self.camera:
-            # Use Arcade's match_window method instead of update_values to avoid Rect issues
-            try:
-                self.camera.match_window(viewport=True, projection=True, scissor=True, position=False)
-            except Exception as e:
-                print(f"Camera viewport update failed: {e}")
-                # Fallback - just continue without viewport update
-
-    def on_update(self, delta_time):
+    def update(self, delta_time):
         """Update game logic and run scripts"""
+        # Update audio system
+        if self.audio_system:
+            self.audio_system.update()
+
         # Update input manager every frame (important for "just pressed/released" detection)
         if self.input_manager:
             self.input_manager.update_input_state(
@@ -1033,20 +1158,141 @@ class LupineGameWindow(arcade.Window):
         if self.lsc_runtime:
             self.lsc_runtime.update_time(delta_time)
 
-        # Update physics simulation
-        if self.physics_enabled and self.physics_world:
-            self.physics_world.step(delta_time)
-
-        # Update sprites in sprite lists
-        for sprite_list in self.sprite_lists.values():
-            for sprite in sprite_list:
-                if hasattr(sprite, 'on_update'):
-                    sprite.on_update(delta_time)
-
-        # Call script update methods if available
+        # Call script update methods if available (before physics to allow script-driven movement)
         if self.lsc_runtime and self.scene:
             for root_node in self.scene.root_nodes:
                 self.update_node_scripts(root_node, delta_time)
+
+        # Update physics simulation (after scripts so script movement can be processed)
+        if self.physics_enabled and self.physics_world:
+            self.physics_world.step(delta_time)
+
+        # Update sprites
+        for sprite_data in self.sprites:
+            # Update sprite data if needed
+            if 'lupine_node' in sprite_data:
+                node = sprite_data['lupine_node']
+                # Sync position from node to sprite data
+                sprite_data['position'] = [node.position[0], node.position[1]]
+
+        # Ensure all sprite positions are synchronized with their nodes
+        self.synchronize_sprite_positions()
+
+        # DEBUG: Force update PlayerController sprite position
+        self.debug_force_player_sprite_update()
+
+    def synchronize_sprite_positions(self):
+        """Ensure all arcade sprites are positioned correctly based on their node positions"""
+        try:
+            if not self.scene:
+                return
+
+            for root_node in self.scene.root_nodes:
+                self._sync_node_sprite_position(root_node)
+        except Exception as e:
+            print(f"Error synchronizing sprite positions: {e}")
+
+    def _sync_node_sprite_position(self, node):
+        """Recursively synchronize sprite positions for a node and its children"""
+        try:
+            # Update this node's sprite if it has one
+            if hasattr(node, 'sprite_data') and node.sprite_data:
+                # Get the node's current position (handle both Vector2 and list/tuple)
+                if hasattr(node, 'position'):
+                    if hasattr(node.position, 'x'):  # Vector2 object
+                        new_x, new_y = node.position.x, node.position.y
+                    elif isinstance(node.position, (list, tuple)) and len(node.position) >= 2:
+                        new_x, new_y = node.position[0], node.position[1]
+                    else:
+                        return  # Invalid position format
+
+                    # Only update if position has changed significantly (to avoid unnecessary updates)
+                    old_pos = node.sprite_data['position']
+                    if (abs(old_pos[0] - new_x) > 1.0 or abs(old_pos[1] - new_y) > 1.0):
+
+                        # Don't sync if the node position is very close to zero (likely being reset)
+                        # and the sprite is not at zero (likely moved by script)
+                        if (abs(new_x) < 0.1 and abs(new_y) < 0.1 and
+                            (abs(old_pos[0]) > 1.0 or abs(old_pos[1]) > 1.0)):
+                            # Skip this sync - the node position is being reset but sprite has moved
+                            print(f"SYNC: Skipping reset for {node.name} - sprite at {old_pos}, node at ({new_x}, {new_y})")
+                            return
+
+                        node.sprite_data['position'] = [new_x, new_y]
+
+                        # Debug output for position changes
+                        print(f"SYNC: Updated sprite {node.name} from {old_pos} to ({new_x}, {new_y})")
+
+            # Recursively update children
+            if hasattr(node, 'children'):
+                for child in node.children:
+                    self._sync_node_sprite_position(child)
+
+        except Exception as e:
+            print(f"Error syncing sprite position for node {getattr(node, 'name', 'unknown')}: {e}")
+
+    def debug_force_player_sprite_update(self):
+        """DEBUG: Force update PlayerController sprite position to test visual movement"""
+        try:
+            if not self.scene:
+                return
+
+            # Find the PlayerController node
+            player_node = None
+            for root_node in self.scene.root_nodes:
+                player_node = self._find_node_by_name(root_node, "PlayerController")
+                if player_node:
+                    break
+
+            if not player_node:
+                return
+
+            # Check if PlayerController has runtime position
+            if hasattr(player_node, '_runtime_position'):
+                runtime_pos = player_node._runtime_position
+
+                # Update PlayerController's own sprite if it exists
+                if hasattr(player_node, 'sprite_data') and player_node.sprite_data:
+                    old_pos = player_node.sprite_data['position']
+                    player_node.sprite_data['position'] = [runtime_pos.x, runtime_pos.y]
+                    print(f"DEBUG FORCE: Updated PlayerController sprite from {old_pos} to ({runtime_pos.x}, {runtime_pos.y})")
+
+                # Also update all child sprites
+                if hasattr(player_node, 'children'):
+                    for child in player_node.children:
+                        if hasattr(child, 'sprite_data') and child.sprite_data:
+                            old_pos = child.sprite_data['position']
+                            child.sprite_data['position'] = [runtime_pos.x, runtime_pos.y]
+                            print(f"DEBUG FORCE: Updated child {child.name} sprite from {old_pos} to ({runtime_pos.x}, {runtime_pos.y})")
+
+                # Also check all sprites
+                for sprite_data in self.sprites:
+                    if 'lupine_node' in sprite_data:
+                        node = sprite_data['lupine_node']
+                        if hasattr(node, 'name') and node.name == "PlayerController":
+                            old_pos = sprite_data['position']
+                            sprite_data['position'] = [runtime_pos.x, runtime_pos.y]
+                            print(f"DEBUG FORCE: Updated sprite PlayerController from {old_pos} to ({runtime_pos.x}, {runtime_pos.y})")
+                        elif hasattr(node, 'parent') and hasattr(node.parent, 'name') and node.parent.name == "PlayerController":
+                            old_pos = sprite_data['position']
+                            sprite_data['position'] = [runtime_pos.x, runtime_pos.y]
+                            print(f"DEBUG FORCE: Updated sprite child {node.name} from {old_pos} to ({runtime_pos.x}, {runtime_pos.y})")
+
+        except Exception as e:
+            print(f"Error in debug_force_player_sprite_update: {e}")
+
+    def _find_node_by_name(self, node, name):
+        """Recursively find a node by name"""
+        if hasattr(node, 'name') and node.name == name:
+            return node
+
+        if hasattr(node, 'children'):
+            for child in node.children:
+                result = self._find_node_by_name(child, name)
+                if result:
+                    return result
+
+        return None
 
     def update_node_scripts(self, node, delta_time):
         """Update scripts attached to nodes"""
@@ -1054,84 +1300,35 @@ class LupineGameWindow(arcade.Window):
             # Call script update methods if the node has a script
             if hasattr(node, 'script_instance'):
                 # Call _process method (Godot-style update method)
-                node.script_instance.call_method('_process', delta_time)
+                if node.script_instance.scope.has('_process'):
+                    node.script_instance.call_method('_process', delta_time)
+
                 # Call _physics_process method (Godot-style physics update method)
-                node.script_instance.call_method('_physics_process', delta_time)
+                if node.script_instance.scope.has('_physics_process'):
+                    node.script_instance.call_method('_physics_process', delta_time)
+
                 # Also call on_update for compatibility
-                node.script_instance.call_method('on_update', delta_time)
+                if node.script_instance.scope.has('on_update'):
+                    node.script_instance.call_method('on_update', delta_time)
+
         except Exception as e:
             print(f"Error updating script for {node.name}: {e}")
+            import traceback
+            traceback.print_exc()
 
         # Update children
         for child in node.children:
             self.update_node_scripts(child, delta_time)
 
-    def draw_collision_shape_fallback(self, node_data: dict[str, any], x: float, y: float):
-        """Draw collision shape for debugging"""
-        shape_type = node_data.get("shape", "rectangle")
-        debug_color = node_data.get("debug_color", [0.0, 0.6, 0.7, 0.5])
-        disabled = node_data.get("disabled", False)
 
-        if disabled:
-            return  # Don't draw disabled shapes
-
-        # Set debug color
-        rect = arcade.XYWH(x - 16, y - 16, 32, 32)
-        arcade.draw_rect_outline(rect, arcade.color.CYAN, 2)
-
-        if shape_type == "rectangle":
-            size = node_data.get("size", [32, 32])
-            width, height = size[0], size[1]
-            rect = arcade.XYWH(x - width/2, y - height/2, width, height)
-            arcade.draw_rect_outline(rect, arcade.color.CYAN, 2)
-
-        elif shape_type == "circle":
-            radius = node_data.get("radius", 16.0)
-            arcade.draw_circle_outline(x, y, radius, arcade.color.CYAN, 2)
-
-        elif shape_type == "capsule":
-            radius = node_data.get("capsule_radius", 16.0)
-            height = node_data.get("height", 32.0)
-            # Draw capsule as circle with lines
-            arcade.draw_circle_outline(x, y - height/2 + radius, radius, arcade.color.CYAN, 2)
-            arcade.draw_circle_outline(x, y + height/2 - radius, radius, arcade.color.CYAN, 2)
-            arcade.draw_line(x - radius, y - height/2 + radius, x - radius, y + height/2 - radius, arcade.color.CYAN, 2)
-            arcade.draw_line(x + radius, y - height/2 + radius, x + radius, y + height/2 - radius, arcade.color.CYAN, 2)
-
-        elif shape_type == "segment":
-            point_a = node_data.get("point_a", [0, 0])
-            point_b = node_data.get("point_b", [32, 0])
-            arcade.draw_line(x + point_a[0], y + point_a[1], x + point_b[0], y + point_b[1], arcade.color.CYAN, 3)
-
-    def draw_collision_polygon_fallback(self, node_data: dict[str, any], x: float, y: float):
-        """Draw collision polygon for debugging"""
-        polygon = node_data.get("polygon", [[0, 0], [32, 0], [32, 32], [0, 32]])
-        debug_color = node_data.get("debug_color", [0.0, 0.6, 0.7, 0.5])
-        disabled = node_data.get("disabled", False)
-
-        if disabled or len(polygon) < 3:
-            return  # Don't draw disabled or invalid polygons
-
-        # Convert polygon to world coordinates
-        points = []
-        for vertex in polygon:
-            if isinstance(vertex, list) and len(vertex) >= 2:
-                points.append((x + vertex[0], y + vertex[1]))
-
-        if len(points) >= 3:
-            # Draw polygon outline
-            for i in range(len(points)):
-                start = points[i]
-                end = points[(i + 1) % len(points)]
-                arcade.draw_line(start[0], start[1], end[0], end[1], arcade.color.CYAN, 2)
 
     def on_key_press(self, key, modifiers):
         """Handle key press events"""
-        if key == arcade.key.ESCAPE:
-            self.close()
+        if key == pygame.K_ESCAPE:
+            self.running = False
 
         # Debug: Show key press
-        print(f"Key pressed: {key} (A={arcade.key.A}, LEFT={arcade.key.LEFT})")
+        print(f"Key pressed: {key} (A={pygame.K_a}, LEFT={pygame.K_LEFT})")
 
         # Update input state
         self.pressed_keys.add(key)
@@ -1326,14 +1523,14 @@ class LupineGameWindow(arcade.Window):
         """Update current modifier keys state"""
         self.current_modifiers.clear()
 
-        # Convert arcade modifiers to string set
-        if modifiers & arcade.key.MOD_SHIFT:
+        # Convert pygame modifiers to string set
+        if modifiers & pygame.KMOD_SHIFT:
             self.current_modifiers.add("shift")
-        if modifiers & arcade.key.MOD_CTRL:
+        if modifiers & pygame.KMOD_CTRL:
             self.current_modifiers.add("ctrl")
-        if modifiers & arcade.key.MOD_ALT:
+        if modifiers & pygame.KMOD_ALT:
             self.current_modifiers.add("alt")
-        if modifiers & arcade.key.MOD_ACCEL:  # Meta/Cmd key
+        if modifiers & pygame.KMOD_META:  # Meta/Cmd key
             self.current_modifiers.add("meta")
 
     def is_key_pressed(self, key):
@@ -1450,18 +1647,17 @@ class LupineGameWindow(arcade.Window):
     def create_sprite(self, texture_path, x=0, y=0):
         """Create a new sprite at runtime"""
         try:
-            if texture_path not in self.textures:
-                full_path = Path(self.project_path) / texture_path
-                if full_path.exists():
-                    self.textures[texture_path] = arcade.load_texture(str(full_path))
-
-            if texture_path in self.textures:
-                sprite = arcade.Sprite()
-                sprite.texture = self.textures[texture_path]
-                sprite.center_x = x
-                sprite.center_y = y
-                self.sprite_lists["sprites"].append(sprite)
-                return sprite
+            full_path = Path(self.project_path) / texture_path
+            if full_path.exists():
+                sprite_data = {
+                    'texture_path': texture_path,
+                    'position': [x, y],
+                    'size': [64, 64],  # Default size
+                    'rotation': 0,
+                    'alpha': 1.0
+                }
+                self.sprites.append(sprite_data)
+                return sprite_data
         except Exception as e:
             print(f"Error creating sprite: {e}")
         return None
@@ -1470,7 +1666,7 @@ def main():
     try:
         game = LupineGameWindow(r"{project_path}")
         game.setup()
-        arcade.run()
+        game.run()
     except Exception as e:
         print(f"Game error: {e}")
         import traceback

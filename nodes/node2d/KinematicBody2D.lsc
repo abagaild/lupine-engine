@@ -98,11 +98,15 @@ func _move_and_collide(motion: Vector2) -> Dictionary:
     # For now, return empty collision info and apply movement directly
     var collision_info = {}
 
+    # Store old position for debugging
+    var old_position = position
+
     # Apply movement directly to position
     position += motion
 
     # Debug output to verify movement is happening
-    print("KinematicBody2D moving by: ", motion, " new position: ", position)
+    if motion.length() > 0.1:  # Only print for significant movement
+        print("KinematicBody2D '", name, "' moving by: ", motion, " from ", old_position, " to ", position)
 
     return collision_info
 

@@ -16,6 +16,7 @@ class NodeCategory(Enum):
     BASE = "Base"
     NODE_2D = "2D"
     UI = "UI"
+    AUDIO = "Audio"
     PREFABS = "Prefabs"
 
 
@@ -41,6 +42,7 @@ class NodeRegistry:
             NodeCategory.BASE: [],
             NodeCategory.NODE_2D: [],
             NodeCategory.UI: [],
+            NodeCategory.AUDIO: [],
             NodeCategory.PREFABS: []
         }
         self._project_path = project_path
@@ -141,6 +143,160 @@ class NodeRegistry:
             description="Canvas layer for UI and effects with independent rendering"
         ))
 
+        self.register_node(NodeDefinition(
+            name="ColorRect",
+            category=NodeCategory.UI,
+            class_name="ColorRect",
+            script_path="nodes/ui/ColorRect.lsc",
+            description="UI node that displays a solid color rectangle"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="TextureRect",
+            category=NodeCategory.UI,
+            class_name="TextureRect",
+            script_path="nodes/ui/TextureRect.lsc",
+            description="UI node that displays a texture with various stretch modes"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="ProgressBar",
+            category=NodeCategory.UI,
+            class_name="ProgressBar",
+            script_path="nodes/ui/ProgressBar.lsc",
+            description="UI node that displays a progress bar with customizable fill and style"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="VBoxContainer",
+            category=NodeCategory.UI,
+            class_name="VBoxContainer",
+            script_path="nodes/ui/VBoxContainer.lsc",
+            description="UI container that arranges children vertically"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="HBoxContainer",
+            category=NodeCategory.UI,
+            class_name="HBoxContainer",
+            script_path="nodes/ui/HBoxContainer.lsc",
+            description="UI container that arranges children horizontally"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="CenterContainer",
+            category=NodeCategory.UI,
+            class_name="CenterContainer",
+            script_path="nodes/ui/CenterContainer.lsc",
+            description="UI container that centers its children"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="GridContainer",
+            category=NodeCategory.UI,
+            class_name="GridContainer",
+            script_path="nodes/ui/GridContainer.lsc",
+            description="UI container that arranges children in a grid layout"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="RichTextLabel",
+            category=NodeCategory.UI,
+            class_name="RichTextLabel",
+            script_path="nodes/ui/RichTextLabel.lsc",
+            description="UI node that displays rich text with BBCode formatting support"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="PanelContainer",
+            category=NodeCategory.UI,
+            class_name="PanelContainer",
+            script_path="nodes/ui/PanelContainer.lsc",
+            description="UI container with panel background and automatic margin handling"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="NinePatchRect",
+            category=NodeCategory.UI,
+            class_name="NinePatchRect",
+            script_path="nodes/ui/NinePatchRect.lsc",
+            description="UI node that displays a texture using 9-patch/9-slice scaling"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="ItemList",
+            category=NodeCategory.UI,
+            class_name="ItemList",
+            script_path="nodes/ui/ItemList.lsc",
+            description="UI node that displays a list of selectable items with icons and text"
+        ))
+
+        # Audio nodes
+        self.register_node(NodeDefinition(
+            name="AudioStreamPlayer",
+            category=NodeCategory.AUDIO,
+            class_name="AudioStreamPlayer",
+            script_path="nodes/audio/AudioStreamPlayer.lsc",
+            description="Audio player for global sound effects and music"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="AudioStreamPlayer2D",
+            category=NodeCategory.AUDIO,
+            class_name="AudioStreamPlayer2D",
+            script_path="nodes/audio/AudioStreamPlayer2D.lsc",
+            description="2D positional audio player with distance attenuation"
+        ))
+
+        # Physics nodes
+        self.register_node(NodeDefinition(
+            name="Area2D",
+            category=NodeCategory.NODE_2D,
+            class_name="Area2D",
+            script_path="nodes/physics/Area2D.lsc",
+            description="2D area for detection and monitoring with collision shapes"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="CollisionShape2D",
+            category=NodeCategory.NODE_2D,
+            class_name="CollisionShape2D",
+            script_path="nodes/physics/CollisionShape2D.lsc",
+            description="2D collision shape for physics bodies and areas"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="CollisionPolygon2D",
+            category=NodeCategory.NODE_2D,
+            class_name="CollisionPolygon2D",
+            script_path="nodes/physics/CollisionPolygon2D.lsc",
+            description="2D collision polygon for complex collision shapes"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="RigidBody2D",
+            category=NodeCategory.NODE_2D,
+            class_name="RigidBody2D",
+            script_path="nodes/physics/RigidBody2D.lsc",
+            description="2D rigid body with physics simulation"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="StaticBody2D",
+            category=NodeCategory.NODE_2D,
+            class_name="StaticBody2D",
+            script_path="nodes/physics/StaticBody2D.lsc",
+            description="2D static body for immovable collision objects"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="KinematicBody2D",
+            category=NodeCategory.NODE_2D,
+            class_name="KinematicBody2D",
+            script_path="nodes/physics/KinematicBody2D.lsc",
+            description="2D kinematic body for character controllers and moving platforms"
+        ))
+
     def load_project_nodes(self):
         """Load nodes from project's local node directories"""
         if not self._project_path:
@@ -156,7 +312,7 @@ class NodeRegistry:
             self.unregister_node(node_name)
 
         # Also clear built-in nodes that will be replaced by project versions
-        builtin_nodes_to_replace = ["Node", "Node2D", "Control", "Sprite", "AnimatedSprite", "Timer", "Panel", "Label", "Button", "CanvasLayer", "Camera2D"]
+        builtin_nodes_to_replace = ["Node", "Node2D", "Control", "Sprite", "AnimatedSprite", "Timer", "Panel", "Label", "Button", "CanvasLayer", "Camera2D", "ColorRect", "TextureRect", "ProgressBar", "AudioStreamPlayer", "AudioStreamPlayer2D", "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList", "Area2D", "CollisionShape2D", "CollisionPolygon2D", "RigidBody2D", "StaticBody2D", "KinematicBody2D"]
         for node_name in builtin_nodes_to_replace:
             if node_name in self._nodes and self._nodes[node_name].is_builtin:
                 self.unregister_node(node_name)
@@ -166,6 +322,7 @@ class NodeRegistry:
             "base": NodeCategory.BASE,
             "node2d": NodeCategory.NODE_2D,
             "ui": NodeCategory.UI,
+            "audio": NodeCategory.AUDIO,
         }
 
         for dir_name, category in category_mapping.items():
@@ -212,7 +369,7 @@ class NodeRegistry:
         """Determine the class name for a node from its LSC file"""
         try:
             # First, check if this is a known specific node type
-            if node_name in ["Sprite", "AnimatedSprite", "Camera2D", "Timer", "Panel", "Label", "Button", "CanvasLayer", "Area2D", "CollisionShape2D", "CollisionPolygon2D", "RigidBody2D", "StaticBody2D", "KinematicBody2D"]:
+            if node_name in ["Sprite", "AnimatedSprite", "Camera2D", "Timer", "Panel", "Label", "Button", "CanvasLayer", "ColorRect", "TextureRect", "ProgressBar", "AudioStreamPlayer", "AudioStreamPlayer2D", "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList", "Area2D", "CollisionShape2D", "CollisionPolygon2D", "RigidBody2D", "StaticBody2D", "KinematicBody2D"]:
                 return node_name
 
             # For other nodes, check the extends clause
@@ -274,7 +431,10 @@ class NodeRegistry:
         
         # Import and create node using class name
         from core.scene import (Node, Node2D, Sprite, AnimatedSprite, Timer, Control, Panel, Label, Button,
-                               CanvasLayer, Camera2D, Area2D, CollisionShape2D, CollisionPolygon2D,
+                               CanvasLayer, ColorRect, TextureRect, ProgressBar, AudioStreamPlayer, AudioStreamPlayer2D,
+                               VBoxContainer, HBoxContainer, CenterContainer, GridContainer, RichTextLabel, PanelContainer,
+                               NinePatchRect, ItemList,
+                               Camera2D, Area2D, CollisionShape2D, CollisionPolygon2D,
                                RigidBody2D, StaticBody2D, KinematicBody2D)
 
         class_map = {
@@ -288,6 +448,19 @@ class NodeRegistry:
             "Label": Label,
             "Button": Button,
             "CanvasLayer": CanvasLayer,
+            "ColorRect": ColorRect,
+            "TextureRect": TextureRect,
+            "ProgressBar": ProgressBar,
+            "AudioStreamPlayer": AudioStreamPlayer,
+            "AudioStreamPlayer2D": AudioStreamPlayer2D,
+            "VBoxContainer": VBoxContainer,
+            "HBoxContainer": HBoxContainer,
+            "CenterContainer": CenterContainer,
+            "GridContainer": GridContainer,
+            "RichTextLabel": RichTextLabel,
+            "PanelContainer": PanelContainer,
+            "NinePatchRect": NinePatchRect,
+            "ItemList": ItemList,
             "Camera2D": Camera2D,
             "Area2D": Area2D,
             "CollisionShape2D": CollisionShape2D,
@@ -378,6 +551,8 @@ class NodeRegistry:
                     category = NodeCategory.UI
                 elif "extends Node2D" in content:
                     category = NodeCategory.NODE_2D
+                elif "extends Node" in content and ("AudioStreamPlayer" in content or "audio" in script_file.name.lower()):
+                    category = NodeCategory.AUDIO
                 else:
                     category = NodeCategory.BASE
                 

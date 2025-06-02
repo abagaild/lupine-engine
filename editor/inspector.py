@@ -10,14 +10,198 @@ from PyQt6.QtWidgets import (
     QLineEdit, QSpinBox, QDoubleSpinBox, QCheckBox, QComboBox,
     QGroupBox, QPushButton, QHBoxLayout, QTextEdit, QMessageBox,
     QFileDialog, QDialog, QListWidget, QDialogButtonBox, QFrame,
-    QSplitter, QTreeWidget, QTreeWidgetItem, QMenu
+    QSplitter, QTreeWidget, QTreeWidgetItem, QMenu, QGridLayout,
+    QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint
-from PyQt6.QtGui import QFont, QAction
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QSize
+from PyQt6.QtGui import QFont, QAction, QPainter, QPen, QBrush, QColor
 
 from core.project import LupineProject
 from core.lsc.export_parser import LSCExportParser, ExportGroup, ExportVariable
 from .script_dialog import ScriptAttachmentDialog
+
+
+class AnchorSelectorWidget(QWidget):
+    """Visual anchor selector widget similar to Godot's anchor editor"""
+
+    anchor_changed = pyqtSignal(str, float)  # side, value
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(120, 120)
+
+        # Current anchor values
+        self.anchor_left = 0.0
+        self.anchor_top = 0.0
+        self.anchor_right = 0.0
+        self.anchor_bottom = 0.0
+
+        # Preset configurations
+        self.presets = {
+            "top_left": (0.0, 0.0, 0.0, 0.0),
+            "top_center": (0.5, 0.0, 0.5, 0.0),
+            "top_right": (1.0, 0.0, 1.0, 0.0),
+            "center_left": (0.0, 0.5, 0.0, 0.5),
+            "center": (0.5, 0.5, 0.5, 0.5),
+            "center_right": (1.0, 0.5, 1.0, 0.5),
+            "bottom_left": (0.0, 1.0, 0.0, 1.0),
+            "bottom_center": (0.5, 1.0, 0.5, 1.0),
+            "bottom_right": (1.0, 1.0, 1.0, 1.0),
+            "left_wide": (0.0, 0.0, 0.0, 1.0),
+            "top_wide": (0.0, 0.0, 1.0, 0.0),
+            "right_wide": (1.0, 0.0, 1.0, 1.0),
+            "bottom_wide": (0.0, 1.0, 1.0, 1.0),
+            "vcenter_wide": (0.0, 0.5, 1.0, 0.5),
+            "hcenter_wide": (0.5, 0.0, 0.5, 1.0),
+            "full_rect": (0.0, 0.0, 1.0, 1.0)
+        }
+
+        self.setToolTip("Click to select anchor preset")
+
+    def set_anchors(self, left: float, top: float, right: float, bottom: float):
+        """Set anchor values"""
+        self.anchor_left = left
+        self.anchor_top = top
+        self.anchor_right = right
+        self.anchor_bottom = bottom
+        self.update()
+
+    def paintEvent(self, event):
+        """Paint the anchor selector"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Draw background
+        painter.fillRect(self.rect(), QColor(40, 40, 40))
+
+        # Draw parent container outline
+        margin = 10
+        container_rect = self.rect().adjusted(margin, margin, -margin, -margin)
+        painter.setPen(QPen(QColor(100, 100, 100), 2))
+        painter.drawRect(container_rect)
+
+        # Draw anchor lines
+        painter.setPen(QPen(QColor(150, 150, 255), 2))
+
+        # Calculate anchor positions
+        left_x = container_rect.left() + self.anchor_left * container_rect.width()
+        top_y = container_rect.top() + self.anchor_top * container_rect.height()
+        right_x = container_rect.left() + self.anchor_right * container_rect.width()
+        bottom_y = container_rect.top() + self.anchor_bottom * container_rect.height()
+
+        # Draw anchor rectangle
+        if self.anchor_left != self.anchor_right or self.anchor_top != self.anchor_bottom:
+            # Draw anchor area
+            painter.setBrush(QBrush(QColor(150, 150, 255, 50)))
+            painter.drawRect(int(left_x), int(top_y), int(right_x - left_x), int(bottom_y - top_y))
+
+        # Draw anchor points
+        painter.setBrush(QBrush(QColor(255, 255, 255)))
+        painter.setPen(QPen(QColor(0, 0, 0), 1))
+
+        # Draw corner points
+        point_size = 4
+        painter.drawEllipse(int(left_x - point_size/2), int(top_y - point_size/2), point_size, point_size)
+        painter.drawEllipse(int(right_x - point_size/2), int(top_y - point_size/2), point_size, point_size)
+        painter.drawEllipse(int(left_x - point_size/2), int(bottom_y - point_size/2), point_size, point_size)
+        painter.drawEllipse(int(right_x - point_size/2), int(bottom_y - point_size/2), point_size, point_size)
+
+    def mousePressEvent(self, event):
+        """Handle mouse clicks to select presets"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Determine which preset area was clicked
+            x_ratio = event.position().x() / self.width()
+            y_ratio = event.position().y() / self.height()
+
+            # Map click position to preset
+            preset_name = self._get_preset_from_position(x_ratio, y_ratio)
+            if preset_name and preset_name in self.presets:
+                left, top, right, bottom = self.presets[preset_name]
+                self.set_anchors(left, top, right, bottom)
+
+                # Emit signals for each anchor
+                self.anchor_changed.emit("left", left)
+                self.anchor_changed.emit("top", top)
+                self.anchor_changed.emit("right", right)
+                self.anchor_changed.emit("bottom", bottom)
+
+    def _get_preset_from_position(self, x_ratio: float, y_ratio: float) -> str:
+        """Map click position to preset name"""
+        # Divide widget into 3x3 grid for basic presets
+        col = 0 if x_ratio < 0.33 else (1 if x_ratio < 0.66 else 2)
+        row = 0 if y_ratio < 0.33 else (1 if y_ratio < 0.66 else 2)
+
+        preset_grid = [
+            ["top_left", "top_center", "top_right"],
+            ["center_left", "center", "center_right"],
+            ["bottom_left", "bottom_center", "bottom_right"]
+        ]
+
+        return preset_grid[row][col]
+
+
+class AnchorPresetWidget(QWidget):
+    """Widget with preset buttons for common anchor configurations"""
+
+    preset_selected = pyqtSignal(str)  # preset name
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setup_ui()
+
+    def setup_ui(self):
+        """Setup the preset buttons"""
+        layout = QGridLayout(self)
+        layout.setSpacing(2)
+
+        # Define preset buttons with their grid positions
+        presets = [
+            ("TL", "top_left", 0, 0),
+            ("TC", "top_center", 0, 1),
+            ("TR", "top_right", 0, 2),
+            ("CL", "center_left", 1, 0),
+            ("CC", "center", 1, 1),
+            ("CR", "center_right", 1, 2),
+            ("BL", "bottom_left", 2, 0),
+            ("BC", "bottom_center", 2, 1),
+            ("BR", "bottom_right", 2, 2),
+            ("LW", "left_wide", 3, 0),
+            ("TW", "top_wide", 3, 1),
+            ("RW", "right_wide", 3, 2),
+            ("BW", "bottom_wide", 4, 0),
+            ("VW", "vcenter_wide", 4, 1),
+            ("HW", "hcenter_wide", 4, 2),
+            ("FR", "full_rect", 5, 1)
+        ]
+
+        for text, preset_name, row, col in presets:
+            btn = QPushButton(text)
+            btn.setFixedSize(30, 25)
+            btn.setToolTip(self._get_preset_tooltip(preset_name))
+            btn.clicked.connect(lambda checked, name=preset_name: self.preset_selected.emit(name))
+            layout.addWidget(btn, row, col)
+
+    def _get_preset_tooltip(self, preset_name: str) -> str:
+        """Get tooltip for preset"""
+        tooltips = {
+            "top_left": "Top Left",
+            "top_center": "Top Center",
+            "top_right": "Top Right",
+            "center_left": "Center Left",
+            "center": "Center",
+            "center_right": "Center Right",
+            "bottom_left": "Bottom Left",
+            "bottom_center": "Bottom Center",
+            "bottom_right": "Bottom Right",
+            "left_wide": "Left Wide",
+            "top_wide": "Top Wide",
+            "right_wide": "Right Wide",
+            "bottom_wide": "Bottom Wide",
+            "vcenter_wide": "Vertical Center Wide",
+            "hcenter_wide": "Horizontal Center Wide",
+            "full_rect": "Full Rectangle"
+        }
+        return tooltips.get(preset_name, preset_name)
 
 
 class InspectorWidget(QWidget):
@@ -747,8 +931,12 @@ class InspectorWidget(QWidget):
                 group_widget = QGroupBox(f"{export_group.name}")
                 layout = QFormLayout(group_widget)
 
-                for var in export_group.variables:
-                    self.create_export_variable_widget(layout, var)
+                # Special handling for Anchors group
+                if export_group.name == "Anchors":
+                    self.create_anchor_controls_for_export_group(layout, export_group.variables)
+                else:
+                    for var in export_group.variables:
+                        self.create_export_variable_widget(layout, var)
 
                 self.properties_layout.addWidget(group_widget)
 
@@ -764,6 +952,94 @@ class InspectorWidget(QWidget):
 
         except Exception as e:
             print(f"Error parsing script exports for {script_path}: {e}")
+
+    def create_anchor_controls_for_export_group(self, layout: QFormLayout, anchor_variables: List):
+        """Create anchor controls for export group with visual selector"""
+        if not self.current_node:
+            return
+
+        # Extract anchor values from variables
+        anchor_values = {}
+        for var in anchor_variables:
+            if var.name in ["anchor_left", "anchor_top", "anchor_right", "anchor_bottom"]:
+                current_value = self.current_node.get(var.name, var.default_value) if self.current_node else var.default_value
+                anchor_values[var.name] = float(current_value) if current_value is not None else 0.0
+
+        # Get current anchor values
+        anchor_left = anchor_values.get("anchor_left", 0.0)
+        anchor_top = anchor_values.get("anchor_top", 0.0)
+        anchor_right = anchor_values.get("anchor_right", 0.0)
+        anchor_bottom = anchor_values.get("anchor_bottom", 0.0)
+
+        # Visual anchor selector
+        anchor_widget = QWidget()
+        anchor_layout = QHBoxLayout(anchor_widget)
+        anchor_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Visual anchor selector
+        self.anchor_selector = AnchorSelectorWidget()
+        self.anchor_selector.set_anchors(anchor_left, anchor_top, anchor_right, anchor_bottom)
+        self.anchor_selector.anchor_changed.connect(self.update_anchor)
+        anchor_layout.addWidget(self.anchor_selector)
+
+        # Preset buttons
+        preset_widget = AnchorPresetWidget()
+        preset_widget.preset_selected.connect(self.apply_anchor_preset)
+        anchor_layout.addWidget(preset_widget)
+
+        layout.addRow("Anchors:", anchor_widget)
+
+        # Individual anchor value controls
+        anchor_values_widget = QWidget()
+        anchor_values_layout = QGridLayout(anchor_values_widget)
+        anchor_values_layout.setContentsMargins(0, 0, 0, 0)
+        anchor_values_layout.setSpacing(5)
+
+        # Left anchor
+        anchor_values_layout.addWidget(QLabel("L:"), 0, 0)
+        left_spin = QDoubleSpinBox()
+        left_spin.setRange(0.0, 1.0)
+        left_spin.setSingleStep(0.01)
+        left_spin.setDecimals(3)
+        left_spin.setValue(anchor_left)
+        left_spin.valueChanged.connect(lambda v: self.update_anchor("left", v))
+        anchor_values_layout.addWidget(left_spin, 0, 1)
+        self.property_widgets["anchor_left"] = left_spin
+
+        # Top anchor
+        anchor_values_layout.addWidget(QLabel("T:"), 0, 2)
+        top_spin = QDoubleSpinBox()
+        top_spin.setRange(0.0, 1.0)
+        top_spin.setSingleStep(0.01)
+        top_spin.setDecimals(3)
+        top_spin.setValue(anchor_top)
+        top_spin.valueChanged.connect(lambda v: self.update_anchor("top", v))
+        anchor_values_layout.addWidget(top_spin, 0, 3)
+        self.property_widgets["anchor_top"] = top_spin
+
+        # Right anchor
+        anchor_values_layout.addWidget(QLabel("R:"), 1, 0)
+        right_spin = QDoubleSpinBox()
+        right_spin.setRange(0.0, 1.0)
+        right_spin.setSingleStep(0.01)
+        right_spin.setDecimals(3)
+        right_spin.setValue(anchor_right)
+        right_spin.valueChanged.connect(lambda v: self.update_anchor("right", v))
+        anchor_values_layout.addWidget(right_spin, 1, 1)
+        self.property_widgets["anchor_right"] = right_spin
+
+        # Bottom anchor
+        anchor_values_layout.addWidget(QLabel("B:"), 1, 2)
+        bottom_spin = QDoubleSpinBox()
+        bottom_spin.setRange(0.0, 1.0)
+        bottom_spin.setSingleStep(0.01)
+        bottom_spin.setDecimals(3)
+        bottom_spin.setValue(anchor_bottom)
+        bottom_spin.valueChanged.connect(lambda v: self.update_anchor("bottom", v))
+        anchor_values_layout.addWidget(bottom_spin, 1, 3)
+        self.property_widgets["anchor_bottom"] = bottom_spin
+
+        layout.addRow("Anchor Values:", anchor_values_widget)
 
     def get_all_export_variables(self, script_path: str):
         """Get all export variables including from parent classes"""
@@ -1246,6 +1522,9 @@ func _process(delta: float):
 
         layout.addRow("Rect Size:", size_layout)
 
+        # Anchors Section
+        self.create_anchor_controls(layout)
+
         # Z Layer
         z_layer = self.current_node.get("z_layer", 0)
         z_spin = QSpinBox()
@@ -1256,6 +1535,198 @@ func _process(delta: float):
         self.property_widgets["z_layer"] = z_spin
 
         self.properties_layout.addWidget(group)
+
+    def create_anchor_controls(self, layout: QFormLayout):
+        """Create anchor controls for UI nodes"""
+        if not self.current_node:
+            return
+
+        # Get current anchor values
+        anchor_left = self.current_node.get("anchor_left", 0.0)
+        anchor_top = self.current_node.get("anchor_top", 0.0)
+        anchor_right = self.current_node.get("anchor_right", 0.0)
+        anchor_bottom = self.current_node.get("anchor_bottom", 0.0)
+
+        # Visual anchor selector
+        anchor_widget = QWidget()
+        anchor_layout = QHBoxLayout(anchor_widget)
+        anchor_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Visual anchor selector
+        self.anchor_selector = AnchorSelectorWidget()
+        self.anchor_selector.set_anchors(anchor_left, anchor_top, anchor_right, anchor_bottom)
+        self.anchor_selector.anchor_changed.connect(self.update_anchor)
+        anchor_layout.addWidget(self.anchor_selector)
+
+        # Preset buttons
+        preset_widget = AnchorPresetWidget()
+        preset_widget.preset_selected.connect(self.apply_anchor_preset)
+        anchor_layout.addWidget(preset_widget)
+
+        layout.addRow("Anchors:", anchor_widget)
+
+        # Individual anchor value controls
+        anchor_values_widget = QWidget()
+        anchor_values_layout = QGridLayout(anchor_values_widget)
+        anchor_values_layout.setContentsMargins(0, 0, 0, 0)
+        anchor_values_layout.setSpacing(5)
+
+        # Left anchor
+        anchor_values_layout.addWidget(QLabel("L:"), 0, 0)
+        left_spin = QDoubleSpinBox()
+        left_spin.setRange(0.0, 1.0)
+        left_spin.setSingleStep(0.01)
+        left_spin.setDecimals(3)
+        left_spin.setValue(anchor_left)
+        left_spin.valueChanged.connect(lambda v: self.update_anchor("left", v))
+        anchor_values_layout.addWidget(left_spin, 0, 1)
+        self.property_widgets["anchor_left"] = left_spin
+
+        # Top anchor
+        anchor_values_layout.addWidget(QLabel("T:"), 0, 2)
+        top_spin = QDoubleSpinBox()
+        top_spin.setRange(0.0, 1.0)
+        top_spin.setSingleStep(0.01)
+        top_spin.setDecimals(3)
+        top_spin.setValue(anchor_top)
+        top_spin.valueChanged.connect(lambda v: self.update_anchor("top", v))
+        anchor_values_layout.addWidget(top_spin, 0, 3)
+        self.property_widgets["anchor_top"] = top_spin
+
+        # Right anchor
+        anchor_values_layout.addWidget(QLabel("R:"), 1, 0)
+        right_spin = QDoubleSpinBox()
+        right_spin.setRange(0.0, 1.0)
+        right_spin.setSingleStep(0.01)
+        right_spin.setDecimals(3)
+        right_spin.setValue(anchor_right)
+        right_spin.valueChanged.connect(lambda v: self.update_anchor("right", v))
+        anchor_values_layout.addWidget(right_spin, 1, 1)
+        self.property_widgets["anchor_right"] = right_spin
+
+        # Bottom anchor
+        anchor_values_layout.addWidget(QLabel("B:"), 1, 2)
+        bottom_spin = QDoubleSpinBox()
+        bottom_spin.setRange(0.0, 1.0)
+        bottom_spin.setSingleStep(0.01)
+        bottom_spin.setDecimals(3)
+        bottom_spin.setValue(anchor_bottom)
+        bottom_spin.valueChanged.connect(lambda v: self.update_anchor("bottom", v))
+        anchor_values_layout.addWidget(bottom_spin, 1, 3)
+        self.property_widgets["anchor_bottom"] = bottom_spin
+
+        layout.addRow("Anchor Values:", anchor_values_widget)
+
+        # Margins (offset from anchors)
+        margin_left = self.current_node.get("margin_left", 0.0)
+        margin_top = self.current_node.get("margin_top", 0.0)
+        margin_right = self.current_node.get("margin_right", 0.0)
+        margin_bottom = self.current_node.get("margin_bottom", 0.0)
+
+        margin_widget = QWidget()
+        margin_layout = QGridLayout(margin_widget)
+        margin_layout.setContentsMargins(0, 0, 0, 0)
+        margin_layout.setSpacing(5)
+
+        # Left margin
+        margin_layout.addWidget(QLabel("L:"), 0, 0)
+        margin_left_spin = QDoubleSpinBox()
+        margin_left_spin.setRange(-9999.0, 9999.0)
+        margin_left_spin.setValue(margin_left)
+        margin_left_spin.valueChanged.connect(lambda v: self.update_property("margin_left", v))
+        margin_layout.addWidget(margin_left_spin, 0, 1)
+        self.property_widgets["margin_left"] = margin_left_spin
+
+        # Top margin
+        margin_layout.addWidget(QLabel("T:"), 0, 2)
+        margin_top_spin = QDoubleSpinBox()
+        margin_top_spin.setRange(-9999.0, 9999.0)
+        margin_top_spin.setValue(margin_top)
+        margin_top_spin.valueChanged.connect(lambda v: self.update_property("margin_top", v))
+        margin_layout.addWidget(margin_top_spin, 0, 3)
+        self.property_widgets["margin_top"] = margin_top_spin
+
+        # Right margin
+        margin_layout.addWidget(QLabel("R:"), 1, 0)
+        margin_right_spin = QDoubleSpinBox()
+        margin_right_spin.setRange(-9999.0, 9999.0)
+        margin_right_spin.setValue(margin_right)
+        margin_right_spin.valueChanged.connect(lambda v: self.update_property("margin_right", v))
+        margin_layout.addWidget(margin_right_spin, 1, 1)
+        self.property_widgets["margin_right"] = margin_right_spin
+
+        # Bottom margin
+        margin_layout.addWidget(QLabel("B:"), 1, 2)
+        margin_bottom_spin = QDoubleSpinBox()
+        margin_bottom_spin.setRange(-9999.0, 9999.0)
+        margin_bottom_spin.setValue(margin_bottom)
+        margin_bottom_spin.valueChanged.connect(lambda v: self.update_property("margin_bottom", v))
+        margin_layout.addWidget(margin_bottom_spin, 1, 3)
+        self.property_widgets["margin_bottom"] = margin_bottom_spin
+
+        layout.addRow("Margins:", margin_widget)
+
+    def update_anchor(self, side: str, value: float):
+        """Update anchor value"""
+        if self.current_node:
+            property_name = f"anchor_{side}"
+            self.current_node[property_name] = value
+
+            # Update visual selector
+            if hasattr(self, 'anchor_selector'):
+                current_anchors = [
+                    self.current_node.get("anchor_left", 0.0),
+                    self.current_node.get("anchor_top", 0.0),
+                    self.current_node.get("anchor_right", 0.0),
+                    self.current_node.get("anchor_bottom", 0.0)
+                ]
+                self.anchor_selector.set_anchors(*current_anchors)
+
+            # Update corresponding spinbox
+            if f"anchor_{side}" in self.property_widgets:
+                spinbox = self.property_widgets[f"anchor_{side}"]
+                if spinbox.value() != value:
+                    spinbox.blockSignals(True)
+                    spinbox.setValue(value)
+                    spinbox.blockSignals(False)
+
+            # Emit property change signal
+            node_id = self.current_node.get("name", "")
+            self.property_changed.emit(node_id, property_name, value)
+
+    def apply_anchor_preset(self, preset_name: str):
+        """Apply anchor preset"""
+        if not self.current_node:
+            return
+
+        # Define preset values
+        presets = {
+            "top_left": (0.0, 0.0, 0.0, 0.0),
+            "top_center": (0.5, 0.0, 0.5, 0.0),
+            "top_right": (1.0, 0.0, 1.0, 0.0),
+            "center_left": (0.0, 0.5, 0.0, 0.5),
+            "center": (0.5, 0.5, 0.5, 0.5),
+            "center_right": (1.0, 0.5, 1.0, 0.5),
+            "bottom_left": (0.0, 1.0, 0.0, 1.0),
+            "bottom_center": (0.5, 1.0, 0.5, 1.0),
+            "bottom_right": (1.0, 1.0, 1.0, 1.0),
+            "left_wide": (0.0, 0.0, 0.0, 1.0),
+            "top_wide": (0.0, 0.0, 1.0, 0.0),
+            "right_wide": (1.0, 0.0, 1.0, 1.0),
+            "bottom_wide": (0.0, 1.0, 1.0, 1.0),
+            "vcenter_wide": (0.0, 0.5, 1.0, 0.5),
+            "hcenter_wide": (0.5, 0.0, 0.5, 1.0),
+            "full_rect": (0.0, 0.0, 1.0, 1.0)
+        }
+
+        if preset_name in presets:
+            left, top, right, bottom = presets[preset_name]
+
+            # Update all anchor values
+            self.update_anchor("left", left)
+            self.update_anchor("top", top)
+            self.update_anchor("right", right)
+            self.update_anchor("bottom", bottom)
 
     def create_panel_group(self):
         """Create Panel node properties group"""
@@ -1565,7 +2036,15 @@ func _process(delta: float):
         """Browse for file path for a path export variable"""
         file_dialog = QFileDialog(self)
         file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
-        file_dialog.setNameFilter("All Files (*.*)")
+
+        # Set appropriate file filter based on variable name
+        if var_name in ["stream", "audio_stream"]:
+            file_dialog.setNameFilter("Audio Files (*.wav *.mp3 *.ogg *.flac)")
+        elif var_name in ["texture", "normal_map"]:
+            file_dialog.setNameFilter("Image Files (*.png *.jpg *.jpeg *.bmp *.gif *.tga)")
+        else:
+            file_dialog.setNameFilter("All Files (*.*)")
+
         file_dialog.setDirectory(str(self.project.project_path / "assets"))
 
         if file_dialog.exec() == QFileDialog.DialogCode.Accepted:

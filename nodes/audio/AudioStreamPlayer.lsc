@@ -1,0 +1,287 @@
+# AudioStreamPlayer Node - Audio player for non-positional sound effects and music
+# Equivalent to Godot's AudioStreamPlayer with full audio capabilities
+extends Node
+
+# Audio Properties
+export_group("Audio")
+export var stream: path = ""  # AudioStream resource to play (uses file browser)
+export var volume_db: float = 0.0  # Volume in decibels (-80 to 24)
+export var pitch_scale: float = 1.0  # Pitch multiplier (0.01 to 4.0)
+export var playing: bool = false  # Whether audio is currently playing
+export var autoplay: bool = false  # Start playing when node enters tree
+export var stream_paused: bool = false  # Whether playback is paused
+export var loop: bool = false  # Whether to loop the audio
+
+# Bus Properties
+export_group("Bus")
+export var bus: String = "Master"  # Audio bus name
+
+# Mix Properties
+export_group("Mix")
+export var mix_target: String = "stereo"  # Mix target: "stereo", "surround", "center"
+
+# Internal state (not exported)
+var _audio_source_id: String = ""
+var _playback_position: float = 0.0
+
+# Mix target constants
+const MIX_TARGET_STEREO = "stereo"
+const MIX_TARGET_SURROUND = "surround"
+const MIX_TARGET_CENTER = "center"
+
+# Called when the node enters the scene tree for the first time
+func _ready():
+    super._ready()
+    
+    # Generate unique audio source ID
+    _audio_source_id = name + "_" + str(get_instance_id())
+    
+    # Auto-play if enabled
+    if autoplay and stream:
+        play()
+
+# Called every frame. 'delta' is the elapsed time since the previous frame
+func _process(delta: float):
+    # Update playback position if playing
+    if playing and not stream_paused:
+        _playback_position += delta
+
+# Play the audio stream
+func play(from_position: float = 0.0):
+    if not stream:
+        print("Warning: No audio stream assigned to AudioStreamPlayer")
+        return
+    
+    _playback_position = from_position
+    playing = true
+    stream_paused = false
+    
+    # Call engine audio system
+    _play_audio_stream()
+    
+    emit_signal("playback_started")
+
+# Stop the audio stream
+func stop():
+    if playing:
+        playing = false
+        stream_paused = false
+        _playback_position = 0.0
+        
+        # Call engine audio system
+        _stop_audio_stream()
+        
+        emit_signal("playback_stopped")
+
+# Pause the audio stream
+func pause():
+    if playing and not stream_paused:
+        stream_paused = true
+        
+        # Call engine audio system
+        _pause_audio_stream()
+        
+        emit_signal("playback_paused")
+
+# Resume the audio stream
+func resume():
+    if playing and stream_paused:
+        stream_paused = false
+        
+        # Call engine audio system
+        _resume_audio_stream()
+        
+        emit_signal("playback_resumed")
+
+# Set the audio stream
+func set_stream(new_stream: AudioStream):
+    var was_playing = playing
+    
+    if was_playing:
+        stop()
+    
+    stream = new_stream
+    
+    if was_playing and stream:
+        play()
+    
+    emit_signal("stream_changed", stream)
+
+# Get the audio stream
+func get_stream() -> AudioStream:
+    return stream
+
+# Set volume in decibels
+func set_volume_db(db: float):
+    volume_db = clamp(db, -80.0, 24.0)
+    
+    # Update audio system if playing
+    if playing:
+        _update_audio_properties()
+    
+    emit_signal("volume_changed", volume_db)
+
+# Get volume in decibels
+func get_volume_db() -> float:
+    return volume_db
+
+# Set volume as linear (0.0 to 1.0+)
+func set_volume_linear(linear: float):
+    # Convert linear to decibels
+    if linear <= 0.0:
+        set_volume_db(-80.0)
+    else:
+        set_volume_db(20.0 * log(linear) / log(10.0))
+
+# Get volume as linear (0.0 to 1.0+)
+func get_volume_linear() -> float:
+    if volume_db <= -80.0:
+        return 0.0
+    return pow(10.0, volume_db / 20.0)
+
+# Set pitch scale
+func set_pitch_scale(scale: float):
+    pitch_scale = clamp(scale, 0.01, 4.0)
+    
+    # Update audio system if playing
+    if playing:
+        _update_audio_properties()
+    
+    emit_signal("pitch_changed", pitch_scale)
+
+# Get pitch scale
+func get_pitch_scale() -> float:
+    return pitch_scale
+
+# Set audio bus
+func set_bus(bus_name: String):
+    bus = bus_name
+    
+    # Update audio system if playing
+    if playing:
+        _update_audio_properties()
+    
+    emit_signal("bus_changed", bus)
+
+# Get audio bus
+func get_bus() -> String:
+    return bus
+
+# Set mix target
+func set_mix_target(target: String):
+    if is_valid_mix_target(target):
+        mix_target = target
+        
+        # Update audio system if playing
+        if playing:
+            _update_audio_properties()
+        
+        emit_signal("mix_target_changed", mix_target)
+    else:
+        print("Warning: Invalid mix target: " + target)
+
+# Get mix target
+func get_mix_target() -> String:
+    return mix_target
+
+# Check if mix target is valid
+func is_valid_mix_target(target: String) -> bool:
+    return target in [MIX_TARGET_STEREO, MIX_TARGET_SURROUND, MIX_TARGET_CENTER]
+
+# Get current playback position in seconds
+func get_playback_position() -> float:
+    return _playback_position
+
+# Seek to specific position in seconds
+func seek(position: float):
+    if stream:
+        _playback_position = clamp(position, 0.0, get_stream_length())
+        
+        if playing:
+            # Restart playback from new position
+            _play_audio_stream()
+
+# Get stream length in seconds
+func get_stream_length() -> float:
+    if stream:
+        # This would be implemented by the audio stream resource
+        return stream.get_length() if stream.has_method("get_length") else 0.0
+    return 0.0
+
+# Check if stream has finished playing
+func is_finished() -> bool:
+    if not stream or not playing:
+        return true
+    
+    return _playback_position >= get_stream_length()
+
+# Toggle play/pause
+func toggle_playback():
+    if playing:
+        if stream_paused:
+            resume()
+        else:
+            pause()
+    else:
+        play()
+
+# Fade volume over time
+func fade_volume(target_db: float, duration: float):
+    # This would be implemented by the engine's tween system
+    # For now, just set the volume directly
+    set_volume_db(target_db)
+
+# Crossfade to another stream
+func crossfade_to_stream(new_stream: AudioStream, duration: float):
+    # This would be implemented by the engine's audio system
+    # For now, just switch streams
+    set_stream(new_stream)
+
+# Internal methods (called by engine)
+func _play_audio_stream():
+    # This would interface with the engine's audio system
+    # Implementation depends on the audio backend (OpenAL, etc.)
+    pass
+
+func _stop_audio_stream():
+    # This would interface with the engine's audio system
+    pass
+
+func _pause_audio_stream():
+    # This would interface with the engine's audio system
+    pass
+
+func _resume_audio_stream():
+    # This would interface with the engine's audio system
+    pass
+
+func _update_audio_properties():
+    # This would update the audio system with current properties
+    pass
+
+# Convenience methods
+func play_once():
+    """Play the stream once from the beginning"""
+    play(0.0)
+
+func loop_stream():
+    """Enable looping (if supported by stream)"""
+    # This would set loop property on the stream
+    pass
+
+func stop_loop():
+    """Disable looping"""
+    # This would unset loop property on the stream
+    pass
+
+# Signals
+signal playback_started  # Emitted when playback starts
+signal playback_stopped  # Emitted when playback stops
+signal playback_paused  # Emitted when playback is paused
+signal playback_resumed  # Emitted when playback resumes
+signal playback_finished  # Emitted when stream finishes playing
+signal stream_changed(new_stream: AudioStream)  # Emitted when stream changes
+signal volume_changed(new_volume_db: float)  # Emitted when volume changes
+signal pitch_changed(new_pitch: float)  # Emitted when pitch changes
+signal bus_changed(new_bus: String)  # Emitted when bus changes
+signal mix_target_changed(new_target: String)  # Emitted when mix target changes

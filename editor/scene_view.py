@@ -15,6 +15,15 @@ from pathlib import Path
 
 from core.project import LupineProject
 
+# Import pygame for font rendering
+try:
+    import pygame
+    pygame.init()
+    PYGAME_AVAILABLE = True
+except ImportError:
+    PYGAME_AVAILABLE = False
+    print("Warning: pygame not available, text rendering will be limited")
+
 
 class SceneViewWidget(QWidget):
     """Main scene view widget with controls and OpenGL viewport"""
@@ -132,6 +141,10 @@ class SceneViewport(QOpenGLWidget):
 
         # Texture cache
         self.texture_cache = {}  # path -> texture_id
+
+        # Font cache for text rendering
+        self.font_cache = {}  # (font_name, size) -> pygame.font.Font
+        self.text_texture_cache = {}  # (text, font_name, size, color) -> texture_id
 
         # Enable mouse tracking
         self.setMouseTracking(True)
@@ -315,6 +328,108 @@ class SceneViewport(QOpenGLWidget):
         
         glLineWidth(1.0)
 
+    def get_font(self, font_name: Optional[str] = None, font_size: int = 14):
+        """Get a pygame font for text rendering"""
+        if not PYGAME_AVAILABLE:
+            return None
+
+        font_key = (font_name, font_size)
+        if font_key not in self.font_cache:
+            try:
+                if font_name:
+                    font = pygame.font.Font(font_name, font_size)
+                else:
+                    font = pygame.font.Font(None, font_size)
+                self.font_cache[font_key] = font
+            except Exception as e:
+                print(f"Error loading font {font_name}: {e}")
+                # Fallback to default font
+                font = pygame.font.Font(None, font_size)
+                self.font_cache[font_key] = font
+
+        return self.font_cache[font_key]
+
+    def create_text_texture(self, text: str, font, color: tuple) -> Optional[int]:
+        """Create an OpenGL texture from text using pygame font"""
+        if not PYGAME_AVAILABLE or not font:
+            return None
+
+        try:
+            # Render text to pygame surface
+            text_surface = font.render(text, True, color[:3])  # RGB only for pygame
+
+            # Convert to RGBA format
+            text_data = pygame.image.tostring(text_surface, 'RGBA', True)
+            text_width, text_height = text_surface.get_size()
+
+            # Create OpenGL texture
+            texture_id = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, texture_id)
+
+            # Set texture parameters
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+
+            # Upload texture data
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, text_width, text_height,
+                        0, GL_RGBA, GL_UNSIGNED_BYTE, text_data)
+
+            glBindTexture(GL_TEXTURE_2D, 0)
+
+            return texture_id
+
+        except Exception as e:
+            print(f"Error creating text texture: {e}")
+            return None
+
+    def draw_text_opengl(self, text: str, x: float, y: float, font_name: Optional[str] = None,
+                        font_size: int = 14, color: tuple = (1.0, 1.0, 1.0, 1.0)):
+        """Draw text using OpenGL with pygame font rendering"""
+        if not text or not PYGAME_AVAILABLE:
+            # Fallback to bitmap rendering
+            self.draw_text_bitmap(text, x, y, list(color[:3]), font_size)
+            return
+
+        # Create cache key
+        pygame_color = (int(color[0] * 255), int(color[1] * 255),
+                       int(color[2] * 255), int(color[3] * 255))
+        text_key = (text, font_name, font_size, pygame_color)
+
+        # Check cache
+        if text_key not in self.text_texture_cache:
+            font = self.get_font(font_name, font_size)
+            if font:
+                texture_id = self.create_text_texture(text, font, pygame_color)
+                if texture_id:
+                    # Get text dimensions
+                    text_width, text_height = font.size(text)
+                    self.text_texture_cache[text_key] = (texture_id, text_width, text_height)
+
+        # Draw cached text texture
+        if text_key in self.text_texture_cache:
+            texture_id, text_width, text_height = self.text_texture_cache[text_key]
+
+            # Draw textured quad
+            glEnable(GL_TEXTURE_2D)
+            glBindTexture(GL_TEXTURE_2D, texture_id)
+            glColor4f(1.0, 1.0, 1.0, color[3])  # Use alpha from color
+
+            glBegin(GL_QUADS)
+            glTexCoord2f(0.0, 0.0)
+            glVertex2f(x, y)
+            glTexCoord2f(1.0, 0.0)
+            glVertex2f(x + text_width, y)
+            glTexCoord2f(1.0, 1.0)
+            glVertex2f(x + text_width, y + text_height)
+            glTexCoord2f(0.0, 1.0)
+            glVertex2f(x, y + text_height)
+            glEnd()
+
+            glBindTexture(GL_TEXTURE_2D, 0)
+            glDisable(GL_TEXTURE_2D)
+
     def load_texture(self, texture_path: str) -> Optional[Tuple[int, int, int]]:
         """Load a texture from file and return (texture_id, width, height)"""
         if not texture_path:
@@ -495,6 +610,32 @@ class SceneViewport(QOpenGLWidget):
             self.draw_button(node_data)
         elif node_type == "CanvasLayer":
             self.draw_canvas_layer(node_data)
+        elif node_type == "ColorRect":
+            self.draw_color_rect(node_data)
+        elif node_type == "TextureRect":
+            self.draw_texture_rect(node_data)
+        elif node_type == "ProgressBar":
+            self.draw_progress_bar(node_data)
+        elif node_type == "AudioStreamPlayer":
+            self.draw_audio_stream_player(node_data)
+        elif node_type == "AudioStreamPlayer2D":
+            self.draw_audio_stream_player_2d(node_data)
+        elif node_type == "VBoxContainer":
+            self.draw_vbox_container(node_data)
+        elif node_type == "HBoxContainer":
+            self.draw_hbox_container(node_data)
+        elif node_type == "CenterContainer":
+            self.draw_center_container(node_data)
+        elif node_type == "GridContainer":
+            self.draw_grid_container(node_data)
+        elif node_type == "RichTextLabel":
+            self.draw_rich_text_label(node_data)
+        elif node_type == "PanelContainer":
+            self.draw_panel_container(node_data)
+        elif node_type == "NinePatchRect":
+            self.draw_nine_patch_rect(node_data)
+        elif node_type == "ItemList":
+            self.draw_item_list(node_data)
         elif node_type == "CollisionShape2D":
             self.draw_collision_shape(node_data)
         elif node_type == "CollisionPolygon2D":
@@ -1000,8 +1141,10 @@ class SceneViewport(QOpenGLWidget):
         elif v_align == "Bottom":
             text_y = -rect_size[1]/2 + 15
 
-        # Draw text using bitmap-based rendering
-        self.draw_text_bitmap(text, text_x, text_y, font_color, font_size)
+        # Draw text using OpenGL rendering with pygame fonts
+        font_name = node_data.get("font", None)  # Get font from node data
+        self.draw_text_opengl(text, text_x, text_y, font_name, font_size,
+                             (font_color[0], font_color[1], font_color[2], 1.0))
 
     def draw_button(self, node_data: Dict[str, Any]):
         """Draw Button node with interactive states"""
@@ -1069,8 +1212,10 @@ class SceneViewport(QOpenGLWidget):
         text_x = -len(text) * 3  # Approximate centering
         text_y = -6  # Center vertically
 
-        # Draw text using bitmap-based rendering
-        self.draw_text_bitmap(text, text_x, text_y, font_color, font_size)
+        # Draw text using OpenGL rendering with pygame fonts
+        font_name = node_data.get("font", None)  # Get font from node data
+        self.draw_text_opengl(text, text_x, text_y, font_name, font_size,
+                             (font_color[0], font_color[1], font_color[2], 1.0))
 
         # Draw button indicator (B in corner)
         glColor3f(1.0, 1.0, 1.0)
@@ -1238,6 +1383,1122 @@ class SceneViewport(QOpenGLWidget):
         glVertex2f(x + width - 1, y + height - 1)
         glVertex2f(x + width - 1, y + 1)
         glVertex2f(x + 1, y + height - 1)
+        glEnd()
+
+    def draw_color_rect(self, node_data: Dict[str, Any]):
+        """Draw ColorRect node"""
+        # Get color rect properties
+        rect_size = node_data.get("rect_size", [100.0, 100.0])
+        color = node_data.get("color", [1.0, 1.0, 1.0, 1.0])
+
+        # Draw color rectangle (centered on position)
+        glColor4f(color[0], color[1], color[2], color[3])
+        glBegin(GL_QUADS)
+        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glEnd()
+
+        # Draw border for visibility in editor
+        glColor3f(0.8, 0.8, 0.9)  # Light color for border
+        glBegin(GL_LINE_LOOP)
+        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glEnd()
+
+    def draw_texture_rect(self, node_data: Dict[str, Any]):
+        """Draw TextureRect node"""
+        # Get texture rect properties
+        rect_size = node_data.get("rect_size", [100.0, 100.0])
+        texture_path = node_data.get("texture", None)
+        stretch_mode = node_data.get("stretch_mode", "stretch")
+        flip_h = node_data.get("flip_h", False)
+        flip_v = node_data.get("flip_v", False)
+
+        # Try to load and draw texture if available
+        if texture_path and isinstance(texture_path, str):
+            texture_info = self.load_texture(texture_path)
+            if texture_info:
+                texture_id, tex_width, tex_height = texture_info
+
+                # Calculate draw rectangle based on stretch mode
+                draw_rect = self._calculate_texture_draw_rect(
+                    rect_size, [tex_width, tex_height], stretch_mode
+                )
+
+                # Draw textured rectangle
+                glEnable(GL_TEXTURE_2D)
+                glBindTexture(GL_TEXTURE_2D, texture_id)
+                glColor3f(1.0, 1.0, 1.0)  # White to show texture as-is
+
+                # Set up texture coordinates based on flip settings
+                u1, v1 = (1.0, 0.0) if flip_h else (0.0, 0.0)
+                u2, v2 = (0.0, 0.0) if flip_h else (1.0, 0.0)
+                u3, v3 = (0.0, 1.0) if flip_h else (1.0, 1.0)
+                u4, v4 = (1.0, 1.0) if flip_h else (0.0, 1.0)
+
+                if flip_v:
+                    v1, v2, v3, v4 = v4, v3, v2, v1
+
+                glBegin(GL_QUADS)
+                glTexCoord2f(u1, v1)
+                glVertex2f(draw_rect[0], draw_rect[1])
+                glTexCoord2f(u2, v2)
+                glVertex2f(draw_rect[2], draw_rect[1])
+                glTexCoord2f(u3, v3)
+                glVertex2f(draw_rect[2], draw_rect[3])
+                glTexCoord2f(u4, v4)
+                glVertex2f(draw_rect[0], draw_rect[3])
+                glEnd()
+
+                glDisable(GL_TEXTURE_2D)
+            else:
+                # Draw placeholder if texture failed to load
+                self._draw_texture_placeholder(rect_size, "MISSING")
+        else:
+            # Draw placeholder if no texture
+            self._draw_texture_placeholder(rect_size, "NO TEXTURE")
+
+        # Draw border for visibility in editor
+        glColor3f(0.9, 0.7, 0.9)  # Light purple for texture rect border
+        glBegin(GL_LINE_LOOP)
+        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glEnd()
+
+    def _calculate_texture_draw_rect(self, control_size, texture_size, stretch_mode):
+        """Calculate the drawing rectangle for texture based on stretch mode"""
+        # Convert to centered coordinates (relative to node position)
+        half_width = control_size[0] / 2
+        half_height = control_size[1] / 2
+
+        if stretch_mode == "stretch":
+            return [-half_width, -half_height, half_width, half_height]
+        elif stretch_mode == "keep":
+            tex_half_w = texture_size[0] / 2
+            tex_half_h = texture_size[1] / 2
+            return [-tex_half_w, -tex_half_h, tex_half_w, tex_half_h]
+        elif stretch_mode == "keep_centered":
+            tex_half_w = texture_size[0] / 2
+            tex_half_h = texture_size[1] / 2
+            return [-tex_half_w, -tex_half_h, tex_half_w, tex_half_h]
+        elif stretch_mode in ["keep_aspect", "keep_aspect_centered"]:
+            scale_x = control_size[0] / texture_size[0]
+            scale_y = control_size[1] / texture_size[1]
+            scale = min(scale_x, scale_y)
+            scaled_w = texture_size[0] * scale / 2
+            scaled_h = texture_size[1] * scale / 2
+            return [-scaled_w, -scaled_h, scaled_w, scaled_h]
+        elif stretch_mode == "keep_aspect_covered":
+            scale_x = control_size[0] / texture_size[0]
+            scale_y = control_size[1] / texture_size[1]
+            scale = max(scale_x, scale_y)
+            scaled_w = texture_size[0] * scale / 2
+            scaled_h = texture_size[1] * scale / 2
+            return [-scaled_w, -scaled_h, scaled_w, scaled_h]
+        else:
+            # Default to stretch
+            return [-half_width, -half_height, half_width, half_height]
+
+    def _draw_texture_placeholder(self, rect_size, text):
+        """Draw a placeholder for missing or no texture"""
+        # Draw checkered background
+        glColor3f(0.8, 0.8, 0.8)
+        glBegin(GL_QUADS)
+        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glEnd()
+
+        # Draw checkered pattern
+        glColor3f(0.7, 0.7, 0.7)
+        checker_size = 8
+        for x in range(int(-rect_size[0]/2), int(rect_size[0]/2), checker_size * 2):
+            for y in range(int(-rect_size[1]/2), int(rect_size[1]/2), checker_size * 2):
+                glBegin(GL_QUADS)
+                glVertex2f(x, y)
+                glVertex2f(x + checker_size, y)
+                glVertex2f(x + checker_size, y + checker_size)
+                glVertex2f(x, y + checker_size)
+                glEnd()
+
+                glBegin(GL_QUADS)
+                glVertex2f(x + checker_size, y + checker_size)
+                glVertex2f(x + checker_size * 2, y + checker_size)
+                glVertex2f(x + checker_size * 2, y + checker_size * 2)
+                glVertex2f(x + checker_size, y + checker_size * 2)
+                glEnd()
+
+        # Draw text in center
+        glColor3f(0.3, 0.3, 0.3)
+        # Simple text rendering would go here
+        # For now, just draw a simple "T" shape to indicate texture
+        glBegin(GL_LINES)
+        glVertex2f(-10, 5)
+        glVertex2f(10, 5)
+        glVertex2f(0, 5)
+        glVertex2f(0, -10)
+        glEnd()
+
+    def draw_progress_bar(self, node_data: Dict[str, Any]):
+        """Draw ProgressBar node"""
+        # Get progress bar properties
+        rect_size = node_data.get("rect_size", [200.0, 24.0])
+        min_value = node_data.get("min_value", 0.0)
+        max_value = node_data.get("max_value", 100.0)
+        value = node_data.get("value", 0.0)
+        fill_mode = node_data.get("fill_mode", "left_to_right")
+        background_color = node_data.get("background_color", [0.2, 0.2, 0.2, 1.0])
+        fill_color = node_data.get("fill_color", [0.3, 0.6, 0.3, 1.0])
+        border_color = node_data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+        border_width = node_data.get("border_width", 1.0)
+        show_percentage = node_data.get("show_percentage", False)
+
+        # Calculate progress ratio
+        if max_value > min_value:
+            ratio = (value - min_value) / (max_value - min_value)
+        else:
+            ratio = 0.0
+        ratio = max(0.0, min(1.0, ratio))
+
+        # Draw background
+        glColor4f(background_color[0], background_color[1], background_color[2], background_color[3])
+        glBegin(GL_QUADS)
+        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glEnd()
+
+        # Draw fill based on fill mode
+        if ratio > 0.0:
+            glColor4f(fill_color[0], fill_color[1], fill_color[2], fill_color[3])
+
+            if fill_mode == "left_to_right":
+                fill_width = rect_size[0] * ratio
+                glBegin(GL_QUADS)
+                glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+                glVertex2f(-rect_size[0]/2 + fill_width, -rect_size[1]/2)
+                glVertex2f(-rect_size[0]/2 + fill_width, rect_size[1]/2)
+                glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+                glEnd()
+            elif fill_mode == "right_to_left":
+                fill_width = rect_size[0] * ratio
+                glBegin(GL_QUADS)
+                glVertex2f(rect_size[0]/2 - fill_width, -rect_size[1]/2)
+                glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+                glVertex2f(rect_size[0]/2, rect_size[1]/2)
+                glVertex2f(rect_size[0]/2 - fill_width, rect_size[1]/2)
+                glEnd()
+            elif fill_mode == "top_to_bottom":
+                fill_height = rect_size[1] * ratio
+                glBegin(GL_QUADS)
+                glVertex2f(-rect_size[0]/2, rect_size[1]/2 - fill_height)
+                glVertex2f(rect_size[0]/2, rect_size[1]/2 - fill_height)
+                glVertex2f(rect_size[0]/2, rect_size[1]/2)
+                glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+                glEnd()
+            elif fill_mode == "bottom_to_top":
+                fill_height = rect_size[1] * ratio
+                glBegin(GL_QUADS)
+                glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+                glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+                glVertex2f(rect_size[0]/2, -rect_size[1]/2 + fill_height)
+                glVertex2f(-rect_size[0]/2, -rect_size[1]/2 + fill_height)
+                glEnd()
+            elif fill_mode == "center_expand":
+                fill_width = rect_size[0] * ratio
+                offset = (rect_size[0] - fill_width) / 2
+                glBegin(GL_QUADS)
+                glVertex2f(-rect_size[0]/2 + offset, -rect_size[1]/2)
+                glVertex2f(rect_size[0]/2 - offset, -rect_size[1]/2)
+                glVertex2f(rect_size[0]/2 - offset, rect_size[1]/2)
+                glVertex2f(-rect_size[0]/2 + offset, rect_size[1]/2)
+                glEnd()
+
+        # Draw border
+        if border_width > 0:
+            glColor4f(border_color[0], border_color[1], border_color[2], border_color[3])
+            glLineWidth(border_width)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+            glLineWidth(1.0)
+
+        # Draw percentage text if enabled
+        if show_percentage:
+            percentage = int(ratio * 100)
+            # Simple text representation - just draw the percentage as a small indicator
+            glColor3f(1.0, 1.0, 1.0)
+            # Draw a small "%" symbol in the center
+            glBegin(GL_LINES)
+            # % symbol (simplified)
+            glVertex2f(-5, 5)
+            glVertex2f(5, -5)
+            glVertex2f(-5, 3)
+            glVertex2f(-3, 5)
+            glVertex2f(3, -5)
+            glVertex2f(5, -3)
+            glEnd()
+
+    def draw_audio_stream_player(self, node_data: Dict[str, Any]):
+        """Draw AudioStreamPlayer node"""
+        playing = node_data.get("playing", False)
+        volume_db = node_data.get("volume_db", 0.0)
+        stream = node_data.get("stream", None)
+
+        # Choose color based on state
+        if playing:
+            glColor3f(0.0, 1.0, 0.0)  # Green when playing
+        elif stream:
+            glColor3f(0.8, 0.8, 0.0)  # Yellow when loaded but not playing
+        else:
+            glColor3f(0.5, 0.5, 0.5)  # Gray when no stream
+
+        # Draw speaker icon
+        size = 20
+        glBegin(GL_QUADS)
+        # Speaker cone
+        glVertex2f(-size, -size/2)
+        glVertex2f(-size/2, -size/2)
+        glVertex2f(-size/2, size/2)
+        glVertex2f(-size, size/2)
+        glEnd()
+
+        # Speaker horn
+        glBegin(GL_LINE_STRIP)
+        glVertex2f(-size/2, -size/2)
+        glVertex2f(size/2, -size)
+        glVertex2f(size, -size)
+        glVertex2f(size, size)
+        glVertex2f(size/2, size)
+        glVertex2f(-size/2, size/2)
+        glEnd()
+
+        # Draw sound waves if playing
+        if playing:
+            glBegin(GL_LINES)
+            for i in range(3):
+                radius = size + (i + 1) * 8
+                # Draw arc segments
+                for j in range(8):
+                    angle1 = -0.5 + j * 0.125
+                    angle2 = -0.5 + (j + 1) * 0.125
+                    x1 = radius * math.cos(angle1)
+                    y1 = radius * math.sin(angle1)
+                    x2 = radius * math.cos(angle2)
+                    y2 = radius * math.sin(angle2)
+                    glVertex2f(x1, y1)
+                    glVertex2f(x2, y2)
+            glEnd()
+
+    def draw_audio_stream_player_2d(self, node_data: Dict[str, Any]):
+        """Draw AudioStreamPlayer2D node"""
+        playing = node_data.get("playing", False)
+        volume_db = node_data.get("volume_db", 0.0)
+        max_distance = node_data.get("max_distance", 2000.0)
+        attenuation = node_data.get("attenuation", 1.0)
+        stream = node_data.get("stream", None)
+
+        # Choose color based on state
+        if playing:
+            glColor3f(0.0, 1.0, 0.0)  # Green when playing
+        elif stream:
+            glColor3f(0.8, 0.8, 0.0)  # Yellow when loaded but not playing
+        else:
+            glColor3f(0.5, 0.5, 0.5)  # Gray when no stream
+
+        # Draw 2D speaker icon (similar to regular but with 2D indicator)
+        size = 20
+        glBegin(GL_QUADS)
+        # Speaker cone
+        glVertex2f(-size, -size/2)
+        glVertex2f(-size/2, -size/2)
+        glVertex2f(-size/2, size/2)
+        glVertex2f(-size, size/2)
+        glEnd()
+
+        # Speaker horn
+        glBegin(GL_LINE_STRIP)
+        glVertex2f(-size/2, -size/2)
+        glVertex2f(size/2, -size)
+        glVertex2f(size, -size)
+        glVertex2f(size, size)
+        glVertex2f(size/2, size)
+        glVertex2f(-size/2, size/2)
+        glEnd()
+
+        # Draw attenuation circle to show max distance (scaled down for visibility)
+        if max_distance > 0:
+            display_radius = min(50, max_distance / 40)  # Scale down for editor
+            glColor4f(0.3, 0.3, 1.0, 0.3)  # Semi-transparent blue
+            glBegin(GL_LINE_LOOP)
+            segments = 32
+            for i in range(segments):
+                angle = 2 * math.pi * i / segments
+                x = display_radius * math.cos(angle)
+                y = display_radius * math.sin(angle)
+                glVertex2f(x, y)
+            glEnd()
+
+        # Draw sound waves if playing (360-degree for 2D)
+        if playing:
+            glColor3f(0.0, 1.0, 0.0)
+            glBegin(GL_LINES)
+            for i in range(3):
+                radius = size + (i + 1) * 8
+                segments = 16
+                for j in range(segments):
+                    angle1 = 2 * math.pi * j / segments
+                    angle2 = 2 * math.pi * (j + 1) / segments
+                    x1 = radius * math.cos(angle1)
+                    y1 = radius * math.sin(angle1)
+                    x2 = radius * math.cos(angle2)
+                    y2 = radius * math.sin(angle2)
+                    glVertex2f(x1, y1)
+                    glVertex2f(x2, y2)
+            glEnd()
+
+        # Draw "2D" text indicator
+        glColor3f(1.0, 1.0, 1.0)
+        glBegin(GL_LINES)
+        # Simple "2D" text
+        # "2"
+        glVertex2f(-size - 15, size + 10)
+        glVertex2f(-size - 5, size + 10)
+        glVertex2f(-size - 5, size + 10)
+        glVertex2f(-size - 5, size + 5)
+        glVertex2f(-size - 5, size + 5)
+        glVertex2f(-size - 15, size + 5)
+        glVertex2f(-size - 15, size + 5)
+        glVertex2f(-size - 15, size)
+        glVertex2f(-size - 15, size)
+        glVertex2f(-size - 5, size)
+        # "D"
+        glVertex2f(-size, size + 10)
+        glVertex2f(-size, size)
+        glVertex2f(-size, size + 10)
+        glVertex2f(-size + 8, size + 10)
+        glVertex2f(-size + 8, size + 10)
+        glVertex2f(-size + 8, size)
+        glVertex2f(-size + 8, size)
+        glVertex2f(-size, size)
+        glEnd()
+
+    def draw_vbox_container(self, node_data: Dict[str, Any]):
+        """Draw VBoxContainer node"""
+        rect_size = node_data.get("rect_size", [100.0, 100.0])
+        separation = node_data.get("separation", 4.0)
+        alignment = node_data.get("alignment", "top")
+        background_color = node_data.get("background_color", [0.0, 0.0, 0.0, 0.0])
+        border_color = node_data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+        border_width = node_data.get("border_width", 0.0)
+        container_margin_left = node_data.get("container_margin_left", 0.0)
+        container_margin_top = node_data.get("container_margin_top", 0.0)
+        container_margin_right = node_data.get("container_margin_right", 0.0)
+        container_margin_bottom = node_data.get("container_margin_bottom", 0.0)
+
+        # Draw background if not transparent
+        if background_color[3] > 0.0:
+            glColor4f(background_color[0], background_color[1], background_color[2], background_color[3])
+            glBegin(GL_QUADS)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+
+        # Draw border if enabled
+        if border_width > 0:
+            glColor4f(border_color[0], border_color[1], border_color[2], border_color[3])
+            glLineWidth(border_width)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+            glLineWidth(1.0)
+
+        # Draw container margins
+        if any([container_margin_left, container_margin_top, container_margin_right, container_margin_bottom]):
+            glColor3f(0.3, 0.7, 0.3)  # Green for margins
+            glLineWidth(1.0)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-rect_size[0]/2 + container_margin_left, -rect_size[1]/2 + container_margin_bottom)
+            glVertex2f(rect_size[0]/2 - container_margin_right, -rect_size[1]/2 + container_margin_bottom)
+            glVertex2f(rect_size[0]/2 - container_margin_right, rect_size[1]/2 - container_margin_top)
+            glVertex2f(-rect_size[0]/2 + container_margin_left, rect_size[1]/2 - container_margin_top)
+            glEnd()
+
+        # Draw layout indicator (vertical arrows)
+        glColor3f(0.8, 0.8, 0.2)  # Yellow for layout direction
+        glBegin(GL_LINES)
+        # Vertical line
+        glVertex2f(0, -rect_size[1]/4)
+        glVertex2f(0, rect_size[1]/4)
+        # Arrow heads
+        glVertex2f(0, rect_size[1]/4)
+        glVertex2f(-5, rect_size[1]/4 - 8)
+        glVertex2f(0, rect_size[1]/4)
+        glVertex2f(5, rect_size[1]/4 - 8)
+        glEnd()
+
+        # Draw alignment indicator
+        if alignment == "center":
+            glColor3f(1.0, 1.0, 0.0)
+            glBegin(GL_LINES)
+            glVertex2f(-10, 0)
+            glVertex2f(10, 0)
+            glEnd()
+        elif alignment == "bottom":
+            glColor3f(1.0, 1.0, 0.0)
+            glBegin(GL_LINES)
+            glVertex2f(-10, -rect_size[1]/4)
+            glVertex2f(10, -rect_size[1]/4)
+            glEnd()
+
+    def draw_hbox_container(self, node_data: Dict[str, Any]):
+        """Draw HBoxContainer node"""
+        rect_size = node_data.get("rect_size", [100.0, 100.0])
+        separation = node_data.get("separation", 4.0)
+        alignment = node_data.get("alignment", "left")
+        background_color = node_data.get("background_color", [0.0, 0.0, 0.0, 0.0])
+        border_color = node_data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+        border_width = node_data.get("border_width", 0.0)
+        container_margin_left = node_data.get("container_margin_left", 0.0)
+        container_margin_top = node_data.get("container_margin_top", 0.0)
+        container_margin_right = node_data.get("container_margin_right", 0.0)
+        container_margin_bottom = node_data.get("container_margin_bottom", 0.0)
+
+        # Draw background if not transparent
+        if background_color[3] > 0.0:
+            glColor4f(background_color[0], background_color[1], background_color[2], background_color[3])
+            glBegin(GL_QUADS)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+
+        # Draw border if enabled
+        if border_width > 0:
+            glColor4f(border_color[0], border_color[1], border_color[2], border_color[3])
+            glLineWidth(border_width)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+            glLineWidth(1.0)
+
+        # Draw container margins
+        if any([container_margin_left, container_margin_top, container_margin_right, container_margin_bottom]):
+            glColor3f(0.3, 0.7, 0.3)  # Green for margins
+            glLineWidth(1.0)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-rect_size[0]/2 + container_margin_left, -rect_size[1]/2 + container_margin_bottom)
+            glVertex2f(rect_size[0]/2 - container_margin_right, -rect_size[1]/2 + container_margin_bottom)
+            glVertex2f(rect_size[0]/2 - container_margin_right, rect_size[1]/2 - container_margin_top)
+            glVertex2f(-rect_size[0]/2 + container_margin_left, rect_size[1]/2 - container_margin_top)
+            glEnd()
+
+        # Draw layout indicator (horizontal arrows)
+        glColor3f(0.8, 0.8, 0.2)  # Yellow for layout direction
+        glBegin(GL_LINES)
+        # Horizontal line
+        glVertex2f(-rect_size[0]/4, 0)
+        glVertex2f(rect_size[0]/4, 0)
+        # Arrow heads
+        glVertex2f(rect_size[0]/4, 0)
+        glVertex2f(rect_size[0]/4 - 8, -5)
+        glVertex2f(rect_size[0]/4, 0)
+        glVertex2f(rect_size[0]/4 - 8, 5)
+        glEnd()
+
+        # Draw alignment indicator
+        if alignment == "center":
+            glColor3f(1.0, 1.0, 0.0)
+            glBegin(GL_LINES)
+            glVertex2f(0, -10)
+            glVertex2f(0, 10)
+            glEnd()
+        elif alignment == "right":
+            glColor3f(1.0, 1.0, 0.0)
+            glBegin(GL_LINES)
+            glVertex2f(rect_size[0]/4, -10)
+            glVertex2f(rect_size[0]/4, 10)
+            glEnd()
+
+    def draw_center_container(self, node_data: Dict[str, Any]):
+        """Draw CenterContainer node"""
+        rect_size = node_data.get("rect_size", [100.0, 100.0])
+        use_top_left = node_data.get("use_top_left", False)
+        background_color = node_data.get("background_color", [0.0, 0.0, 0.0, 0.0])
+        border_color = node_data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+        border_width = node_data.get("border_width", 0.0)
+        container_margin_left = node_data.get("container_margin_left", 0.0)
+        container_margin_top = node_data.get("container_margin_top", 0.0)
+        container_margin_right = node_data.get("container_margin_right", 0.0)
+        container_margin_bottom = node_data.get("container_margin_bottom", 0.0)
+
+        # Draw background if not transparent
+        if background_color[3] > 0.0:
+            glColor4f(background_color[0], background_color[1], background_color[2], background_color[3])
+            glBegin(GL_QUADS)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+
+        # Draw border if enabled
+        if border_width > 0:
+            glColor4f(border_color[0], border_color[1], border_color[2], border_color[3])
+            glLineWidth(border_width)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+            glLineWidth(1.0)
+
+        # Draw container margins
+        if any([container_margin_left, container_margin_top, container_margin_right, container_margin_bottom]):
+            glColor3f(0.3, 0.7, 0.3)  # Green for margins
+            glLineWidth(1.0)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-rect_size[0]/2 + container_margin_left, -rect_size[1]/2 + container_margin_bottom)
+            glVertex2f(rect_size[0]/2 - container_margin_right, -rect_size[1]/2 + container_margin_bottom)
+            glVertex2f(rect_size[0]/2 - container_margin_right, rect_size[1]/2 - container_margin_top)
+            glVertex2f(-rect_size[0]/2 + container_margin_left, rect_size[1]/2 - container_margin_top)
+            glEnd()
+
+        # Draw center indicator (crosshair)
+        glColor3f(0.8, 0.2, 0.8)  # Magenta for center
+        glBegin(GL_LINES)
+        # Horizontal line
+        glVertex2f(-15, 0)
+        glVertex2f(15, 0)
+        # Vertical line
+        glVertex2f(0, -15)
+        glVertex2f(0, 15)
+        glEnd()
+
+        # Draw center point
+        glColor3f(1.0, 0.0, 1.0)
+        glBegin(GL_QUADS)
+        glVertex2f(-2, -2)
+        glVertex2f(2, -2)
+        glVertex2f(2, 2)
+        glVertex2f(-2, 2)
+        glEnd()
+
+    def draw_grid_container(self, node_data: Dict[str, Any]):
+        """Draw GridContainer node"""
+        rect_size = node_data.get("rect_size", [200.0, 200.0])
+        columns = node_data.get("columns", 2)
+        h_separation = node_data.get("h_separation", 4.0)
+        v_separation = node_data.get("v_separation", 4.0)
+        background_color = node_data.get("background_color", [0.0, 0.0, 0.0, 0.0])
+        border_color = node_data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+        border_width = node_data.get("border_width", 0.0)
+        container_margin_left = node_data.get("container_margin_left", 0.0)
+        container_margin_top = node_data.get("container_margin_top", 0.0)
+        container_margin_right = node_data.get("container_margin_right", 0.0)
+        container_margin_bottom = node_data.get("container_margin_bottom", 0.0)
+
+        # Draw background if not transparent
+        if background_color[3] > 0.0:
+            glColor4f(background_color[0], background_color[1], background_color[2], background_color[3])
+            glBegin(GL_QUADS)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+
+        # Draw border if enabled
+        if border_width > 0:
+            glColor4f(border_color[0], border_color[1], border_color[2], border_color[3])
+            glLineWidth(border_width)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+            glLineWidth(1.0)
+
+        # Draw container margins
+        if any([container_margin_left, container_margin_top, container_margin_right, container_margin_bottom]):
+            glColor3f(0.3, 0.7, 0.3)  # Green for margins
+            glLineWidth(1.0)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-rect_size[0]/2 + container_margin_left, -rect_size[1]/2 + container_margin_bottom)
+            glVertex2f(rect_size[0]/2 - container_margin_right, -rect_size[1]/2 + container_margin_bottom)
+            glVertex2f(rect_size[0]/2 - container_margin_right, rect_size[1]/2 - container_margin_top)
+            glVertex2f(-rect_size[0]/2 + container_margin_left, rect_size[1]/2 - container_margin_top)
+            glEnd()
+
+        # Calculate grid layout for visualization
+        if columns > 0:
+            # Calculate available space
+            available_width = rect_size[0] - container_margin_left - container_margin_right
+            available_height = rect_size[1] - container_margin_top - container_margin_bottom
+
+            # Assume 4 children for visualization (2x2 grid if columns=2)
+            rows = max(1, 2)  # Show at least 2 rows for demo
+
+            # Calculate cell size
+            total_h_separation = h_separation * max(0, columns - 1)
+            total_v_separation = v_separation * max(0, rows - 1)
+
+            cell_width = (available_width - total_h_separation) / columns
+            cell_height = (available_height - total_v_separation) / rows
+
+            # Draw grid lines
+            glColor3f(0.6, 0.6, 0.8)  # Light blue for grid
+            glBegin(GL_LINES)
+
+            # Vertical lines
+            for i in range(columns + 1):
+                x = -rect_size[0]/2 + container_margin_left + i * (cell_width + h_separation)
+                if i == columns:
+                    x -= h_separation  # Adjust last line
+                glVertex2f(x, -rect_size[1]/2 + container_margin_bottom)
+                glVertex2f(x, rect_size[1]/2 - container_margin_top)
+
+            # Horizontal lines
+            for i in range(rows + 1):
+                y = -rect_size[1]/2 + container_margin_bottom + i * (cell_height + v_separation)
+                if i == rows:
+                    y -= v_separation  # Adjust last line
+                glVertex2f(-rect_size[0]/2 + container_margin_left, y)
+                glVertex2f(rect_size[0]/2 - container_margin_right, y)
+
+            glEnd()
+
+        # Draw grid indicator text (simplified)
+        glColor3f(1.0, 1.0, 0.0)  # Yellow
+        glBegin(GL_LINES)
+        # Draw "G" for Grid
+        glVertex2f(-8, 8)
+        glVertex2f(-8, -8)
+        glVertex2f(-8, 8)
+        glVertex2f(0, 8)
+        glVertex2f(0, 8)
+        glVertex2f(0, 0)
+        glVertex2f(0, 0)
+        glVertex2f(-4, 0)
+        glEnd()
+
+    def draw_rich_text_label(self, node_data: Dict[str, Any]):
+        """Draw RichTextLabel node"""
+        rect_size = node_data.get("rect_size", [200.0, 100.0])
+        text = node_data.get("text", "")
+        bbcode_enabled = node_data.get("bbcode_enabled", True)
+        background_color = node_data.get("background_color", [0.0, 0.0, 0.0, 0.0])
+        border_color = node_data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+        border_width = node_data.get("border_width", 0.0)
+        scroll_active = node_data.get("scroll_active", True)
+        default_color = node_data.get("default_color", [1.0, 1.0, 1.0, 1.0])
+
+        # Draw background if not transparent
+        if background_color[3] > 0.0:
+            glColor4f(background_color[0], background_color[1], background_color[2], background_color[3])
+            glBegin(GL_QUADS)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+
+        # Draw border if enabled
+        if border_width > 0:
+            glColor4f(border_color[0], border_color[1], border_color[2], border_color[3])
+            glLineWidth(border_width)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+            glLineWidth(1.0)
+
+        # Draw text content indicator
+        if text:
+            # Draw text lines indicator
+            glColor4f(default_color[0], default_color[1], default_color[2], default_color[3])
+            glBegin(GL_LINES)
+            # Simulate text lines
+            line_height = 12
+            num_lines = min(int(rect_size[1] / line_height), 5)  # Max 5 lines for preview
+            start_y = rect_size[1]/2 - 10
+
+            for i in range(num_lines):
+                y = start_y - i * line_height
+                line_width = rect_size[0] * 0.8 if i < num_lines - 1 else rect_size[0] * 0.6  # Last line shorter
+                glVertex2f(-line_width/2, y)
+                glVertex2f(line_width/2, y)
+            glEnd()
+
+        # Draw BBCode indicator if enabled
+        if bbcode_enabled:
+            glColor3f(1.0, 0.8, 0.2)  # Orange for BBCode
+            glBegin(GL_LINES)
+            # Draw "BB" indicator
+            # B
+            glVertex2f(-rect_size[0]/2 + 5, rect_size[1]/2 - 5)
+            glVertex2f(-rect_size[0]/2 + 5, rect_size[1]/2 - 15)
+            glVertex2f(-rect_size[0]/2 + 5, rect_size[1]/2 - 5)
+            glVertex2f(-rect_size[0]/2 + 10, rect_size[1]/2 - 5)
+            glVertex2f(-rect_size[0]/2 + 5, rect_size[1]/2 - 10)
+            glVertex2f(-rect_size[0]/2 + 10, rect_size[1]/2 - 10)
+            glVertex2f(-rect_size[0]/2 + 10, rect_size[1]/2 - 10)
+            glVertex2f(-rect_size[0]/2 + 10, rect_size[1]/2 - 15)
+            # B
+            glVertex2f(-rect_size[0]/2 + 12, rect_size[1]/2 - 5)
+            glVertex2f(-rect_size[0]/2 + 12, rect_size[1]/2 - 15)
+            glVertex2f(-rect_size[0]/2 + 12, rect_size[1]/2 - 5)
+            glVertex2f(-rect_size[0]/2 + 17, rect_size[1]/2 - 5)
+            glVertex2f(-rect_size[0]/2 + 12, rect_size[1]/2 - 10)
+            glVertex2f(-rect_size[0]/2 + 17, rect_size[1]/2 - 10)
+            glVertex2f(-rect_size[0]/2 + 17, rect_size[1]/2 - 10)
+            glVertex2f(-rect_size[0]/2 + 17, rect_size[1]/2 - 15)
+            glEnd()
+
+        # Draw scroll indicator if scrolling is active
+        if scroll_active:
+            glColor3f(0.6, 0.6, 0.8)  # Light blue for scroll
+            glBegin(GL_LINES)
+            # Scroll bar on right side
+            scroll_x = rect_size[0]/2 - 3
+            glVertex2f(scroll_x, -rect_size[1]/2 + 5)
+            glVertex2f(scroll_x, rect_size[1]/2 - 5)
+            # Scroll thumb
+            glVertex2f(scroll_x - 2, rect_size[1]/4)
+            glVertex2f(scroll_x + 2, rect_size[1]/4)
+            glVertex2f(scroll_x - 2, rect_size[1]/4 - 10)
+            glVertex2f(scroll_x + 2, rect_size[1]/4 - 10)
+            glEnd()
+
+    def draw_panel_container(self, node_data: Dict[str, Any]):
+        """Draw PanelContainer node"""
+        rect_size = node_data.get("rect_size", [100.0, 100.0])
+        panel_color = node_data.get("panel_color", [0.2, 0.2, 0.2, 1.0])
+        border_color = node_data.get("border_color", [0.4, 0.4, 0.4, 1.0])
+        border_width = node_data.get("border_width", 1.0)
+        corner_radius = node_data.get("corner_radius", 4.0)
+        shadow_enabled = node_data.get("shadow_enabled", False)
+        shadow_color = node_data.get("shadow_color", [0.0, 0.0, 0.0, 0.5])
+        shadow_offset = node_data.get("shadow_offset", [2.0, 2.0])
+        container_margin_left = node_data.get("container_margin_left", 8.0)
+        container_margin_top = node_data.get("container_margin_top", 8.0)
+        container_margin_right = node_data.get("container_margin_right", 8.0)
+        container_margin_bottom = node_data.get("container_margin_bottom", 8.0)
+
+        # Draw shadow if enabled
+        if shadow_enabled:
+            glColor4f(shadow_color[0], shadow_color[1], shadow_color[2], shadow_color[3])
+            shadow_x = shadow_offset[0]
+            shadow_y = -shadow_offset[1]  # Flip Y for OpenGL coordinates
+            glBegin(GL_QUADS)
+            glVertex2f(-rect_size[0]/2 + shadow_x, -rect_size[1]/2 + shadow_y)
+            glVertex2f(rect_size[0]/2 + shadow_x, -rect_size[1]/2 + shadow_y)
+            glVertex2f(rect_size[0]/2 + shadow_x, rect_size[1]/2 + shadow_y)
+            glVertex2f(-rect_size[0]/2 + shadow_x, rect_size[1]/2 + shadow_y)
+            glEnd()
+
+        # Draw panel background
+        glColor4f(panel_color[0], panel_color[1], panel_color[2], panel_color[3])
+        glBegin(GL_QUADS)
+        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glEnd()
+
+        # Draw border if enabled
+        if border_width > 0:
+            glColor4f(border_color[0], border_color[1], border_color[2], border_color[3])
+            glLineWidth(border_width)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+            glLineWidth(1.0)
+
+        # Draw container margins
+        if any([container_margin_left, container_margin_top, container_margin_right, container_margin_bottom]):
+            glColor3f(0.3, 0.7, 0.3)  # Green for margins
+            glLineWidth(1.0)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-rect_size[0]/2 + container_margin_left, -rect_size[1]/2 + container_margin_bottom)
+            glVertex2f(rect_size[0]/2 - container_margin_right, -rect_size[1]/2 + container_margin_bottom)
+            glVertex2f(rect_size[0]/2 - container_margin_right, rect_size[1]/2 - container_margin_top)
+            glVertex2f(-rect_size[0]/2 + container_margin_left, rect_size[1]/2 - container_margin_top)
+            glEnd()
+
+        # Draw corner radius indicator if enabled
+        if corner_radius > 0:
+            glColor3f(0.8, 0.8, 0.2)  # Yellow for rounded corners
+            glBegin(GL_LINES)
+            # Draw small corner indicators
+            corner_size = min(corner_radius, 8.0)
+            # Top-left corner
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2 + corner_size)
+            glVertex2f(-rect_size[0]/2 + corner_size, -rect_size[1]/2)
+            # Top-right corner
+            glVertex2f(rect_size[0]/2 - corner_size, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2 + corner_size)
+            # Bottom-right corner
+            glVertex2f(rect_size[0]/2, rect_size[1]/2 - corner_size)
+            glVertex2f(rect_size[0]/2 - corner_size, rect_size[1]/2)
+            # Bottom-left corner
+            glVertex2f(-rect_size[0]/2 + corner_size, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2 - corner_size)
+            glEnd()
+
+        # Draw "PC" indicator for PanelContainer
+        glColor3f(1.0, 1.0, 0.0)  # Yellow
+        glBegin(GL_LINES)
+        # P
+        glVertex2f(-8, 8)
+        glVertex2f(-8, -8)
+        glVertex2f(-8, 8)
+        glVertex2f(-2, 8)
+        glVertex2f(-2, 8)
+        glVertex2f(-2, 0)
+        glVertex2f(-2, 0)
+        glVertex2f(-8, 0)
+        # C
+        glVertex2f(2, 8)
+        glVertex2f(8, 8)
+        glVertex2f(2, 8)
+        glVertex2f(2, -8)
+        glVertex2f(2, -8)
+        glVertex2f(8, -8)
+        glEnd()
+
+    def draw_nine_patch_rect(self, node_data: Dict[str, Any]):
+        """Draw NinePatchRect node"""
+        rect_size = node_data.get("rect_size", [100.0, 100.0])
+        texture = node_data.get("texture", None)
+        patch_margin_left = node_data.get("patch_margin_left", 0)
+        patch_margin_top = node_data.get("patch_margin_top", 0)
+        patch_margin_right = node_data.get("patch_margin_right", 0)
+        patch_margin_bottom = node_data.get("patch_margin_bottom", 0)
+        draw_center = node_data.get("draw_center", True)
+        modulate = node_data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+
+        # Draw background/placeholder
+        if texture:
+            glColor4f(modulate[0], modulate[1], modulate[2], modulate[3])
+        else:
+            glColor3f(0.3, 0.3, 0.5)  # Blue-gray for no texture
+
+        # Draw main rectangle
+        glBegin(GL_QUADS)
+        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glEnd()
+
+        # Draw 9-patch margin indicators if they exist
+        if any([patch_margin_left, patch_margin_top, patch_margin_right, patch_margin_bottom]):
+            glColor3f(1.0, 0.8, 0.2)  # Orange for patch margins
+            glLineWidth(1.0)
+
+            # Draw patch margin lines
+            glBegin(GL_LINES)
+
+            # Left margin
+            if patch_margin_left > 0:
+                x = -rect_size[0]/2 + patch_margin_left
+                glVertex2f(x, -rect_size[1]/2)
+                glVertex2f(x, rect_size[1]/2)
+
+            # Right margin
+            if patch_margin_right > 0:
+                x = rect_size[0]/2 - patch_margin_right
+                glVertex2f(x, -rect_size[1]/2)
+                glVertex2f(x, rect_size[1]/2)
+
+            # Top margin
+            if patch_margin_top > 0:
+                y = rect_size[1]/2 - patch_margin_top
+                glVertex2f(-rect_size[0]/2, y)
+                glVertex2f(rect_size[0]/2, y)
+
+            # Bottom margin
+            if patch_margin_bottom > 0:
+                y = -rect_size[1]/2 + patch_margin_bottom
+                glVertex2f(-rect_size[0]/2, y)
+                glVertex2f(rect_size[0]/2, y)
+
+            glEnd()
+
+        # Draw center indicator if center is disabled
+        if not draw_center:
+            glColor3f(1.0, 0.0, 0.0)  # Red X for no center
+            glBegin(GL_LINES)
+            glVertex2f(-10, -10)
+            glVertex2f(10, 10)
+            glVertex2f(-10, 10)
+            glVertex2f(10, -10)
+            glEnd()
+
+        # Draw "9P" indicator for NinePatch
+        glColor3f(1.0, 1.0, 0.0)  # Yellow
+        glBegin(GL_LINES)
+        # 9
+        glVertex2f(-8, 8)
+        glVertex2f(-2, 8)
+        glVertex2f(-2, 8)
+        glVertex2f(-2, 2)
+        glVertex2f(-2, 2)
+        glVertex2f(-8, 2)
+        glVertex2f(-8, 2)
+        glVertex2f(-8, -8)
+        glVertex2f(-8, -8)
+        glVertex2f(-2, -8)
+        # P
+        glVertex2f(2, 8)
+        glVertex2f(2, -8)
+        glVertex2f(2, 8)
+        glVertex2f(8, 8)
+        glVertex2f(8, 8)
+        glVertex2f(8, 0)
+        glVertex2f(8, 0)
+        glVertex2f(2, 0)
+        glEnd()
+
+    def draw_item_list(self, node_data: Dict[str, Any]):
+        """Draw ItemList node"""
+        rect_size = node_data.get("rect_size", [200.0, 300.0])
+        items = node_data.get("items", [])
+        selected_items = node_data.get("selected_items", [])
+        background_color = node_data.get("background_color", [0.1, 0.1, 0.1, 1.0])
+        item_color_selected = node_data.get("item_color_selected", [0.3, 0.5, 0.8, 1.0])
+        icon_mode = node_data.get("icon_mode", "top")
+        max_columns = node_data.get("max_columns", 1)
+
+        # Draw background
+        glColor4f(background_color[0], background_color[1], background_color[2], background_color[3])
+        glBegin(GL_QUADS)
+        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glEnd()
+
+        # Draw border
+        glColor3f(0.5, 0.5, 0.5)
+        glLineWidth(1.0)
+        glBegin(GL_LINE_LOOP)
+        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glEnd()
+
+        # Draw items (simplified visualization)
+        if items:
+            item_height = 20.0
+            item_spacing = 2.0
+            items_per_column = int((rect_size[1] - 10) / (item_height + item_spacing))
+
+            if max_columns > 1:
+                column_width = rect_size[0] / max_columns
+            else:
+                column_width = rect_size[0] - 10
+
+            for i in range(min(len(items), 10)):  # Show max 10 items for preview
+                column = i // items_per_column if max_columns > 1 else 0
+                row = i % items_per_column
+
+                if column >= max_columns:
+                    break
+
+                # Calculate item position
+                item_x = -rect_size[0]/2 + 5 + column * column_width
+                item_y = rect_size[1]/2 - 5 - row * (item_height + item_spacing)
+
+                # Draw selection background if selected
+                if i in selected_items:
+                    glColor4f(item_color_selected[0], item_color_selected[1],
+                             item_color_selected[2], item_color_selected[3])
+                    glBegin(GL_QUADS)
+                    glVertex2f(item_x, item_y - item_height)
+                    glVertex2f(item_x + column_width - 10, item_y - item_height)
+                    glVertex2f(item_x + column_width - 10, item_y)
+                    glVertex2f(item_x, item_y)
+                    glEnd()
+
+                # Draw item indicator (simplified)
+                glColor3f(0.8, 0.8, 0.8)  # Light gray for items
+                glBegin(GL_LINE_LOOP)
+                glVertex2f(item_x, item_y - item_height)
+                glVertex2f(item_x + column_width - 10, item_y - item_height)
+                glVertex2f(item_x + column_width - 10, item_y)
+                glVertex2f(item_x, item_y)
+                glEnd()
+
+                # Draw icon placeholder if icon mode is left
+                if icon_mode == "left":
+                    glColor3f(0.6, 0.6, 0.8)  # Light blue for icon
+                    glBegin(GL_QUADS)
+                    glVertex2f(item_x + 2, item_y - item_height + 2)
+                    glVertex2f(item_x + 16, item_y - item_height + 2)
+                    glVertex2f(item_x + 16, item_y - 4)
+                    glVertex2f(item_x + 2, item_y - 4)
+                    glEnd()
+
+        # Draw scroll indicator if needed
+        if len(items) > 10:
+            glColor3f(0.6, 0.6, 0.8)  # Light blue for scroll
+            glBegin(GL_LINES)
+            # Scroll bar on right side
+            scroll_x = rect_size[0]/2 - 3
+            glVertex2f(scroll_x, -rect_size[1]/2 + 5)
+            glVertex2f(scroll_x, rect_size[1]/2 - 5)
+            # Scroll thumb
+            glVertex2f(scroll_x - 2, rect_size[1]/4)
+            glVertex2f(scroll_x + 2, rect_size[1]/4)
+            glVertex2f(scroll_x - 2, rect_size[1]/4 - 20)
+            glVertex2f(scroll_x + 2, rect_size[1]/4 - 20)
+            glEnd()
+
+        # Draw "IL" indicator for ItemList
+        glColor3f(1.0, 1.0, 0.0)  # Yellow
+        glBegin(GL_LINES)
+        # I
+        glVertex2f(-8, 8)
+        glVertex2f(-8, -8)
+        glVertex2f(-10, 8)
+        glVertex2f(-6, 8)
+        glVertex2f(-10, -8)
+        glVertex2f(-6, -8)
+        # L
+        glVertex2f(2, 8)
+        glVertex2f(2, -8)
+        glVertex2f(2, -8)
+        glVertex2f(8, -8)
         glEnd()
 
     def draw_canvas_layer(self, node_data: Dict[str, Any]):
@@ -1768,17 +3029,20 @@ class SceneViewport(QOpenGLWidget):
 
     def apply_recursive_transform(self, parent_node: Dict[str, Any], transform_type: str, delta, visited_nodes=None):
         """Apply transformation recursively to all children with improved safety checks"""
-        # Prevent infinite recursion by tracking visited nodes
+        # Initialize visited nodes set if None
         if visited_nodes is None:
             visited_nodes = set()
 
-        # Get a unique identifier for this node (using id() since nodes are dict objects)
-        node_id = id(parent_node)
-        if node_id in visited_nodes:
-            print(f"Warning: Circular reference detected in node hierarchy, skipping node")
+        # Skip if node is None or not a dict
+        if not isinstance(parent_node, dict):
             return
 
-        visited_nodes.add(node_id)
+        # Get a unique identifier for this node based on its position in the hierarchy
+        node_path = parent_node.get("name", "") + str(parent_node.get("position", [0, 0]))
+        if node_path in visited_nodes:
+            return
+
+        visited_nodes.add(node_path)
 
         try:
             # Validate input parameters
@@ -1822,7 +3086,7 @@ class SceneViewport(QOpenGLWidget):
             traceback.print_exc()
         finally:
             # Clean up visited tracking for this branch
-            visited_nodes.discard(node_id)
+            visited_nodes.discard(node_path)
 
     def _ensure_node_properties(self, node: Dict[str, Any]):
         """Ensure node has all required properties with safe defaults"""
@@ -2125,7 +3389,7 @@ class SceneViewport(QOpenGLWidget):
             glVertex2f(right, top)
             glVertex2f(left, top)
             glEnd()
-        elif node_type in ["Button", "Panel", "Label"]:
+        elif node_type in ["Button", "Panel", "Label", "ColorRect", "TextureRect", "ProgressBar", "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
             # Draw around UI node bounds
             rect_size = self.selected_node.get("rect_size", [100.0, 30.0])
 

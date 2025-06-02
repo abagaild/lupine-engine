@@ -364,6 +364,415 @@ class Node:
             node.pressed = data.get("pressed", False)
             node._is_hovered = data.get("_is_hovered", False)
             node._is_mouse_pressed = data.get("_is_mouse_pressed", False)
+        elif node_type == "ColorRect":
+            node = ColorRect(data.get("name", "ColorRect"))
+            # Set Control properties first (ColorRect inherits from Control)
+            node.position = data.get("position", data.get("rect_position", [0.0, 0.0]))  # Support both for compatibility
+            node.rect_size = data.get("rect_size", [100.0, 100.0])
+            node.rect_min_size = data.get("rect_min_size", [0.0, 0.0])
+            node.anchor_left = data.get("anchor_left", 0.0)
+            node.anchor_top = data.get("anchor_top", 0.0)
+            node.anchor_right = data.get("anchor_right", 0.0)
+            node.anchor_bottom = data.get("anchor_bottom", 0.0)
+            node.margin_left = data.get("margin_left", 0.0)
+            node.margin_top = data.get("margin_top", 0.0)
+            node.margin_right = data.get("margin_right", 0.0)
+            node.margin_bottom = data.get("margin_bottom", 0.0)
+            node.size_flags = data.get("size_flags", {"expand_h": False, "expand_v": False})
+            node.clip_contents = data.get("clip_contents", False)
+            node.mouse_filter = data.get("mouse_filter", "pass")
+            node.focus_mode = data.get("focus_mode", "none")
+            node.theme = data.get("theme", None)
+            node.modulate = data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+            node.z_layer = data.get("z_layer", 0)
+            # Set ColorRect-specific properties
+            node.color = data.get("color", [1.0, 1.0, 1.0, 1.0])
+        elif node_type == "TextureRect":
+            node = TextureRect(data.get("name", "TextureRect"))
+            # Set Control properties first (TextureRect inherits from Control)
+            node.position = data.get("position", data.get("rect_position", [0.0, 0.0]))  # Support both for compatibility
+            node.rect_size = data.get("rect_size", [100.0, 100.0])
+            node.rect_min_size = data.get("rect_min_size", [0.0, 0.0])
+            node.anchor_left = data.get("anchor_left", 0.0)
+            node.anchor_top = data.get("anchor_top", 0.0)
+            node.anchor_right = data.get("anchor_right", 0.0)
+            node.anchor_bottom = data.get("anchor_bottom", 0.0)
+            node.margin_left = data.get("margin_left", 0.0)
+            node.margin_top = data.get("margin_top", 0.0)
+            node.margin_right = data.get("margin_right", 0.0)
+            node.margin_bottom = data.get("margin_bottom", 0.0)
+            node.size_flags = data.get("size_flags", {"expand_h": False, "expand_v": False})
+            node.clip_contents = data.get("clip_contents", False)
+            node.mouse_filter = data.get("mouse_filter", "pass")
+            node.focus_mode = data.get("focus_mode", "none")
+            node.theme = data.get("theme", None)
+            node.modulate = data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+            node.z_layer = data.get("z_layer", 0)
+            # Set TextureRect-specific properties
+            node.texture = data.get("texture", None)
+            node.stretch_mode = data.get("stretch_mode", "stretch")
+            node.expand = data.get("expand", False)
+            node.flip_h = data.get("flip_h", False)
+            node.flip_v = data.get("flip_v", False)
+        elif node_type == "ProgressBar":
+            node = ProgressBar(data.get("name", "ProgressBar"))
+            # Set Control properties first (ProgressBar inherits from Control)
+            node.position = data.get("position", data.get("rect_position", [0.0, 0.0]))  # Support both for compatibility
+            node.rect_size = data.get("rect_size", [200.0, 24.0])
+            node.rect_min_size = data.get("rect_min_size", [0.0, 0.0])
+            node.anchor_left = data.get("anchor_left", 0.0)
+            node.anchor_top = data.get("anchor_top", 0.0)
+            node.anchor_right = data.get("anchor_right", 0.0)
+            node.anchor_bottom = data.get("anchor_bottom", 0.0)
+            node.margin_left = data.get("margin_left", 0.0)
+            node.margin_top = data.get("margin_top", 0.0)
+            node.margin_right = data.get("margin_right", 0.0)
+            node.margin_bottom = data.get("margin_bottom", 0.0)
+            node.size_flags = data.get("size_flags", {"expand_h": False, "expand_v": False})
+            node.clip_contents = data.get("clip_contents", False)
+            node.mouse_filter = data.get("mouse_filter", "pass")
+            node.focus_mode = data.get("focus_mode", "none")
+            node.theme = data.get("theme", None)
+            node.modulate = data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+            node.z_layer = data.get("z_layer", 0)
+            # Set ProgressBar-specific properties
+            node.min_value = data.get("min_value", 0.0)
+            node.max_value = data.get("max_value", 100.0)
+            node.value = data.get("value", 0.0)
+            node.step = data.get("step", 1.0)
+            node.fill_mode = data.get("fill_mode", "left_to_right")
+            node.show_percentage = data.get("show_percentage", False)
+            node.background_color = data.get("background_color", [0.2, 0.2, 0.2, 1.0])
+            node.fill_color = data.get("fill_color", [0.3, 0.6, 0.3, 1.0])
+            node.border_color = data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+            node.border_width = data.get("border_width", 1.0)
+            node.corner_radius = data.get("corner_radius", 2.0)
+            node.font_color = data.get("font_color", [1.0, 1.0, 1.0, 1.0])
+            node.font_size = data.get("font_size", 12)
+            node.background_texture = data.get("background_texture", None)
+            node.fill_texture = data.get("fill_texture", None)
+            node.progress_texture = data.get("progress_texture", None)
+        elif node_type == "AudioStreamPlayer":
+            node = AudioStreamPlayer(data.get("name", "AudioStreamPlayer"))
+            # Set AudioStreamPlayer-specific properties
+            node.stream = data.get("stream", None)
+            node.volume_db = data.get("volume_db", 0.0)
+            node.pitch_scale = data.get("pitch_scale", 1.0)
+            node.playing = data.get("playing", False)
+            node.autoplay = data.get("autoplay", False)
+            node.stream_paused = data.get("stream_paused", False)
+            node.bus = data.get("bus", "Master")
+            node.mix_target = data.get("mix_target", "stereo")
+            node._audio_source_id = data.get("_audio_source_id", None)
+            node._playback_position = data.get("_playback_position", 0.0)
+        elif node_type == "AudioStreamPlayer2D":
+            node = AudioStreamPlayer2D(data.get("name", "AudioStreamPlayer2D"))
+            # Set Node2D properties first (AudioStreamPlayer2D inherits from Node2D)
+            node.position = data.get("position", [0.0, 0.0])
+            node.rotation = data.get("rotation", 0.0)
+            node.scale = data.get("scale", [1.0, 1.0])
+            node.z_index = data.get("z_index", 0)
+            node.z_as_relative = data.get("z_as_relative", True)
+            # Set AudioStreamPlayer2D-specific properties
+            node.stream = data.get("stream", None)
+            node.volume_db = data.get("volume_db", 0.0)
+            node.pitch_scale = data.get("pitch_scale", 1.0)
+            node.playing = data.get("playing", False)
+            node.autoplay = data.get("autoplay", False)
+            node.stream_paused = data.get("stream_paused", False)
+            node.bus = data.get("bus", "Master")
+            node.attenuation = data.get("attenuation", 1.0)
+            node.max_distance = data.get("max_distance", 2000.0)
+            node.area_mask = data.get("area_mask", 1)
+            node.doppler_tracking = data.get("doppler_tracking", "disabled")
+            node._audio_source_id = data.get("_audio_source_id", None)
+            node._playback_position = data.get("_playback_position", 0.0)
+            node._last_position = data.get("_last_position", [0.0, 0.0])
+        elif node_type == "VBoxContainer":
+            node = VBoxContainer(data.get("name", "VBoxContainer"))
+            # Set Control properties first (VBoxContainer inherits from Control)
+            node.position = data.get("position", data.get("rect_position", [0.0, 0.0]))
+            node.rect_size = data.get("rect_size", [100.0, 100.0])
+            node.rect_min_size = data.get("rect_min_size", [0.0, 0.0])
+            node.anchor_left = data.get("anchor_left", 0.0)
+            node.anchor_top = data.get("anchor_top", 0.0)
+            node.anchor_right = data.get("anchor_right", 0.0)
+            node.anchor_bottom = data.get("anchor_bottom", 0.0)
+            node.margin_left = data.get("margin_left", 0.0)
+            node.margin_top = data.get("margin_top", 0.0)
+            node.margin_right = data.get("margin_right", 0.0)
+            node.margin_bottom = data.get("margin_bottom", 0.0)
+            node.size_flags = data.get("size_flags", {"expand_h": False, "expand_v": False})
+            node.clip_contents = data.get("clip_contents", False)
+            node.mouse_filter = data.get("mouse_filter", "pass")
+            node.focus_mode = data.get("focus_mode", "none")
+            node.theme = data.get("theme", None)
+            node.modulate = data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+            node.z_layer = data.get("z_layer", 0)
+            # Set VBoxContainer-specific properties
+            node.separation = data.get("separation", 4.0)
+            node.alignment = data.get("alignment", "top")
+            node.container_margin_left = data.get("container_margin_left", 0.0)
+            node.container_margin_top = data.get("container_margin_top", 0.0)
+            node.container_margin_right = data.get("container_margin_right", 0.0)
+            node.container_margin_bottom = data.get("container_margin_bottom", 0.0)
+            node.background_color = data.get("background_color", [0.0, 0.0, 0.0, 0.0])
+            node.border_color = data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+            node.border_width = data.get("border_width", 0.0)
+            node.corner_radius = data.get("corner_radius", 0.0)
+        elif node_type == "HBoxContainer":
+            node = HBoxContainer(data.get("name", "HBoxContainer"))
+            # Set Control properties first (HBoxContainer inherits from Control)
+            node.position = data.get("position", data.get("rect_position", [0.0, 0.0]))
+            node.rect_size = data.get("rect_size", [100.0, 100.0])
+            node.rect_min_size = data.get("rect_min_size", [0.0, 0.0])
+            node.anchor_left = data.get("anchor_left", 0.0)
+            node.anchor_top = data.get("anchor_top", 0.0)
+            node.anchor_right = data.get("anchor_right", 0.0)
+            node.anchor_bottom = data.get("anchor_bottom", 0.0)
+            node.margin_left = data.get("margin_left", 0.0)
+            node.margin_top = data.get("margin_top", 0.0)
+            node.margin_right = data.get("margin_right", 0.0)
+            node.margin_bottom = data.get("margin_bottom", 0.0)
+            node.size_flags = data.get("size_flags", {"expand_h": False, "expand_v": False})
+            node.clip_contents = data.get("clip_contents", False)
+            node.mouse_filter = data.get("mouse_filter", "pass")
+            node.focus_mode = data.get("focus_mode", "none")
+            node.theme = data.get("theme", None)
+            node.modulate = data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+            node.z_layer = data.get("z_layer", 0)
+            # Set HBoxContainer-specific properties
+            node.separation = data.get("separation", 4.0)
+            node.alignment = data.get("alignment", "left")
+            node.container_margin_left = data.get("container_margin_left", 0.0)
+            node.container_margin_top = data.get("container_margin_top", 0.0)
+            node.container_margin_right = data.get("container_margin_right", 0.0)
+            node.container_margin_bottom = data.get("container_margin_bottom", 0.0)
+            node.background_color = data.get("background_color", [0.0, 0.0, 0.0, 0.0])
+            node.border_color = data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+            node.border_width = data.get("border_width", 0.0)
+            node.corner_radius = data.get("corner_radius", 0.0)
+        elif node_type == "CenterContainer":
+            node = CenterContainer(data.get("name", "CenterContainer"))
+            # Set Control properties first (CenterContainer inherits from Control)
+            node.position = data.get("position", data.get("rect_position", [0.0, 0.0]))
+            node.rect_size = data.get("rect_size", [100.0, 100.0])
+            node.rect_min_size = data.get("rect_min_size", [0.0, 0.0])
+            node.anchor_left = data.get("anchor_left", 0.0)
+            node.anchor_top = data.get("anchor_top", 0.0)
+            node.anchor_right = data.get("anchor_right", 0.0)
+            node.anchor_bottom = data.get("anchor_bottom", 0.0)
+            node.margin_left = data.get("margin_left", 0.0)
+            node.margin_top = data.get("margin_top", 0.0)
+            node.margin_right = data.get("margin_right", 0.0)
+            node.margin_bottom = data.get("margin_bottom", 0.0)
+            node.size_flags = data.get("size_flags", {"expand_h": False, "expand_v": False})
+            node.clip_contents = data.get("clip_contents", False)
+            node.mouse_filter = data.get("mouse_filter", "pass")
+            node.focus_mode = data.get("focus_mode", "none")
+            node.theme = data.get("theme", None)
+            node.modulate = data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+            node.z_layer = data.get("z_layer", 0)
+            # Set CenterContainer-specific properties
+            node.use_top_left = data.get("use_top_left", False)
+            node.container_margin_left = data.get("container_margin_left", 0.0)
+            node.container_margin_top = data.get("container_margin_top", 0.0)
+            node.container_margin_right = data.get("container_margin_right", 0.0)
+            node.container_margin_bottom = data.get("container_margin_bottom", 0.0)
+            node.background_color = data.get("background_color", [0.0, 0.0, 0.0, 0.0])
+            node.border_color = data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+            node.border_width = data.get("border_width", 0.0)
+            node.corner_radius = data.get("corner_radius", 0.0)
+        elif node_type == "GridContainer":
+            node = GridContainer(data.get("name", "GridContainer"))
+            # Set Control properties first (GridContainer inherits from Control)
+            node.position = data.get("position", data.get("rect_position", [0.0, 0.0]))
+            node.rect_size = data.get("rect_size", [100.0, 100.0])
+            node.rect_min_size = data.get("rect_min_size", [0.0, 0.0])
+            node.anchor_left = data.get("anchor_left", 0.0)
+            node.anchor_top = data.get("anchor_top", 0.0)
+            node.anchor_right = data.get("anchor_right", 0.0)
+            node.anchor_bottom = data.get("anchor_bottom", 0.0)
+            node.margin_left = data.get("margin_left", 0.0)
+            node.margin_top = data.get("margin_top", 0.0)
+            node.margin_right = data.get("margin_right", 0.0)
+            node.margin_bottom = data.get("margin_bottom", 0.0)
+            node.size_flags = data.get("size_flags", {"expand_h": False, "expand_v": False})
+            node.clip_contents = data.get("clip_contents", False)
+            node.mouse_filter = data.get("mouse_filter", "pass")
+            node.focus_mode = data.get("focus_mode", "none")
+            node.theme = data.get("theme", None)
+            node.modulate = data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+            node.z_layer = data.get("z_layer", 0)
+            # Set GridContainer-specific properties
+            node.columns = data.get("columns", 2)
+            node.h_separation = data.get("h_separation", 4.0)
+            node.v_separation = data.get("v_separation", 4.0)
+            node.container_margin_left = data.get("container_margin_left", 0.0)
+            node.container_margin_top = data.get("container_margin_top", 0.0)
+            node.container_margin_right = data.get("container_margin_right", 0.0)
+            node.container_margin_bottom = data.get("container_margin_bottom", 0.0)
+            node.background_color = data.get("background_color", [0.0, 0.0, 0.0, 0.0])
+            node.border_color = data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+            node.border_width = data.get("border_width", 0.0)
+            node.corner_radius = data.get("corner_radius", 0.0)
+        elif node_type == "RichTextLabel":
+            node = RichTextLabel(data.get("name", "RichTextLabel"))
+            # Set Control properties first (RichTextLabel inherits from Control)
+            node.position = data.get("position", data.get("rect_position", [0.0, 0.0]))
+            node.rect_size = data.get("rect_size", [200.0, 100.0])
+            node.rect_min_size = data.get("rect_min_size", [0.0, 0.0])
+            node.anchor_left = data.get("anchor_left", 0.0)
+            node.anchor_top = data.get("anchor_top", 0.0)
+            node.anchor_right = data.get("anchor_right", 0.0)
+            node.anchor_bottom = data.get("anchor_bottom", 0.0)
+            node.margin_left = data.get("margin_left", 0.0)
+            node.margin_top = data.get("margin_top", 0.0)
+            node.margin_right = data.get("margin_right", 0.0)
+            node.margin_bottom = data.get("margin_bottom", 0.0)
+            node.size_flags = data.get("size_flags", {"expand_h": False, "expand_v": False})
+            node.clip_contents = data.get("clip_contents", False)
+            node.mouse_filter = data.get("mouse_filter", "pass")
+            node.focus_mode = data.get("focus_mode", "none")
+            node.theme = data.get("theme", None)
+            node.modulate = data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+            node.z_layer = data.get("z_layer", 0)
+            # Set RichTextLabel-specific properties
+            node.text = data.get("text", "")
+            node.bbcode_enabled = data.get("bbcode_enabled", True)
+            node.bbcode_text = data.get("bbcode_text", "")
+            node.fit_content_height = data.get("fit_content_height", False)
+            node.scroll_active = data.get("scroll_active", True)
+            node.scroll_following = data.get("scroll_following", False)
+            node.selection_enabled = data.get("selection_enabled", False)
+            node.visible_characters = data.get("visible_characters", -1)
+            node.percent_visible = data.get("percent_visible", 1.0)
+            node.default_font = data.get("default_font", None)
+            node.default_font_size = data.get("default_font_size", 14)
+            node.default_color = data.get("default_color", [1.0, 1.0, 1.0, 1.0])
+            node.tab_size = data.get("tab_size", 4)
+            node.text_direction = data.get("text_direction", "auto")
+            node.language = data.get("language", "")
+            node.scroll_position = data.get("scroll_position", [0.0, 0.0])
+            node.scroll_speed = data.get("scroll_speed", 1.0)
+            node.background_color = data.get("background_color", [0.0, 0.0, 0.0, 0.0])
+            node.border_color = data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+            node.border_width = data.get("border_width", 0.0)
+            node.corner_radius = data.get("corner_radius", 0.0)
+        elif node_type == "PanelContainer":
+            node = PanelContainer(data.get("name", "PanelContainer"))
+            # Set Control properties first (PanelContainer inherits from Control)
+            node.position = data.get("position", data.get("rect_position", [0.0, 0.0]))
+            node.rect_size = data.get("rect_size", [100.0, 100.0])
+            node.rect_min_size = data.get("rect_min_size", [0.0, 0.0])
+            node.anchor_left = data.get("anchor_left", 0.0)
+            node.anchor_top = data.get("anchor_top", 0.0)
+            node.anchor_right = data.get("anchor_right", 0.0)
+            node.anchor_bottom = data.get("anchor_bottom", 0.0)
+            node.margin_left = data.get("margin_left", 0.0)
+            node.margin_top = data.get("margin_top", 0.0)
+            node.margin_right = data.get("margin_right", 0.0)
+            node.margin_bottom = data.get("margin_bottom", 0.0)
+            node.size_flags = data.get("size_flags", {"expand_h": False, "expand_v": False})
+            node.clip_contents = data.get("clip_contents", True)
+            node.mouse_filter = data.get("mouse_filter", "pass")
+            node.focus_mode = data.get("focus_mode", "none")
+            node.theme = data.get("theme", None)
+            node.modulate = data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+            node.z_layer = data.get("z_layer", 0)
+            # Set PanelContainer-specific properties
+            node.container_margin_left = data.get("container_margin_left", 8.0)
+            node.container_margin_top = data.get("container_margin_top", 8.0)
+            node.container_margin_right = data.get("container_margin_right", 8.0)
+            node.container_margin_bottom = data.get("container_margin_bottom", 8.0)
+            node.panel_color = data.get("panel_color", [0.2, 0.2, 0.2, 1.0])
+            node.corner_radius = data.get("corner_radius", 4.0)
+            node.border_width = data.get("border_width", 1.0)
+            node.border_color = data.get("border_color", [0.4, 0.4, 0.4, 1.0])
+            node.shadow_enabled = data.get("shadow_enabled", False)
+            node.shadow_color = data.get("shadow_color", [0.0, 0.0, 0.0, 0.5])
+            node.shadow_offset = data.get("shadow_offset", [2.0, 2.0])
+            node.shadow_blur = data.get("shadow_blur", 4.0)
+            node.texture = data.get("texture", None)
+            node.texture_mode = data.get("texture_mode", "stretch")
+            node.auto_resize = data.get("auto_resize", False)
+        elif node_type == "NinePatchRect":
+            node = NinePatchRect(data.get("name", "NinePatchRect"))
+            # Set Control properties first (NinePatchRect inherits from Control)
+            node.position = data.get("position", data.get("rect_position", [0.0, 0.0]))
+            node.rect_size = data.get("rect_size", [100.0, 100.0])
+            node.rect_min_size = data.get("rect_min_size", [0.0, 0.0])
+            node.anchor_left = data.get("anchor_left", 0.0)
+            node.anchor_top = data.get("anchor_top", 0.0)
+            node.anchor_right = data.get("anchor_right", 0.0)
+            node.anchor_bottom = data.get("anchor_bottom", 0.0)
+            node.margin_left = data.get("margin_left", 0.0)
+            node.margin_top = data.get("margin_top", 0.0)
+            node.margin_right = data.get("margin_right", 0.0)
+            node.margin_bottom = data.get("margin_bottom", 0.0)
+            node.size_flags = data.get("size_flags", {"expand_h": False, "expand_v": False})
+            node.clip_contents = data.get("clip_contents", False)
+            node.mouse_filter = data.get("mouse_filter", "pass")
+            node.focus_mode = data.get("focus_mode", "none")
+            node.theme = data.get("theme", None)
+            node.modulate = data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+            node.z_layer = data.get("z_layer", 0)
+            # Set NinePatchRect-specific properties
+            node.texture = data.get("texture", None)
+            node.patch_margin_left = data.get("patch_margin_left", 0)
+            node.patch_margin_top = data.get("patch_margin_top", 0)
+            node.patch_margin_right = data.get("patch_margin_right", 0)
+            node.patch_margin_bottom = data.get("patch_margin_bottom", 0)
+            node.draw_center = data.get("draw_center", True)
+            node.region_rect = data.get("region_rect", [0, 0, 0, 0])
+            node.axis_stretch_horizontal = data.get("axis_stretch_horizontal", "stretch")
+            node.axis_stretch_vertical = data.get("axis_stretch_vertical", "stretch")
+        elif node_type == "ItemList":
+            node = ItemList(data.get("name", "ItemList"))
+            # Set Control properties first (ItemList inherits from Control)
+            node.position = data.get("position", data.get("rect_position", [0.0, 0.0]))
+            node.rect_size = data.get("rect_size", [200.0, 300.0])
+            node.rect_min_size = data.get("rect_min_size", [0.0, 0.0])
+            node.anchor_left = data.get("anchor_left", 0.0)
+            node.anchor_top = data.get("anchor_top", 0.0)
+            node.anchor_right = data.get("anchor_right", 0.0)
+            node.anchor_bottom = data.get("anchor_bottom", 0.0)
+            node.margin_left = data.get("margin_left", 0.0)
+            node.margin_top = data.get("margin_top", 0.0)
+            node.margin_right = data.get("margin_right", 0.0)
+            node.margin_bottom = data.get("margin_bottom", 0.0)
+            node.size_flags = data.get("size_flags", {"expand_h": False, "expand_v": False})
+            node.clip_contents = data.get("clip_contents", True)
+            node.mouse_filter = data.get("mouse_filter", "pass")
+            node.focus_mode = data.get("focus_mode", "all")
+            node.theme = data.get("theme", None)
+            node.modulate = data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+            node.z_layer = data.get("z_layer", 0)
+            # Set ItemList-specific properties
+            node.items = data.get("items", [])
+            node.select_mode = data.get("select_mode", "single")
+            node.allow_reselect = data.get("allow_reselect", True)
+            node.allow_rmb_select = data.get("allow_rmb_select", False)
+            node.max_text_lines = data.get("max_text_lines", 1)
+            node.selected_items = data.get("selected_items", [])
+            node.icon_mode = data.get("icon_mode", "top")
+            node.icon_scale = data.get("icon_scale", 1.0)
+            node.fixed_icon_size = data.get("fixed_icon_size", [0, 0])
+            node.max_columns = data.get("max_columns", 1)
+            node.same_column_width = data.get("same_column_width", False)
+            node.fixed_column_width = data.get("fixed_column_width", 0)
+            node.item_spacing = data.get("item_spacing", 2)
+            node.line_separation = data.get("line_separation", 2)
+            node.auto_height = data.get("auto_height", False)
+            node.scroll_position = data.get("scroll_position", [0.0, 0.0])
+            node.background_color = data.get("background_color", [0.1, 0.1, 0.1, 1.0])
+            node.item_color_normal = data.get("item_color_normal", [0.0, 0.0, 0.0, 0.0])
+            node.item_color_selected = data.get("item_color_selected", [0.3, 0.5, 0.8, 1.0])
+            node.item_color_hover = data.get("item_color_hover", [0.2, 0.2, 0.2, 0.5])
+            node.font_color = data.get("font_color", [1.0, 1.0, 1.0, 1.0])
+            node.font_color_selected = data.get("font_color_selected", [1.0, 1.0, 1.0, 1.0])
+            node.font = data.get("font", None)
+            node.font_size = data.get("font_size", 14)
         elif node_type == "CanvasLayer":
             node = CanvasLayer(data.get("name", "CanvasLayer"))
             # Set CanvasLayer-specific properties
@@ -385,9 +794,21 @@ class Node:
 
         # Set Node2D properties for Node2D-derived classes
         if isinstance(node, Node2D):
-            node.position = data.get("position", [0.0, 0.0])
+            from .lsc.builtins import LSCVector2
+            pos_data = data.get("position", [0.0, 0.0])
+            if isinstance(pos_data, list) and len(pos_data) >= 2:
+                node.position = LSCVector2(pos_data[0], pos_data[1])
+            else:
+                node.position = LSCVector2(0.0, 0.0)
+
             node.rotation = data.get("rotation", 0.0)
-            node.scale = data.get("scale", [1.0, 1.0])
+
+            scale_data = data.get("scale", [1.0, 1.0])
+            if isinstance(scale_data, list) and len(scale_data) >= 2:
+                node.scale = LSCVector2(scale_data[0], scale_data[1])
+            else:
+                node.scale = LSCVector2(1.0, 1.0)
+
             node.z_index = data.get("z_index", 0)
             node.z_as_relative = data.get("z_as_relative", True)
         
@@ -401,21 +822,27 @@ class Node:
 
 class Node2D(Node):
     """2D node with transform properties"""
-    
+
     def __init__(self, name: str = "Node2D"):
         super().__init__(name, "Node2D")
-        self.position = [0.0, 0.0]
+        # Import Vector2 here to avoid circular imports
+        from .lsc.builtins import LSCVector2
+        self.position = LSCVector2(0.0, 0.0)
         self.rotation = 0.0
-        self.scale = [1.0, 1.0]
+        self.scale = LSCVector2(1.0, 1.0)
         self.z_index = 0
         self.z_as_relative = True
     
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
+        # Convert Vector2 objects to lists for JSON serialization
+        position_list = [self.position.x, self.position.y] if hasattr(self.position, 'x') else self.position
+        scale_list = [self.scale.x, self.scale.y] if hasattr(self.scale, 'x') else self.scale
+
         data.update({
-            "position": self.position,
+            "position": position_list,
             "rotation": self.rotation,
-            "scale": self.scale,
+            "scale": scale_list,
             "z_index": self.z_index,
             "z_as_relative": self.z_as_relative
         })
@@ -1142,6 +1569,657 @@ class Button(Control):
             # Internal state
             "_is_hovered": getattr(self, '_is_hovered', False),
             "_is_mouse_pressed": getattr(self, '_is_mouse_pressed', False)
+        })
+        return data
+
+
+class ColorRect(Control):
+    """UI node that displays a solid color rectangle"""
+
+    def __init__(self, name: str = "ColorRect"):
+        super().__init__(name)
+        self.type = "ColorRect"
+
+        # Color properties
+        self.color = [1.0, 1.0, 1.0, 1.0]  # RGBA - main color
+
+        # Set default script
+        self.script_path = "nodes/ColorRect.lsc"
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "color": self.color
+        })
+        return data
+
+
+class TextureRect(Control):
+    """UI node that displays a texture with various stretch modes"""
+
+    def __init__(self, name: str = "TextureRect"):
+        super().__init__(name)
+        self.type = "TextureRect"
+
+        # Texture properties
+        self.texture = None  # Texture resource
+
+        # Stretch properties
+        self.stretch_mode = "stretch"  # "stretch", "tile", "keep", "keep_centered", "keep_aspect", "keep_aspect_centered", "keep_aspect_covered"
+        self.expand = False  # Whether to expand beyond texture size
+
+        # Flip properties
+        self.flip_h = False  # Flip horizontally
+        self.flip_v = False  # Flip vertically
+
+        # Set default script
+        self.script_path = "nodes/TextureRect.lsc"
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "texture": self.texture,
+            "stretch_mode": self.stretch_mode,
+            "expand": self.expand,
+            "flip_h": self.flip_h,
+            "flip_v": self.flip_v
+        })
+        return data
+
+
+class ProgressBar(Control):
+    """UI node that displays a progress bar with customizable appearance"""
+
+    def __init__(self, name: str = "ProgressBar"):
+        super().__init__(name)
+        self.type = "ProgressBar"
+
+        # Progress properties
+        self.min_value = 0.0
+        self.max_value = 100.0
+        self.value = 0.0
+        self.step = 1.0
+
+        # Appearance properties
+        self.fill_mode = "left_to_right"  # "left_to_right", "right_to_left", "top_to_bottom", "bottom_to_top", "center_expand"
+        self.show_percentage = False
+
+        # Style properties
+        self.background_color = [0.2, 0.2, 0.2, 1.0]  # RGBA
+        self.fill_color = [0.3, 0.6, 0.3, 1.0]  # RGBA - green by default
+        self.border_color = [0.5, 0.5, 0.5, 1.0]  # RGBA
+        self.border_width = 1.0
+        self.corner_radius = 2.0
+
+        # Text properties
+        self.font_color = [1.0, 1.0, 1.0, 1.0]  # RGBA
+        self.font_size = 12
+
+        # Texture properties (optional)
+        self.background_texture = None
+        self.fill_texture = None
+        self.progress_texture = None
+
+        # Set default script
+        self.script_path = "nodes/ProgressBar.lsc"
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "min_value": self.min_value,
+            "max_value": self.max_value,
+            "value": self.value,
+            "step": self.step,
+            "fill_mode": self.fill_mode,
+            "show_percentage": self.show_percentage,
+            "background_color": self.background_color,
+            "fill_color": self.fill_color,
+            "border_color": self.border_color,
+            "border_width": self.border_width,
+            "corner_radius": self.corner_radius,
+            "font_color": self.font_color,
+            "font_size": self.font_size,
+            "background_texture": self.background_texture,
+            "fill_texture": self.fill_texture,
+            "progress_texture": self.progress_texture
+        })
+        return data
+
+
+class RichTextLabel(Control):
+    """Advanced text display node with rich text formatting support"""
+
+    def __init__(self, name: str = "RichTextLabel"):
+        super().__init__(name)
+        self.type = "RichTextLabel"
+
+        # Text content
+        self.text = ""  # Raw text with BBCode markup
+        self.bbcode_enabled = True  # Enable BBCode parsing
+        self.bbcode_text = ""  # Processed BBCode text (same as text when enabled)
+
+        # Text behavior
+        self.fit_content_height = False  # Auto-resize height to fit content
+        self.scroll_active = True  # Enable scrolling for overflow content
+        self.scroll_following = False  # Auto-scroll to bottom when content changes
+        self.selection_enabled = False  # Allow text selection
+
+        # Appearance
+        self.visible_characters = -1  # Number of visible characters (-1 = all)
+        self.percent_visible = 1.0  # Percentage of text visible (0.0-1.0)
+
+        # Default font properties
+        self.default_font = None  # Default font resource
+        self.default_font_size = 14
+        self.default_color = [1.0, 1.0, 1.0, 1.0]  # RGBA
+
+        # Text effects
+        self.tab_size = 4  # Tab character width in spaces
+        self.text_direction = "auto"  # "auto", "ltr", "rtl"
+        self.language = ""  # Language code for text processing
+
+        # Scrolling
+        self.scroll_position = [0.0, 0.0]  # Current scroll position
+        self.scroll_speed = 1.0  # Scroll speed multiplier
+
+        # Style properties
+        self.background_color = [0.0, 0.0, 0.0, 0.0]  # Transparent by default
+        self.border_color = [0.5, 0.5, 0.5, 1.0]
+        self.border_width = 0.0
+        self.corner_radius = 0.0
+
+        # Set default script
+        self.script_path = "nodes/ui/RichTextLabel.lsc"
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "text": self.text,
+            "bbcode_enabled": self.bbcode_enabled,
+            "bbcode_text": self.bbcode_text,
+            "fit_content_height": self.fit_content_height,
+            "scroll_active": self.scroll_active,
+            "scroll_following": self.scroll_following,
+            "selection_enabled": self.selection_enabled,
+            "visible_characters": self.visible_characters,
+            "percent_visible": self.percent_visible,
+            "default_font": self.default_font,
+            "default_font_size": self.default_font_size,
+            "default_color": self.default_color,
+            "tab_size": self.tab_size,
+            "text_direction": self.text_direction,
+            "language": self.language,
+            "scroll_position": self.scroll_position,
+            "scroll_speed": self.scroll_speed,
+            "background_color": self.background_color,
+            "border_color": self.border_color,
+            "border_width": self.border_width,
+            "corner_radius": self.corner_radius
+        })
+        return data
+
+
+class PanelContainer(Control):
+    """Container that provides a styled background panel for its children"""
+
+    def __init__(self, name: str = "PanelContainer"):
+        super().__init__(name)
+        self.type = "PanelContainer"
+
+        # Container margins (space inside the panel)
+        self.container_margin_left = 8.0  # Default padding
+        self.container_margin_top = 8.0
+        self.container_margin_right = 8.0
+        self.container_margin_bottom = 8.0
+
+        # Panel style properties
+        self.panel_color = [0.2, 0.2, 0.2, 1.0]  # RGBA - dark gray by default
+        self.corner_radius = 4.0  # Rounded corners
+        self.border_width = 1.0  # Border thickness
+        self.border_color = [0.4, 0.4, 0.4, 1.0]  # RGBA - lighter gray border
+
+        # Advanced styling
+        self.shadow_enabled = False  # Enable drop shadow
+        self.shadow_color = [0.0, 0.0, 0.0, 0.5]  # RGBA - semi-transparent black
+        self.shadow_offset = [2.0, 2.0]  # Shadow offset in pixels
+        self.shadow_blur = 4.0  # Shadow blur radius
+
+        # Background texture
+        self.texture = None  # Optional background texture
+        self.texture_mode = "stretch"  # "stretch", "tile", "keep", "keep_centered", "keep_aspect", "keep_aspect_centered"
+
+        # Panel behavior
+        self.clip_contents = True  # Clip children to panel bounds
+        self.auto_resize = False  # Auto-resize to fit children
+
+        # Set default script
+        self.script_path = "nodes/ui/PanelContainer.lsc"
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "container_margin_left": self.container_margin_left,
+            "container_margin_top": self.container_margin_top,
+            "container_margin_right": self.container_margin_right,
+            "container_margin_bottom": self.container_margin_bottom,
+            "panel_color": self.panel_color,
+            "corner_radius": self.corner_radius,
+            "border_width": self.border_width,
+            "border_color": self.border_color,
+            "shadow_enabled": self.shadow_enabled,
+            "shadow_color": self.shadow_color,
+            "shadow_offset": self.shadow_offset,
+            "shadow_blur": self.shadow_blur,
+            "texture": self.texture,
+            "texture_mode": self.texture_mode,
+            "clip_contents": self.clip_contents,
+            "auto_resize": self.auto_resize
+        })
+        return data
+
+
+class NinePatchRect(Control):
+    """UI node that displays a texture using 9-patch/9-slice scaling"""
+
+    def __init__(self, name: str = "NinePatchRect"):
+        super().__init__(name)
+        self.type = "NinePatchRect"
+
+        # Texture properties
+        self.texture = None  # Main texture resource
+
+        # Patch margins (define the 9-patch regions)
+        self.patch_margin_left = 0  # Left edge width
+        self.patch_margin_top = 0  # Top edge height
+        self.patch_margin_right = 0  # Right edge width
+        self.patch_margin_bottom = 0  # Bottom edge height
+
+        # Draw properties
+        self.draw_center = True  # Whether to draw the center patch
+        self.region_rect = [0, 0, 0, 0]  # Source region in texture (x, y, width, height)
+
+        # Axis stretch modes for edges
+        self.axis_stretch_horizontal = "stretch"  # "stretch", "tile", "tile_fit"
+        self.axis_stretch_vertical = "stretch"  # "stretch", "tile", "tile_fit"
+
+        # Modulation
+        self.modulate = [1.0, 1.0, 1.0, 1.0]  # RGBA color modulation
+
+        # Set default script
+        self.script_path = "nodes/ui/NinePatchRect.lsc"
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "texture": self.texture,
+            "patch_margin_left": self.patch_margin_left,
+            "patch_margin_top": self.patch_margin_top,
+            "patch_margin_right": self.patch_margin_right,
+            "patch_margin_bottom": self.patch_margin_bottom,
+            "draw_center": self.draw_center,
+            "region_rect": self.region_rect,
+            "axis_stretch_horizontal": self.axis_stretch_horizontal,
+            "axis_stretch_vertical": self.axis_stretch_vertical,
+            "modulate": self.modulate
+        })
+        return data
+
+
+class ItemList(Control):
+    """UI node that displays a list of selectable items with icons and text"""
+
+    def __init__(self, name: str = "ItemList"):
+        super().__init__(name)
+        self.type = "ItemList"
+
+        # Items data - each item is a dict with text, icon, metadata, etc.
+        self.items = []  # List of item dictionaries
+
+        # Selection properties
+        self.select_mode = "single"  # "single", "multi"
+        self.allow_reselect = True  # Allow reselecting the same item
+        self.allow_rmb_select = False  # Allow right mouse button selection
+        self.max_text_lines = 1  # Maximum lines of text per item
+
+        # Currently selected items
+        self.selected_items = []  # List of selected item indices
+
+        # Display properties
+        self.icon_mode = "top"  # "top", "left"
+        self.icon_scale = 1.0  # Scale factor for icons
+        self.fixed_icon_size = [0, 0]  # Fixed icon size (0,0 = use original size)
+
+        # Layout properties
+        self.max_columns = 1  # Maximum columns (0 = unlimited)
+        self.same_column_width = False  # Force same width for all columns
+        self.fixed_column_width = 0  # Fixed width for columns (0 = auto)
+
+        # Item spacing
+        self.item_spacing = 2  # Vertical spacing between items
+        self.line_separation = 2  # Spacing between text lines
+
+        # Scrolling
+        self.auto_height = False  # Auto-adjust height to fit items
+        self.scroll_position = [0.0, 0.0]  # Current scroll position
+
+        # Style properties
+        self.background_color = [0.1, 0.1, 0.1, 1.0]  # Background color
+        self.item_color_normal = [0.0, 0.0, 0.0, 0.0]  # Normal item background (transparent)
+        self.item_color_selected = [0.3, 0.5, 0.8, 1.0]  # Selected item background
+        self.item_color_hover = [0.2, 0.2, 0.2, 0.5]  # Hovered item background
+        self.font_color = [1.0, 1.0, 1.0, 1.0]  # Text color
+        self.font_color_selected = [1.0, 1.0, 1.0, 1.0]  # Selected text color
+
+        # Font properties
+        self.font = None  # Font resource
+        self.font_size = 14  # Font size
+
+        # Set default script
+        self.script_path = "nodes/ui/ItemList.lsc"
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "items": self.items,
+            "select_mode": self.select_mode,
+            "allow_reselect": self.allow_reselect,
+            "allow_rmb_select": self.allow_rmb_select,
+            "max_text_lines": self.max_text_lines,
+            "selected_items": self.selected_items,
+            "icon_mode": self.icon_mode,
+            "icon_scale": self.icon_scale,
+            "fixed_icon_size": self.fixed_icon_size,
+            "max_columns": self.max_columns,
+            "same_column_width": self.same_column_width,
+            "fixed_column_width": self.fixed_column_width,
+            "item_spacing": self.item_spacing,
+            "line_separation": self.line_separation,
+            "auto_height": self.auto_height,
+            "scroll_position": self.scroll_position,
+            "background_color": self.background_color,
+            "item_color_normal": self.item_color_normal,
+            "item_color_selected": self.item_color_selected,
+            "item_color_hover": self.item_color_hover,
+            "font_color": self.font_color,
+            "font_color_selected": self.font_color_selected,
+            "font": self.font,
+            "font_size": self.font_size
+        })
+        return data
+
+
+class AudioStreamPlayer(Node):
+    """Audio player for non-positional sound effects and music"""
+
+    def __init__(self, name: str = "AudioStreamPlayer"):
+        super().__init__(name)
+        self.type = "AudioStreamPlayer"
+
+        # Audio properties
+        self.stream = None  # AudioStream resource
+        self.volume_db = 0.0  # Volume in decibels (-80 to 24)
+        self.pitch_scale = 1.0  # Pitch multiplier (0.01 to 4.0)
+        self.playing = False
+        self.autoplay = False
+        self.stream_paused = False
+        self.loop = False  # Whether to loop the audio
+
+        # Bus properties
+        self.bus = "Master"  # Audio bus name
+
+        # Mix properties
+        self.mix_target = "stereo"  # "stereo", "surround", "center"
+
+        # Internal state
+        self._audio_source_id = None
+        self._playback_position = 0.0
+
+        # Set default script
+        self.script_path = "nodes/AudioStreamPlayer.lsc"
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "stream": self.stream,
+            "volume_db": self.volume_db,
+            "pitch_scale": self.pitch_scale,
+            "playing": self.playing,
+            "autoplay": self.autoplay,
+            "stream_paused": self.stream_paused,
+            "loop": self.loop,
+            "bus": self.bus,
+            "mix_target": self.mix_target,
+            "_audio_source_id": self._audio_source_id,
+            "_playback_position": self._playback_position
+        })
+        return data
+
+
+class AudioStreamPlayer2D(Node2D):
+    """2D positional audio player with distance attenuation"""
+
+    def __init__(self, name: str = "AudioStreamPlayer2D"):
+        super().__init__(name)
+        self.type = "AudioStreamPlayer2D"
+
+        # Audio properties (inherited from AudioStreamPlayer)
+        self.stream = None  # AudioStream resource
+        self.volume_db = 0.0  # Volume in decibels (-80 to 24)
+        self.pitch_scale = 1.0  # Pitch multiplier (0.01 to 4.0)
+        self.playing = False
+        self.autoplay = False
+        self.stream_paused = False
+        self.loop = False  # Whether to loop the audio
+
+        # Bus properties
+        self.bus = "Master"  # Audio bus name
+
+        # 2D Spatial properties
+        self.attenuation = 1.0  # Distance attenuation curve (0.0 to 4.0)
+        self.max_distance = 2000.0  # Maximum audible distance
+        self.area_mask = 1  # Area2D collision mask for audio occlusion
+
+        # Doppler effect
+        self.doppler_tracking = "disabled"  # "disabled", "idle_step", "physics_step"
+
+        # Internal state
+        self._audio_source_id = None
+        self._playback_position = 0.0
+        self._last_position = [0.0, 0.0]
+
+        # Set default script
+        self.script_path = "nodes/AudioStreamPlayer2D.lsc"
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "stream": self.stream,
+            "volume_db": self.volume_db,
+            "pitch_scale": self.pitch_scale,
+            "playing": self.playing,
+            "autoplay": self.autoplay,
+            "stream_paused": self.stream_paused,
+            "loop": self.loop,
+            "bus": self.bus,
+            "attenuation": self.attenuation,
+            "max_distance": self.max_distance,
+            "area_mask": self.area_mask,
+            "doppler_tracking": self.doppler_tracking,
+            "_audio_source_id": self._audio_source_id,
+            "_playback_position": self._playback_position,
+            "_last_position": self._last_position
+        })
+        return data
+
+
+class VBoxContainer(Control):
+    """Vertical container that arranges children vertically with spacing and margins"""
+
+    def __init__(self, name: str = "VBoxContainer"):
+        super().__init__(name)
+        self.type = "VBoxContainer"
+
+        # Container properties
+        self.separation = 4.0  # Space between children
+        self.alignment = "top"  # "top", "center", "bottom"
+
+        # Margins (space inside container)
+        self.container_margin_left = 0.0
+        self.container_margin_top = 0.0
+        self.container_margin_right = 0.0
+        self.container_margin_bottom = 0.0
+
+        # Style properties
+        self.background_color = [0.0, 0.0, 0.0, 0.0]  # Transparent by default
+        self.border_color = [0.5, 0.5, 0.5, 1.0]
+        self.border_width = 0.0
+        self.corner_radius = 0.0
+
+        # Set default script
+        self.script_path = "nodes/ui/VBoxContainer.lsc"
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "separation": self.separation,
+            "alignment": self.alignment,
+            "container_margin_left": self.container_margin_left,
+            "container_margin_top": self.container_margin_top,
+            "container_margin_right": self.container_margin_right,
+            "container_margin_bottom": self.container_margin_bottom,
+            "background_color": self.background_color,
+            "border_color": self.border_color,
+            "border_width": self.border_width,
+            "corner_radius": self.corner_radius
+        })
+        return data
+
+
+class HBoxContainer(Control):
+    """Horizontal container that arranges children horizontally with spacing and margins"""
+
+    def __init__(self, name: str = "HBoxContainer"):
+        super().__init__(name)
+        self.type = "HBoxContainer"
+
+        # Container properties
+        self.separation = 4.0  # Space between children
+        self.alignment = "left"  # "left", "center", "right"
+
+        # Margins (space inside container)
+        self.container_margin_left = 0.0
+        self.container_margin_top = 0.0
+        self.container_margin_right = 0.0
+        self.container_margin_bottom = 0.0
+
+        # Style properties
+        self.background_color = [0.0, 0.0, 0.0, 0.0]  # Transparent by default
+        self.border_color = [0.5, 0.5, 0.5, 1.0]
+        self.border_width = 0.0
+        self.corner_radius = 0.0
+
+        # Set default script
+        self.script_path = "nodes/ui/HBoxContainer.lsc"
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "separation": self.separation,
+            "alignment": self.alignment,
+            "container_margin_left": self.container_margin_left,
+            "container_margin_top": self.container_margin_top,
+            "container_margin_right": self.container_margin_right,
+            "container_margin_bottom": self.container_margin_bottom,
+            "background_color": self.background_color,
+            "border_color": self.border_color,
+            "border_width": self.border_width,
+            "corner_radius": self.corner_radius
+        })
+        return data
+
+
+class CenterContainer(Control):
+    """Container that centers its children both horizontally and vertically"""
+
+    def __init__(self, name: str = "CenterContainer"):
+        super().__init__(name)
+        self.type = "CenterContainer"
+
+        # Container properties
+        self.use_top_left = False  # If true, centers around top-left instead of center
+
+        # Margins (space inside container)
+        self.container_margin_left = 0.0
+        self.container_margin_top = 0.0
+        self.container_margin_right = 0.0
+        self.container_margin_bottom = 0.0
+
+        # Style properties
+        self.background_color = [0.0, 0.0, 0.0, 0.0]  # Transparent by default
+        self.border_color = [0.5, 0.5, 0.5, 1.0]
+        self.border_width = 0.0
+        self.corner_radius = 0.0
+
+        # Set default script
+        self.script_path = "nodes/ui/CenterContainer.lsc"
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "use_top_left": self.use_top_left,
+            "container_margin_left": self.container_margin_left,
+            "container_margin_top": self.container_margin_top,
+            "container_margin_right": self.container_margin_right,
+            "container_margin_bottom": self.container_margin_bottom,
+            "background_color": self.background_color,
+            "border_color": self.border_color,
+            "border_width": self.border_width,
+            "corner_radius": self.corner_radius
+        })
+        return data
+
+
+class GridContainer(Control):
+    """Container that arranges children in a grid layout with configurable columns"""
+
+    def __init__(self, name: str = "GridContainer"):
+        super().__init__(name)
+        self.type = "GridContainer"
+
+        # Grid properties
+        self.columns = 2  # Number of columns
+        self.h_separation = 4.0  # Horizontal space between children
+        self.v_separation = 4.0  # Vertical space between children
+
+        # Margins (space inside container)
+        self.container_margin_left = 0.0
+        self.container_margin_top = 0.0
+        self.container_margin_right = 0.0
+        self.container_margin_bottom = 0.0
+
+        # Style properties
+        self.background_color = [0.0, 0.0, 0.0, 0.0]  # Transparent by default
+        self.border_color = [0.5, 0.5, 0.5, 1.0]
+        self.border_width = 0.0
+        self.corner_radius = 0.0
+
+        # Set default script
+        self.script_path = "nodes/ui/GridContainer.lsc"
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = super().to_dict()
+        data.update({
+            "columns": self.columns,
+            "h_separation": self.h_separation,
+            "v_separation": self.v_separation,
+            "container_margin_left": self.container_margin_left,
+            "container_margin_top": self.container_margin_top,
+            "container_margin_right": self.container_margin_right,
+            "container_margin_bottom": self.container_margin_bottom,
+            "background_color": self.background_color,
+            "border_color": self.border_color,
+            "border_width": self.border_width,
+            "corner_radius": self.corner_radius
         })
         return data
 

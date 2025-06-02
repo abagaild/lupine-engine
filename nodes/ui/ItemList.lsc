@@ -1,0 +1,479 @@
+# ItemList Node - UI node that displays a list of selectable items with icons and text
+# Similar to Godot's ItemList with full selection and display capabilities
+extends Control
+
+# Items data - each item is a dictionary with text, icon, metadata, etc.
+export_group("Items")
+export var items: Array = []  # List of item dictionaries
+
+# Selection Properties
+export_group("Selection")
+export var select_mode: String = "single"  # "single", "multi"
+export var allow_reselect: bool = true  # Allow reselecting the same item
+export var allow_rmb_select: bool = false  # Allow right mouse button selection
+export var max_text_lines: int = 1  # Maximum lines of text per item
+
+# Currently selected items
+export var selected_items: Array = []  # List of selected item indices
+
+# Display Properties
+export_group("Display")
+export var icon_mode: String = "top"  # "top", "left"
+export var icon_scale: float = 1.0  # Scale factor for icons
+export var fixed_icon_size: Vector2 = Vector2(0, 0)  # Fixed icon size (0,0 = use original size)
+
+# Layout Properties
+export_group("Layout")
+export var max_columns: int = 1  # Maximum columns (0 = unlimited)
+export var same_column_width: bool = false  # Force same width for all columns
+export var fixed_column_width: int = 0  # Fixed width for columns (0 = auto)
+
+# Item Spacing
+export_group("Spacing")
+export var item_spacing: int = 2  # Vertical spacing between items
+export var line_separation: int = 2  # Spacing between text lines
+
+# Scrolling
+export_group("Scrolling")
+export var auto_height: bool = false  # Auto-adjust height to fit items
+export var scroll_position: Vector2 = Vector2(0.0, 0.0)  # Current scroll position
+
+# Style Properties
+export_group("Style")
+export var background_color: Color = Color(0.1, 0.1, 0.1, 1.0)  # Background color
+export var item_color_normal: Color = Color(0.0, 0.0, 0.0, 0.0)  # Normal item background (transparent)
+export var item_color_selected: Color = Color(0.3, 0.5, 0.8, 1.0)  # Selected item background
+export var item_color_hover: Color = Color(0.2, 0.2, 0.2, 0.5)  # Hovered item background
+
+# Font Properties
+export_group("Font")
+export var font: Font = null  # Font resource
+export var font_size: int = 14  # Font size
+export var font_color: Color = Color(1.0, 1.0, 1.0, 1.0)  # Text color
+export var font_color_selected: Color = Color(1.0, 1.0, 1.0, 1.0)  # Selected text color
+
+# Selection mode constants
+const SELECT_SINGLE = "single"
+const SELECT_MULTI = "multi"
+
+# Icon mode constants
+const ICON_MODE_TOP = "top"
+const ICON_MODE_LEFT = "left"
+
+# Internal variables
+var _hovered_item: int = -1
+var _item_rects: Array = []  # Cached item rectangles
+var _total_content_height: float = 0.0
+var _scroll_bar_visible: bool = false
+
+# Called when the node enters the scene tree for the first time
+func _ready():
+    super._ready()
+    
+    # Set default size if not specified
+    if rect_size == Vector2.ZERO:
+        rect_size = Vector2(200, 300)
+    
+    # Set clip_contents to true by default
+    clip_contents = true
+    
+    # Update layout
+    _update_layout()
+    
+    # Connect signals
+    connect("resized", self, "_on_resized")
+
+# Called every frame. 'delta' is the elapsed time since the previous frame
+func _process(delta: float):
+    pass
+
+# Handle resize events
+func _on_resized():
+    _update_layout()
+
+# Add an item to the list
+func add_item(text: String, icon: Texture = null, selectable: bool = true) -> int:
+    var item = {
+        "text": text,
+        "icon": icon,
+        "selectable": selectable,
+        "tooltip": "",
+        "metadata": null,
+        "custom_bg_color": Color.TRANSPARENT,
+        "custom_fg_color": Color.TRANSPARENT,
+        "disabled": false
+    }
+    
+    items.append(item)
+    _update_layout()
+    emit_signal("item_added", items.size() - 1)
+    
+    return items.size() - 1
+
+# Add an item with icon at specific index
+func add_icon_item(icon: Texture, text: String = "", selectable: bool = true) -> int:
+    return add_item(text, icon, selectable)
+
+# Insert item at specific index
+func insert_item(index: int, text: String, icon: Texture = null, selectable: bool = true):
+    index = clamp(index, 0, items.size())
+    
+    var item = {
+        "text": text,
+        "icon": icon,
+        "selectable": selectable,
+        "tooltip": "",
+        "metadata": null,
+        "custom_bg_color": Color.TRANSPARENT,
+        "custom_fg_color": Color.TRANSPARENT,
+        "disabled": false
+    }
+    
+    items.insert(index, item)
+    
+    # Update selected indices
+    for i in range(selected_items.size()):
+        if selected_items[i] >= index:
+            selected_items[i] += 1
+    
+    _update_layout()
+    emit_signal("item_added", index)
+
+# Remove item at index
+func remove_item(index: int):
+    if index < 0 or index >= items.size():
+        return
+    
+    items.remove(index)
+    
+    # Update selected indices
+    var new_selected = []
+    for selected_index in selected_items:
+        if selected_index < index:
+            new_selected.append(selected_index)
+        elif selected_index > index:
+            new_selected.append(selected_index - 1)
+        # Skip the removed index
+    
+    selected_items = new_selected
+    _update_layout()
+    emit_signal("item_removed", index)
+
+# Clear all items
+func clear():
+    items.clear()
+    selected_items.clear()
+    _hovered_item = -1
+    _update_layout()
+    emit_signal("items_cleared")
+
+# Get item count
+func get_item_count() -> int:
+    return items.size()
+
+# Set item text
+func set_item_text(index: int, text: String):
+    if index >= 0 and index < items.size():
+        items[index]["text"] = text
+        _update_layout()
+        emit_signal("item_changed", index)
+
+# Get item text
+func get_item_text(index: int) -> String:
+    if index >= 0 and index < items.size():
+        return items[index]["text"]
+    return ""
+
+# Set item icon
+func set_item_icon(index: int, icon: Texture):
+    if index >= 0 and index < items.size():
+        items[index]["icon"] = icon
+        _update_layout()
+        emit_signal("item_changed", index)
+
+# Get item icon
+func get_item_icon(index: int) -> Texture:
+    if index >= 0 and index < items.size():
+        return items[index]["icon"]
+    return null
+
+# Set item metadata
+func set_item_metadata(index: int, metadata):
+    if index >= 0 and index < items.size():
+        items[index]["metadata"] = metadata
+
+# Get item metadata
+func get_item_metadata(index: int):
+    if index >= 0 and index < items.size():
+        return items[index]["metadata"]
+    return null
+
+# Set item tooltip
+func set_item_tooltip(index: int, tooltip: String):
+    if index >= 0 and index < items.size():
+        items[index]["tooltip"] = tooltip
+
+# Get item tooltip
+func get_item_tooltip(index: int) -> String:
+    if index >= 0 and index < items.size():
+        return items[index]["tooltip"]
+    return ""
+
+# Set item selectable
+func set_item_selectable(index: int, selectable: bool):
+    if index >= 0 and index < items.size():
+        items[index]["selectable"] = selectable
+        if not selectable and is_selected(index):
+            deselect(index)
+
+# Is item selectable
+func is_item_selectable(index: int) -> bool:
+    if index >= 0 and index < items.size():
+        return items[index]["selectable"]
+    return false
+
+# Set item disabled
+func set_item_disabled(index: int, disabled: bool):
+    if index >= 0 and index < items.size():
+        items[index]["disabled"] = disabled
+        if disabled and is_selected(index):
+            deselect(index)
+
+# Is item disabled
+func is_item_disabled(index: int) -> bool:
+    if index >= 0 and index < items.size():
+        return items[index]["disabled"]
+    return false
+
+# Select item
+func select(index: int, single: bool = true):
+    if index < 0 or index >= items.size():
+        return
+    
+    if not is_item_selectable(index) or is_item_disabled(index):
+        return
+    
+    if single or select_mode == SELECT_SINGLE:
+        selected_items.clear()
+    
+    if not is_selected(index):
+        selected_items.append(index)
+        emit_signal("item_selected", index)
+    elif allow_reselect:
+        emit_signal("item_selected", index)
+
+# Deselect item
+func deselect(index: int):
+    var pos = selected_items.find(index)
+    if pos >= 0:
+        selected_items.remove(pos)
+        emit_signal("item_deselected", index)
+
+# Deselect all items
+func deselect_all():
+    var old_selected = selected_items.duplicate()
+    selected_items.clear()
+    
+    for index in old_selected:
+        emit_signal("item_deselected", index)
+
+# Is item selected
+func is_selected(index: int) -> bool:
+    return selected_items.has(index)
+
+# Get selected items
+func get_selected_items() -> Array:
+    return selected_items.duplicate()
+
+# Get first selected item (-1 if none)
+func get_selected_item() -> int:
+    if selected_items.size() > 0:
+        return selected_items[0]
+    return -1
+
+# Set select mode
+func set_select_mode(mode: String):
+    if mode in [SELECT_SINGLE, SELECT_MULTI]:
+        select_mode = mode
+        if mode == SELECT_SINGLE and selected_items.size() > 1:
+            # Keep only first selected item
+            var first = selected_items[0]
+            selected_items.clear()
+            selected_items.append(first)
+
+# Get select mode
+func get_select_mode() -> String:
+    return select_mode
+
+# Set icon mode
+func set_icon_mode(mode: String):
+    if mode in [ICON_MODE_TOP, ICON_MODE_LEFT]:
+        icon_mode = mode
+        _update_layout()
+
+# Get icon mode
+func get_icon_mode() -> String:
+    return icon_mode
+
+# Set max columns
+func set_max_columns(columns: int):
+    max_columns = max(0, columns)
+    _update_layout()
+
+# Get max columns
+func get_max_columns() -> int:
+    return max_columns
+
+# Scroll to item
+func ensure_item_visible(index: int):
+    if index < 0 or index >= items.size() or _item_rects.size() <= index:
+        return
+    
+    var item_rect = _item_rects[index]
+    var visible_rect = Rect2(scroll_position, rect_size)
+    
+    if not visible_rect.encloses(item_rect):
+        # Scroll to make item visible
+        if item_rect.position.y < visible_rect.position.y:
+            scroll_position.y = item_rect.position.y
+        elif item_rect.end.y > visible_rect.end.y:
+            scroll_position.y = item_rect.end.y - rect_size.y
+        
+        _clamp_scroll_position()
+        emit_signal("scroll_changed")
+
+# Update layout and calculate item positions
+func _update_layout():
+    _item_rects.clear()
+    
+    if items.size() == 0:
+        _total_content_height = 0.0
+        return
+    
+    var current_y = 0.0
+    var current_x = 0.0
+    var row_height = 0.0
+    var column = 0
+    
+    var item_width = rect_size.x
+    if max_columns > 1:
+        item_width = rect_size.x / max_columns
+    
+    for i in range(items.size()):
+        var item = items[i]
+        
+        # Calculate item size
+        var text_size = _calculate_text_size(item["text"])
+        var icon_size = Vector2.ZERO
+        
+        if item["icon"]:
+            icon_size = item["icon"].get_size() * icon_scale
+            if fixed_icon_size != Vector2.ZERO:
+                icon_size = fixed_icon_size
+        
+        var item_height = 0.0
+        if icon_mode == ICON_MODE_TOP:
+            item_height = icon_size.y + text_size.y + line_separation
+        else:  # ICON_MODE_LEFT
+            item_height = max(icon_size.y, text_size.y)
+        
+        item_height += item_spacing
+        
+        # Check if we need to wrap to next row
+        if max_columns > 1 and column >= max_columns:
+            current_y += row_height + item_spacing
+            current_x = 0.0
+            column = 0
+            row_height = 0.0
+        
+        # Store item rectangle
+        var item_rect = Rect2(current_x, current_y, item_width, item_height)
+        _item_rects.append(item_rect)
+        
+        # Update position for next item
+        if max_columns > 1:
+            current_x += item_width
+            column += 1
+            row_height = max(row_height, item_height)
+        else:
+            current_y += item_height
+    
+    # Calculate total content height
+    if max_columns > 1 and _item_rects.size() > 0:
+        var last_rect = _item_rects[_item_rects.size() - 1]
+        _total_content_height = last_rect.end.y
+    else:
+        _total_content_height = current_y
+    
+    # Auto-adjust height if enabled
+    if auto_height:
+        rect_size.y = _total_content_height
+    
+    # Update scroll bar visibility
+    _scroll_bar_visible = _total_content_height > rect_size.y
+    _clamp_scroll_position()
+
+# Calculate text size (simplified)
+func _calculate_text_size(text: String) -> Vector2:
+    if text.empty():
+        return Vector2.ZERO
+    
+    # Approximate text size calculation
+    var char_width = font_size * 0.6  # Approximate character width
+    var line_height = font_size * 1.2  # Approximate line height
+    
+    var lines = text.split("\n")
+    var max_width = 0.0
+    
+    for line in lines:
+        max_width = max(max_width, line.length() * char_width)
+    
+    return Vector2(max_width, lines.size() * line_height)
+
+# Clamp scroll position to valid range
+func _clamp_scroll_position():
+    var max_scroll_y = max(0.0, _total_content_height - rect_size.y)
+    scroll_position.y = clamp(scroll_position.y, 0.0, max_scroll_y)
+    scroll_position.x = 0.0  # No horizontal scrolling for now
+
+# Get item at position
+func get_item_at_position(pos: Vector2) -> int:
+    var local_pos = pos + scroll_position
+    
+    for i in range(_item_rects.size()):
+        if _item_rects[i].has_point(local_pos):
+            return i
+    
+    return -1
+
+# Check if scroll bar is visible
+func is_scroll_bar_visible() -> bool:
+    return _scroll_bar_visible
+
+# Get content size
+func get_content_size() -> Vector2:
+    return Vector2(rect_size.x, _total_content_height)
+
+# Convenience methods
+func add_separator():
+    """Add a separator item (non-selectable)"""
+    add_item("---", null, false)
+
+func sort_items_by_text():
+    """Sort items alphabetically by text"""
+    items.sort_custom(self, "_compare_items_by_text")
+    selected_items.clear()  # Clear selection as indices changed
+    _update_layout()
+
+func _compare_items_by_text(a: Dictionary, b: Dictionary) -> bool:
+    return a["text"] < b["text"]
+
+# Signals
+signal item_selected(index)  # Emitted when an item is selected
+signal item_deselected(index)  # Emitted when an item is deselected
+signal item_activated(index)  # Emitted when an item is double-clicked or activated
+signal item_added(index)  # Emitted when an item is added
+signal item_removed(index)  # Emitted when an item is removed
+signal item_changed(index)  # Emitted when an item's properties change
+signal items_cleared  # Emitted when all items are cleared
+signal scroll_changed  # Emitted when scroll position changes

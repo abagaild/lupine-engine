@@ -1,0 +1,243 @@
+# CenterContainer Node - Container that centers its children both horizontally and vertically
+# Automatically centers all child Control nodes within the container bounds
+extends Control
+
+# Container Properties
+export_group("Container")
+export var use_top_left: bool = false  # If true, centers around top-left instead of center
+
+# Container Margins (space inside the container)
+export_group("Container Margins")
+export var container_margin_left: float = 0.0  # Left margin inside container
+export var container_margin_top: float = 0.0  # Top margin inside container
+export var container_margin_right: float = 0.0  # Right margin inside container
+export var container_margin_bottom: float = 0.0  # Bottom margin inside container
+
+# Style Properties
+export_group("Style")
+export var background_color: Color = Color(0.0, 0.0, 0.0, 0.0)  # Background color (transparent by default)
+export var border_color: Color = Color(0.5, 0.5, 0.5, 1.0)  # Border color
+export var border_width: float = 0.0  # Border thickness
+export var corner_radius: float = 0.0  # Corner radius for rounded borders
+
+# Called when the node enters the scene tree for the first time
+func _ready():
+    super._ready()
+    
+    # Set default size if not specified
+    if rect_size == Vector2.ZERO:
+        rect_size = Vector2(100, 100)
+    
+    # Center children initially
+    _center_children()
+
+# Called every frame. 'delta' is the elapsed time since the previous frame
+func _process(delta: float):
+    pass
+
+# Called when children are added or removed
+func _notification(what: int):
+    if what == NOTIFICATION_RESIZED or what == NOTIFICATION_CHILD_ORDER_CHANGED:
+        _center_children()
+
+# Center all children within the container
+func _center_children():
+    var child_controls = []
+    
+    # Collect all Control children
+    for child in get_children():
+        if child is Control and child.visible:
+            child_controls.append(child)
+    
+    if child_controls.size() == 0:
+        return
+    
+    # Calculate available space
+    var available_width = rect_size.x - container_margin_left - container_margin_right
+    var available_height = rect_size.y - container_margin_top - container_margin_bottom
+    
+    # Calculate content bounds (union of all children)
+    var content_bounds = _calculate_content_bounds(child_controls)
+    
+    # Calculate center offset
+    var center_offset_x = 0.0
+    var center_offset_y = 0.0
+    
+    if use_top_left:
+        # Center around top-left of content
+        center_offset_x = (available_width - content_bounds.size.x) * 0.5
+        center_offset_y = (available_height - content_bounds.size.y) * 0.5
+    else:
+        # Center around center of content
+        var content_center_x = content_bounds.position.x + content_bounds.size.x * 0.5
+        var content_center_y = content_bounds.position.y + content_bounds.size.y * 0.5
+        
+        center_offset_x = (available_width * 0.5) - content_center_x
+        center_offset_y = (available_height * 0.5) - content_center_y
+    
+    # Apply centering to all children
+    for child in child_controls:
+        child.position.x += center_offset_x + container_margin_left
+        child.position.y += center_offset_y + container_margin_top
+
+# Calculate the bounding rectangle of all children
+func _calculate_content_bounds(children: Array) -> Rect2:
+    if children.size() == 0:
+        return Rect2()
+    
+    var min_x = children[0].position.x
+    var min_y = children[0].position.y
+    var max_x = children[0].position.x + children[0].rect_size.x
+    var max_y = children[0].position.y + children[0].rect_size.y
+    
+    for i in range(1, children.size()):
+        var child = children[i]
+        min_x = min(min_x, child.position.x)
+        min_y = min(min_y, child.position.y)
+        max_x = max(max_x, child.position.x + child.rect_size.x)
+        max_y = max(max_y, child.position.y + child.rect_size.y)
+    
+    return Rect2(min_x, min_y, max_x - min_x, max_y - min_y)
+
+# Set use_top_left mode
+func set_use_top_left(use_tl: bool):
+    use_top_left = use_tl
+    _center_children()
+    emit_signal("layout_changed")
+
+# Get use_top_left mode
+func get_use_top_left() -> bool:
+    return use_top_left
+
+# Set container margins
+func set_container_margins(left: float, top: float, right: float, bottom: float):
+    container_margin_left = max(0.0, left)
+    container_margin_top = max(0.0, top)
+    container_margin_right = max(0.0, right)
+    container_margin_bottom = max(0.0, bottom)
+    _center_children()
+    emit_signal("layout_changed")
+
+# Get container margins as array [left, top, right, bottom]
+func get_container_margins() -> Array:
+    return [container_margin_left, container_margin_top, container_margin_right, container_margin_bottom]
+
+# Set background color
+func set_background_color(color: Color):
+    background_color = color
+    emit_signal("appearance_changed")
+
+# Get background color
+func get_background_color() -> Color:
+    return background_color
+
+# Set border properties
+func set_border(width: float, color: Color):
+    border_width = max(0.0, width)
+    border_color = color
+    emit_signal("appearance_changed")
+
+# Get border width
+func get_border_width() -> float:
+    return border_width
+
+# Get border color
+func get_border_color() -> Color:
+    return border_color
+
+# Set corner radius
+func set_corner_radius(radius: float):
+    corner_radius = max(0.0, radius)
+    emit_signal("appearance_changed")
+
+# Get corner radius
+func get_corner_radius() -> float:
+    return corner_radius
+
+# Add child and center layout
+func add_child(child: Node):
+    super.add_child(child)
+    if child is Control:
+        _center_children()
+        emit_signal("layout_changed")
+
+# Remove child and center layout
+func remove_child(child: Node):
+    super.remove_child(child)
+    if child is Control:
+        _center_children()
+        emit_signal("layout_changed")
+
+# Get minimum size needed for all children
+func get_minimum_size() -> Vector2:
+    var child_controls = []
+    
+    for child in get_children():
+        if child is Control and child.visible:
+            child_controls.append(child)
+    
+    if child_controls.size() == 0:
+        return Vector2(container_margin_left + container_margin_right, 
+                      container_margin_top + container_margin_bottom)
+    
+    var content_bounds = _calculate_content_bounds(child_controls)
+    
+    return Vector2(
+        content_bounds.size.x + container_margin_left + container_margin_right,
+        content_bounds.size.y + container_margin_top + container_margin_bottom
+    )
+
+# Fit container to content
+func fit_to_content():
+    rect_size = get_minimum_size()
+    _center_children()
+    emit_signal("layout_changed")
+
+# Get content rectangle (area available for children)
+func get_content_rect() -> Rect2:
+    return Rect2(
+        container_margin_left,
+        container_margin_top,
+        rect_size.x - container_margin_left - container_margin_right,
+        rect_size.y - container_margin_top - container_margin_bottom
+    )
+
+# Center a specific child
+func center_child(child: Control):
+    if not child or not child.get_parent() == self:
+        return
+    
+    var available_width = rect_size.x - container_margin_left - container_margin_right
+    var available_height = rect_size.y - container_margin_top - container_margin_bottom
+    
+    child.position.x = container_margin_left + (available_width - child.rect_size.x) * 0.5
+    child.position.y = container_margin_top + (available_height - child.rect_size.y) * 0.5
+    
+    emit_signal("layout_changed")
+
+# Center all children individually (not as a group)
+func center_children_individually():
+    for child in get_children():
+        if child is Control and child.visible:
+            center_child(child)
+
+# Convenience methods for margins
+func set_uniform_margin(margin: float):
+    set_container_margins(margin, margin, margin, margin)
+
+func set_horizontal_margins(margin: float):
+    set_container_margins(margin, container_margin_top, margin, container_margin_bottom)
+
+func set_vertical_margins(margin: float):
+    set_container_margins(container_margin_left, margin, container_margin_right, margin)
+
+# Convenience methods for centering modes
+func enable_top_left_centering():
+    set_use_top_left(true)
+
+func enable_center_centering():
+    set_use_top_left(false)
+
+# Signals
+signal layout_changed  # Emitted when layout properties change
+signal appearance_changed  # Emitted when visual properties change
