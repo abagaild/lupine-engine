@@ -1,0 +1,254 @@
+{
+  "name": "PlayerControllerTestScene",
+  "metadata": {
+    "description": "Test scene demonstrating PlayerController prefab with physics",
+    "version": "1.0"
+  },
+  "nodes": [
+    {
+      "name": "Main",
+      "type": "Node2D",
+      "position": [0, 0],
+      "children": [
+        {
+          "name": "Player",
+          "type": "KinematicBody2D",
+          "position": [400, 300],
+          "rotation": 0,
+          "scale": [1, 1],
+          "visible": true,
+          "z_index": 10,
+          "script_path": "prefabs/PlayerController.lsc",
+          "collision_layer": 2,
+          "collision_mask": 1,
+          "safe_margin": 0.08,
+          "children": [
+            {
+              "name": "Sprite",
+              "type": "Sprite",
+              "position": [0, 0],
+              "rotation": 0,
+              "scale": [1, 1],
+              "visible": true,
+              "z_index": 0,
+              "script_path": "nodes/Sprite.lsc",
+              "texture": "assets/entities/player.png",
+              "centered": true,
+              "offset": [0, 0],
+              "flip_h": false,
+              "flip_v": false,
+              "hframes": 1,
+              "vframes": 1,
+              "frame": 0,
+              "size": [32, 32],
+              "children": []
+            },
+            {
+              "name": "CollisionShape",
+              "type": "CollisionShape2D",
+              "position": [0, 0],
+              "rotation": 0,
+              "scale": [1, 1],
+              "visible": true,
+              "z_index": 0,
+              "script_path": "nodes/CollisionShape2D.lsc",
+              "shape": "rectangle",
+              "disabled": false,
+              "one_way_collision": false,
+              "one_way_collision_margin": 1.0,
+              "size": [24, 32],
+              "radius": 16.0,
+              "height": 32.0,
+              "point_a": [0, 0],
+              "point_b": [32, 0],
+              "debug_color": [0.0, 1.0, 0.0, 0.5],
+              "children": []
+            },
+            {
+              "name": "InteractionArea",
+              "type": "Area2D",
+              "position": [0, 0],
+              "rotation": 0,
+              "scale": [1, 1],
+              "visible": true,
+              "z_index": 0,
+              "script_path": "nodes/Area2D.lsc",
+              "monitoring": true,
+              "monitorable": false,
+              "collision_layer": 4,
+              "collision_mask": 8,
+              "gravity_space_override": "disabled",
+              "gravity": [0, 0],
+              "children": [
+                {
+                  "name": "InteractionShape",
+                  "type": "CollisionShape2D",
+                  "position": [0, 0],
+                  "rotation": 0,
+                  "scale": [1, 1],
+                  "visible": true,
+                  "z_index": 0,
+                  "script_path": "nodes/CollisionShape2D.lsc",
+                  "shape": "circle",
+                  "disabled": false,
+                  "one_way_collision": false,
+                  "one_way_collision_margin": 1.0,
+                  "size": [32, 32],
+                  "radius": 40.0,
+                  "height": 32.0,
+                  "point_a": [0, 0],
+                  "point_b": [32, 0],
+                  "debug_color": [1.0, 1.0, 0.0, 0.3],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Environment",
+          "type": "Node2D",
+          "position": [0, 0],
+          "children": [
+            {
+              "name": "Wall1",
+              "type": "StaticBody2D",
+              "position": [100, 400],
+              "collision_layer": 1,
+              "collision_mask": 1,
+              "children": [
+                {
+                  "name": "WallShape",
+                  "type": "CollisionShape2D",
+                  "position": [0, 0],
+                  "shape": "rectangle",
+                  "size": [20, 200],
+                  "disabled": false,
+                  "debug_color": [0.7, 0.3, 0.3, 0.8],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "name": "Wall2",
+              "type": "StaticBody2D",
+              "position": [700, 400],
+              "collision_layer": 1,
+              "collision_mask": 1,
+              "children": [
+                {
+                  "name": "WallShape",
+                  "type": "CollisionShape2D",
+                  "position": [0, 0],
+                  "shape": "rectangle",
+                  "size": [20, 200],
+                  "disabled": false,
+                  "debug_color": [0.7, 0.3, 0.3, 0.8],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "name": "Floor",
+              "type": "StaticBody2D",
+              "position": [400, 550],
+              "collision_layer": 1,
+              "collision_mask": 1,
+              "children": [
+                {
+                  "name": "FloorShape",
+                  "type": "CollisionShape2D",
+                  "position": [0, 0],
+                  "shape": "rectangle",
+                  "size": [600, 20],
+                  "disabled": false,
+                  "debug_color": [0.3, 0.7, 0.3, 0.8],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "name": "Ceiling",
+              "type": "StaticBody2D",
+              "position": [400, 150],
+              "collision_layer": 1,
+              "collision_mask": 1,
+              "children": [
+                {
+                  "name": "CeilingShape",
+                  "type": "CollisionShape2D",
+                  "position": [0, 0],
+                  "shape": "rectangle",
+                  "size": [600, 20],
+                  "disabled": false,
+                  "debug_color": [0.3, 0.7, 0.3, 0.8],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Interactables",
+          "type": "Node2D",
+          "position": [0, 0],
+          "children": [
+            {
+              "name": "Chest",
+              "type": "StaticBody2D",
+              "position": [600, 350],
+              "collision_layer": 8,
+              "collision_mask": 4,
+              "children": [
+                {
+                  "name": "ChestShape",
+                  "type": "CollisionShape2D",
+                  "position": [0, 0],
+                  "shape": "rectangle",
+                  "size": [32, 32],
+                  "disabled": false,
+                  "debug_color": [1.0, 0.8, 0.0, 0.8],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "name": "NPC",
+              "type": "StaticBody2D",
+              "position": [200, 350],
+              "collision_layer": 8,
+              "collision_mask": 4,
+              "children": [
+                {
+                  "name": "NPCShape",
+                  "type": "CollisionShape2D",
+                  "position": [0, 0],
+                  "shape": "circle",
+                  "radius": 20,
+                  "disabled": false,
+                  "debug_color": [0.8, 0.4, 0.8, 0.8],
+                  "children": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Camera",
+          "type": "Camera2D",
+          "position": [400, 300],
+          "current": true,
+          "zoom": [1.0, 1.0],
+          "offset": [0, 0],
+          "limit_left": 0,
+          "limit_top": 0,
+          "limit_right": 800,
+          "limit_bottom": 600,
+          "smoothing_enabled": true,
+          "smoothing_speed": 5.0,
+          "children": []
+        }
+      ]
+    }
+  ]
+}

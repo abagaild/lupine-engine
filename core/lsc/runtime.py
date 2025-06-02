@@ -215,10 +215,10 @@ class LSCRuntime:
             return self.game_runtime.input_manager.get_action_strength(action)
         return 0.0
     
-    def is_key_pressed(self, key: str) -> bool:
+    def is_key_pressed(self, key) -> bool:
         """Check if key is pressed"""
-        if self.game_runtime and hasattr(self.game_runtime, 'input_manager'):
-            return self.game_runtime.input_manager.is_key_pressed(key)
+        if self.game_runtime and hasattr(self.game_runtime, 'is_key_pressed'):
+            return self.game_runtime.is_key_pressed(key)
         return False
     
     def is_mouse_button_pressed(self, button: int) -> bool:
@@ -253,7 +253,11 @@ class LSCRuntime:
         if self.delta_time > 0:
             return 1.0 / self.delta_time
         return 0.0
-    
+
+    def get_runtime_time(self) -> float:
+        """Get runtime time (alias for get_time for LSC scripts)"""
+        return self.get_time()
+
     def wait(self, seconds: float) -> None:
         """Wait for specified time (placeholder - would need coroutine system)"""
         # This would need to be implemented with a proper coroutine/async system

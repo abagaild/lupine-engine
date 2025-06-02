@@ -14,6 +14,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon, QKeySequence
 
 from core.project import LupineProject
+from core.node_registry import set_project_path
 from .scene_tree import SceneTreeWidget
 from .scene_view import SceneViewWidget
 from .inspector import InspectorWidget
@@ -30,7 +31,10 @@ class MainEditor(QMainWindow):
         super().__init__()
         self.project = LupineProject(project_path)
         self.project.load_project()
-        
+
+        # Set up node registry with project path for dynamic node loading
+        set_project_path(Path(project_path))
+
         self.current_scene = None
         self.open_scenes = {}  # scene_path -> scene_data
         
@@ -417,6 +421,8 @@ class MainEditor(QMainWindow):
             # Priority: scene_tree.current_scene_data > open_scenes
             scene_data_to_save = self.open_scenes[scene_path]
             if self.scene_tree.current_scene_data and self.scene_tree.current_scene_path == scene_path:
+                # Synchronize tree to scene data before saving
+                self.scene_tree.sync_tree_to_scene_data()
                 scene_data_to_save = self.scene_tree.current_scene_data
                 # Update open_scenes to match
                 self.open_scenes[scene_path] = scene_data_to_save
@@ -540,18 +546,44 @@ class MainEditor(QMainWindow):
 
     def on_scene_view_node_modified(self, node_data: dict, property_name: str, value):
         """Handle node modification from scene view"""
-        # Update inspector to reflect the change
-        if self.inspector.current_node == node_data:
-            self.inspector.refresh_properties()
+        node_name = node_data.get("name", "")
+
+        # Update the property in all our data stores to keep them synchronized
+        if self.current_scene and self.current_scene in self.open_scenes:
+            # Update the main scene data
+            scene_node = self.find_node_by_name(self.open_scenes[self.current_scene], node_name)
+            if scene_node:
+                scene_node[property_name] = value
+
+        # Update the scene tree data
+        if self.scene_tree.current_scene_data:
+            tree_node = self.find_node_by_name(self.scene_tree.current_scene_data, node_name)
+            if tree_node:
+                tree_node[property_name] = value
+
+            # Also update the tree item data to keep the UI synchronized
+            self.scene_tree.update_tree_item_property(node_name, property_name, value)
+
+        # Update inspector to reflect the change without rebuilding the entire UI
+        if self.inspector.current_node and self.inspector.current_node.get("name") == node_name:
+            # Update the node reference and refresh property widgets
+            self.inspector.update_node_reference(node_data)
+
+        # Update scene view rendering to reflect any changes
+        current_scene_widget = self.get_current_scene_widget()
+        if current_scene_widget and hasattr(current_scene_widget, 'viewport'):
+            current_scene_widget.viewport.update()
 
         # Mark scene as modified
         self.mark_scene_modified()
 
     def on_inspector_property_changed(self, node_id: str, property_name: str, value):
         """Handle property changes from inspector"""
-        # Since all components now share the same data objects,
-        # the inspector's change should automatically be reflected everywhere.
-        # We just need to update the scene view rendering and mark as modified.
+        # The inspector updates the scene data reference, but we also need to update
+        # the tree item data to keep everything synchronized
+
+        # Update the tree item data to match the inspector changes
+        self.scene_tree.update_tree_item_property(node_id, property_name, value)
 
         # Update scene view rendering
         current_scene_widget = self.get_current_scene_widget()

@@ -94,6 +94,17 @@ class LupineGameWindow(arcade.Window):
         self.textures = {}
         self.text_objects = {}  # Cache for text objects to improve performance
 
+        # Physics system
+        try:
+            from core.physics import PhysicsWorld
+            self.physics_world = PhysicsWorld()
+            self.physics_enabled = True
+            print("Physics system initialized")
+        except ImportError as e:
+            print(f"Physics system not available: {e}")
+            self.physics_world = None
+            self.physics_enabled = False
+
         # LSC Runtime for script execution
         if LSC_AVAILABLE:
             self.lsc_runtime = LSCRuntime(game_runtime=self)
@@ -119,6 +130,7 @@ class LupineGameWindow(arcade.Window):
             "reload_scene": self.reload_scene,
             "get_scene": self.get_scene,
             "get_delta_time": lambda: self.lsc_runtime.delta_time if self.lsc_runtime else 0.0,
+            "get_runtime_time": lambda: self.lsc_runtime.get_runtime_time() if self.lsc_runtime else 0.0,
             "get_fps": lambda: 1.0 / self.lsc_runtime.delta_time if self.lsc_runtime and self.lsc_runtime.delta_time > 0 else 0.0,
         }
 
@@ -279,6 +291,12 @@ class LupineGameWindow(arcade.Window):
             if isinstance(node, Sprite):
                 self.setup_sprite_node(node)
 
+            # Setup physics nodes
+            if self.physics_enabled and self.physics_world:
+                from core.scene import RigidBody2D, StaticBody2D, KinematicBody2D, Area2D
+                if isinstance(node, (RigidBody2D, StaticBody2D, KinematicBody2D, Area2D)):
+                    self.setup_physics_node(node)
+
         except Exception as e:
             print(f"Error setting up node {node.name}: {e}")
 
@@ -286,22 +304,52 @@ class LupineGameWindow(arcade.Window):
         for child in node.children:
             self.setup_node(child)
 
+    def setup_physics_node(self, node):
+        """Setup physics for a physics node"""
+        try:
+            if self.physics_world:
+                physics_body = self.physics_world.add_node(node)
+                if physics_body:
+                    print(f"Added physics body for {node.name}")
+
+                    # Setup collision callbacks for RigidBody2D
+                    from core.scene import RigidBody2D
+                    if isinstance(node, RigidBody2D):
+                        def collision_callback(other_body, contact):
+                            # Call LSC collision methods if available
+                            if hasattr(node, 'script_instance'):
+                                try:
+                                    node.script_instance.call_method('_on_body_contact',
+                                                                   other_body.node,
+                                                                   contact.point,
+                                                                   contact.normal,
+                                                                   contact.impulse)
+                                except:
+                                    pass  # Method might not exist
+
+                        physics_body.collision_callbacks.append(collision_callback)
+
+        except Exception as e:
+            print(f"Error setting up physics for {node.name}: {e}")
+
     def setup_sprite_node(self, sprite_node):
         """Setup a sprite node with proper texture loading"""
         try:
             texture_path = getattr(sprite_node, 'texture', None)
             if texture_path:
                 # Load texture if not already loaded
-                full_texture_path = Path(r"{project_path}") / texture_path
+                full_texture_path = Path(self.project_path) / texture_path
                 if full_texture_path.exists():
-                    if str(full_texture_path) not in self.textures:
-                        self.textures[str(full_texture_path)] = arcade.load_texture(str(full_texture_path))
+                    texture_key = str(full_texture_path)
+                    if texture_key not in self.textures:
+                        self.textures[texture_key] = arcade.load_texture(str(full_texture_path))
                         print(f"Loaded texture: {full_texture_path}")
 
                     # Create arcade sprite with proper properties
-                    if str(full_texture_path) in self.textures:
+                    if texture_key in self.textures:
                         arcade_sprite = arcade.Sprite()
-                        arcade_sprite.texture = self.textures[str(full_texture_path)]
+                        # Each sprite gets its own texture reference to avoid sharing issues
+                        arcade_sprite.texture = self.textures[texture_key]
 
                         # Set position using world coordinates directly
                         arcade_sprite.center_x = sprite_node.position[0]
@@ -326,8 +374,12 @@ class LupineGameWindow(arcade.Window):
                         if len(modulate) >= 4:
                             arcade_sprite.alpha = int(modulate[3] * 255)
 
+                        # Store reference to original node for updates
+                        arcade_sprite.lupine_node = sprite_node
+                        sprite_node.arcade_sprite = arcade_sprite
+
                         self.sprite_lists["sprites"].append(arcade_sprite)
-                        print(f"Created arcade sprite for {sprite_node.name} at world ({sprite_node.position[0]}, {sprite_node.position[1]}) -> arcade ({arcade_sprite.center_x}, {arcade_sprite.center_y})")
+                        print(f"Created arcade sprite for {sprite_node.name} with texture {texture_path} at world ({sprite_node.position[0]}, {sprite_node.position[1]})")
                 else:
                     print(f"Texture file not found: {full_texture_path}")
             else:
@@ -335,8 +387,14 @@ class LupineGameWindow(arcade.Window):
                 arcade_sprite = arcade.Sprite()
                 arcade_sprite.center_x = sprite_node.position[0]
                 arcade_sprite.center_y = sprite_node.position[1]
-                # Create a simple colored texture as placeholder
-                arcade_sprite.texture = arcade.Texture.create_filled("placeholder", (64, 64), arcade.color.GREEN)
+                # Create a unique placeholder texture for each sprite
+                placeholder_name = f"placeholder_{sprite_node.name}_{id(sprite_node)}"
+                arcade_sprite.texture = arcade.Texture.create_filled(placeholder_name, (64, 64), arcade.color.GREEN)
+
+                # Store reference to original node for updates
+                arcade_sprite.lupine_node = sprite_node
+                sprite_node.arcade_sprite = arcade_sprite
+
                 self.sprite_lists["sprites"].append(arcade_sprite)
                 print(f"Created placeholder sprite for {sprite_node.name} (no texture)")
 
@@ -463,12 +521,21 @@ class LupineGameWindow(arcade.Window):
         elif node_type == "Area2D":
             # Area2D nodes are invisible in game - no rendering needed
             pass
+        elif node_type == "CollisionShape2D":
+            self.draw_collision_shape_fallback(node_data, x, y)
+        elif node_type == "CollisionPolygon2D":
+            self.draw_collision_polygon_fallback(node_data, x, y)
+        elif node_type == "RigidBody2D" or node_type == "StaticBody2D" or node_type == "KinematicBody2D":
+            # Physics bodies are invisible containers - no rendering needed
+            pass
         elif node_type == "Control":
             self.draw_control_fallback(node_data, x, y)
         elif node_type == "Panel":
             self.draw_panel_fallback(node_data, x, y)
         elif node_type == "Label":
             self.draw_label_fallback(node_data, x, y)
+        elif node_type == "Button":
+            self.draw_button_fallback(node_data, x, y)
         elif node_type == "CanvasLayer":
             self.draw_canvas_layer_fallback(node_data, x, y)
 
@@ -646,6 +713,93 @@ class LupineGameWindow(arcade.Window):
         # For now, use the font size - font family support would require more complex text rendering
         self.draw_cached_text(text, text_x, text_y, font_arcade_color, actual_font_size)
 
+    def draw_button_fallback(self, node_data, x, y):
+        """Draw Button node with interactive states"""
+        # Get button properties - Buttons use position (UI coordinate system)
+        position = node_data.get("position", [0.0, 0.0])
+        rect_size = node_data.get("rect_size", [100.0, 30.0])
+        text = node_data.get("text", "Button")
+        font_color = node_data.get("font_color", [1.0, 1.0, 1.0, 1.0])
+
+        # Get button state colors
+        normal_color = node_data.get("normal_color", [0.3, 0.3, 0.3, 1.0])
+        hover_color = node_data.get("hover_color", [0.4, 0.4, 0.4, 1.0])
+        pressed_color = node_data.get("pressed_color", [0.2, 0.2, 0.2, 1.0])
+        disabled_color = node_data.get("disabled_color", [0.15, 0.15, 0.15, 1.0])
+
+        # Get button state
+        disabled = node_data.get("disabled", False)
+        toggle_mode = node_data.get("toggle_mode", False)
+        pressed = node_data.get("pressed", False)
+        is_hovered = node_data.get("_is_hovered", False)
+        is_mouse_pressed = node_data.get("_is_mouse_pressed", False)
+
+        # Get style properties
+        border_width = node_data.get("border_width", 1.0)
+        border_color = node_data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+        corner_radius = node_data.get("corner_radius", 4.0)
+
+        # Calculate UI position and size with percentage support
+        ui_x, ui_y = self.calculate_ui_position(position, rect_size)
+        ui_width, ui_height = self.calculate_ui_size(rect_size)
+
+        # Determine current button color based on state
+        if disabled:
+            current_color = disabled_color
+        elif is_mouse_pressed or (toggle_mode and pressed):
+            current_color = pressed_color
+        elif is_hovered:
+            current_color = hover_color
+        else:
+            current_color = normal_color
+
+        # Convert colors to arcade format (0-255)
+        button_arcade_color = (
+            int(current_color[0] * 255),
+            int(current_color[1] * 255),
+            int(current_color[2] * 255),
+            int(current_color[3] * 255)
+        )
+
+        font_arcade_color = (
+            int(font_color[0] * 255),
+            int(font_color[1] * 255),
+            int(font_color[2] * 255)
+        )
+
+        # Draw button background
+        arcade.draw_lbwh_rectangle_filled(
+            ui_x, ui_y, ui_width, ui_height,
+            button_arcade_color
+        )
+
+        # Draw border if enabled
+        if border_width > 0:
+            border_arcade_color = (
+                int(border_color[0] * 255),
+                int(border_color[1] * 255),
+                int(border_color[2] * 255)
+            )
+            arcade.draw_lbwh_rectangle_outline(
+                ui_x, ui_y, ui_width, ui_height,
+                border_arcade_color, int(border_width)
+            )
+
+        # Draw button text (centered)
+        text_x = ui_x + ui_width / 2
+        text_y = ui_y + ui_height / 2
+
+        # Handle font size
+        actual_font_size = node_data.get("font_size", 14)
+
+        # Support percentage-based font sizing (relative to game height)
+        if 0.0 <= actual_font_size <= 1.0:
+            game_area = getattr(self, 'game_area', {"width": self.width, "height": self.height, "offset_x": 0, "offset_y": 0})
+            actual_font_size = actual_font_size * game_area['height']
+
+        # Draw the button text centered
+        self.draw_cached_text(text, text_x, text_y, font_arcade_color, actual_font_size)
+
     def draw_canvas_layer_fallback(self, node_data, x, y):
         """Draw CanvasLayer node"""
         # Get canvas layer properties
@@ -713,6 +867,10 @@ class LupineGameWindow(arcade.Window):
         if self.lsc_runtime:
             self.lsc_runtime.update_time(delta_time)
 
+        # Update physics simulation
+        if self.physics_enabled and self.physics_world:
+            self.physics_world.step(delta_time)
+
         # Update sprites in sprite lists
         for sprite_list in self.sprite_lists.values():
             for sprite in sprite_list:
@@ -727,8 +885,11 @@ class LupineGameWindow(arcade.Window):
     def update_node_scripts(self, node, delta_time):
         """Update scripts attached to nodes"""
         try:
-            # Call on_update method if the node has a script
+            # Call script update methods if the node has a script
             if hasattr(node, 'script_instance'):
+                # Call _process method (Godot-style update method)
+                node.script_instance.call_method('_process', delta_time)
+                # Also call on_update for compatibility
                 node.script_instance.call_method('on_update', delta_time)
         except Exception as e:
             print(f"Error updating script for {node.name}: {e}")
@@ -736,6 +897,63 @@ class LupineGameWindow(arcade.Window):
         # Update children
         for child in node.children:
             self.update_node_scripts(child, delta_time)
+
+    def draw_collision_shape_fallback(self, node_data: dict[str, any], x: float, y: float):
+        """Draw collision shape for debugging"""
+        shape_type = node_data.get("shape", "rectangle")
+        debug_color = node_data.get("debug_color", [0.0, 0.6, 0.7, 0.5])
+        disabled = node_data.get("disabled", False)
+
+        if disabled:
+            return  # Don't draw disabled shapes
+
+        # Set debug color
+        arcade.draw_rectangle_outline(x, y, 32, 32, arcade.color.CYAN, 2)
+
+        if shape_type == "rectangle":
+            size = node_data.get("size", [32, 32])
+            width, height = size[0], size[1]
+            arcade.draw_rectangle_outline(x, y, width, height, arcade.color.CYAN, 2)
+
+        elif shape_type == "circle":
+            radius = node_data.get("radius", 16.0)
+            arcade.draw_circle_outline(x, y, radius, arcade.color.CYAN, 2)
+
+        elif shape_type == "capsule":
+            radius = node_data.get("capsule_radius", 16.0)
+            height = node_data.get("height", 32.0)
+            # Draw capsule as circle with lines
+            arcade.draw_circle_outline(x, y - height/2 + radius, radius, arcade.color.CYAN, 2)
+            arcade.draw_circle_outline(x, y + height/2 - radius, radius, arcade.color.CYAN, 2)
+            arcade.draw_line(x - radius, y - height/2 + radius, x - radius, y + height/2 - radius, arcade.color.CYAN, 2)
+            arcade.draw_line(x + radius, y - height/2 + radius, x + radius, y + height/2 - radius, arcade.color.CYAN, 2)
+
+        elif shape_type == "segment":
+            point_a = node_data.get("point_a", [0, 0])
+            point_b = node_data.get("point_b", [32, 0])
+            arcade.draw_line(x + point_a[0], y + point_a[1], x + point_b[0], y + point_b[1], arcade.color.CYAN, 3)
+
+    def draw_collision_polygon_fallback(self, node_data: dict[str, any], x: float, y: float):
+        """Draw collision polygon for debugging"""
+        polygon = node_data.get("polygon", [[0, 0], [32, 0], [32, 32], [0, 32]])
+        debug_color = node_data.get("debug_color", [0.0, 0.6, 0.7, 0.5])
+        disabled = node_data.get("disabled", False)
+
+        if disabled or len(polygon) < 3:
+            return  # Don't draw disabled or invalid polygons
+
+        # Convert polygon to world coordinates
+        points = []
+        for vertex in polygon:
+            if isinstance(vertex, list) and len(vertex) >= 2:
+                points.append((x + vertex[0], y + vertex[1]))
+
+        if len(points) >= 3:
+            # Draw polygon outline
+            for i in range(len(points)):
+                start = points[i]
+                end = points[(i + 1) % len(points)]
+                arcade.draw_line(start[0], start[1], end[0], end[1], arcade.color.CYAN, 2)
 
     def on_key_press(self, key, modifiers):
         """Handle key press events"""
@@ -763,6 +981,110 @@ class LupineGameWindow(arcade.Window):
         if self.lsc_runtime and self.scene:
             for root_node in self.scene.root_nodes:
                 self.handle_node_input(root_node, 'on_key_release', key, modifiers)
+
+    def on_mouse_press(self, x, y, button, modifiers):
+        """Handle mouse press events"""
+        # Forward to UI nodes for button interactions
+        if self.scene:
+            for root_node in self.scene.root_nodes:
+                self.handle_mouse_event(root_node, 'on_mouse_press', x, y, button, modifiers)
+
+    def on_mouse_release(self, x, y, button, modifiers):
+        """Handle mouse release events"""
+        # Forward to UI nodes for button interactions
+        if self.scene:
+            for root_node in self.scene.root_nodes:
+                self.handle_mouse_event(root_node, 'on_mouse_release', x, y, button, modifiers)
+
+    def on_mouse_motion(self, x, y, dx, dy):
+        """Handle mouse motion events"""
+        # Update hover states for UI nodes
+        if self.scene:
+            for root_node in self.scene.root_nodes:
+                self.update_mouse_hover(root_node, x, y)
+
+    def handle_mouse_event(self, node, method_name, x, y, button, modifiers):
+        """Handle mouse events for nodes"""
+        try:
+            # Check if this is a UI node that can handle mouse events
+            if hasattr(node, 'type') and node.type in ['Button', 'Panel', 'Label']:
+                # Convert screen coordinates to UI coordinates
+                ui_x, ui_y = self.screen_to_ui_coordinates(x, y)
+
+                # Check if mouse is over this UI node
+                if self.is_point_in_ui_node(node, ui_x, ui_y):
+                    if hasattr(node, 'script_instance'):
+                        # Call the mouse event method
+                        node.script_instance.call_method(method_name, button, [ui_x, ui_y])
+
+                        # For buttons, also update internal state
+                        if node.type == 'Button':
+                            if method_name == 'on_mouse_press':
+                                node._is_mouse_pressed = True
+                            elif method_name == 'on_mouse_release':
+                                node._is_mouse_pressed = False
+        except Exception as e:
+            print(f"Error handling mouse event for {node.name}: {e}")
+
+        # Handle mouse events for children
+        for child in node.children:
+            self.handle_mouse_event(child, method_name, x, y, button, modifiers)
+
+    def update_mouse_hover(self, node, x, y):
+        """Update hover state for UI nodes"""
+        try:
+            if hasattr(node, 'type') and node.type in ['Button', 'Panel', 'Label']:
+                # Convert screen coordinates to UI coordinates
+                ui_x, ui_y = self.screen_to_ui_coordinates(x, y)
+
+                # Check if mouse is over this UI node
+                was_hovered = getattr(node, '_is_hovered', False)
+                is_hovered = self.is_point_in_ui_node(node, ui_x, ui_y)
+
+                if is_hovered != was_hovered:
+                    node._is_hovered = is_hovered
+
+                    # Call hover events if node has script
+                    if hasattr(node, 'script_instance'):
+                        if is_hovered:
+                            node.script_instance.call_method('mouse_entered')
+                        else:
+                            node.script_instance.call_method('mouse_exited')
+        except Exception as e:
+            print(f"Error updating hover for {node.name}: {e}")
+
+        # Update hover for children
+        for child in node.children:
+            self.update_mouse_hover(child, x, y)
+
+    def screen_to_ui_coordinates(self, screen_x, screen_y):
+        """Convert screen coordinates to UI coordinates"""
+        # UI coordinates are relative to the game area
+        game_area = getattr(self, 'game_area', {"width": self.width, "height": self.height, "offset_x": 0, "offset_y": 0})
+
+        # Adjust for game area offset
+        ui_x = screen_x - game_area['offset_x']
+        ui_y = screen_y - game_area['offset_y']
+
+        # Convert to UI coordinate system (0,0 at top-left of game area)
+        return ui_x, ui_y
+
+    def is_point_in_ui_node(self, node, ui_x, ui_y):
+        """Check if a point is inside a UI node's bounds"""
+        try:
+            position = getattr(node, 'position', [0, 0])
+            rect_size = getattr(node, 'rect_size', [100, 30])
+
+            # UI nodes use position as top-left corner
+            left = position[0]
+            right = position[0] + rect_size[0]
+            top = position[1]
+            bottom = position[1] + rect_size[1]
+
+            return left <= ui_x <= right and top <= ui_y <= bottom
+        except Exception as e:
+            print(f"Error checking point in UI node: {e}")
+            return False
 
     def handle_node_input(self, node, method_name, *args):
         """Handle input events for node scripts"""

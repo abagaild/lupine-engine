@@ -37,7 +37,7 @@ export var smoothing_speed: float = 5.0  # Smoothing speed (higher = faster)
 
 # Following
 export_group("Following")
-export var follow_target: NodePath = ""  # Node to follow
+export var follow_target: nodepath = ""  # Node to follow (uses node picker)
 export var follow_smoothing: bool = true  # Use smoothing when following
 
 # Camera Shake

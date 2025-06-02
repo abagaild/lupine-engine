@@ -204,9 +204,6 @@ class AddNodeDialog(QDialog):
                 except Exception as e:
                     print(f"Error adding nodes for category {category}: {e}")
 
-            # Load prefabs and custom nodes
-            self.load_dynamic_nodes()
-
         except Exception as e:
             print(f"Error populating nodes: {e}")
             # Add error item to tree

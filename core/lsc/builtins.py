@@ -11,11 +11,218 @@ if TYPE_CHECKING:
     from .runtime import LSCRuntime
 
 
+class LSCVector2:
+    """2D Vector class for LSC with Godot-like methods"""
+
+    def __init__(self, x: float = 0, y: float = 0):
+        self.x = float(x)
+        self.y = float(y)
+
+    def __repr__(self):
+        return f"Vector2({self.x}, {self.y})"
+
+    def __str__(self):
+        return f"({self.x}, {self.y})"
+
+    def __getitem__(self, index):
+        if index == 0:
+            return self.x
+        elif index == 1:
+            return self.y
+        else:
+            raise IndexError("Vector2 index out of range")
+
+    def __setitem__(self, index, value):
+        if index == 0:
+            self.x = float(value)
+        elif index == 1:
+            self.y = float(value)
+        else:
+            raise IndexError("Vector2 index out of range")
+
+    def __add__(self, other):
+        if isinstance(other, (LSCVector2, tuple, list)):
+            return LSCVector2(self.x + other[0], self.y + other[1])
+        return LSCVector2(self.x + other, self.y + other)
+
+    def __sub__(self, other):
+        if isinstance(other, (LSCVector2, tuple, list)):
+            return LSCVector2(self.x - other[0], self.y - other[1])
+        return LSCVector2(self.x - other, self.y - other)
+
+    def __mul__(self, other):
+        if isinstance(other, (LSCVector2, tuple, list)):
+            return LSCVector2(self.x * other[0], self.y * other[1])
+        return LSCVector2(self.x * other, self.y * other)
+
+    def __truediv__(self, other):
+        if isinstance(other, (LSCVector2, tuple, list)):
+            return LSCVector2(self.x / other[0], self.y / other[1])
+        return LSCVector2(self.x / other, self.y / other)
+
+    def __eq__(self, other):
+        if isinstance(other, (LSCVector2, tuple, list)):
+            return abs(self.x - other[0]) < 1e-6 and abs(self.y - other[1]) < 1e-6
+        return False
+
+    def length(self) -> float:
+        """Get the length of the vector"""
+        return math.sqrt(self.x * self.x + self.y * self.y)
+
+    def length_squared(self) -> float:
+        """Get the squared length of the vector"""
+        return self.x * self.x + self.y * self.y
+
+    def normalized(self) -> 'LSCVector2':
+        """Get normalized vector"""
+        length = self.length()
+        if length == 0:
+            return LSCVector2(0, 0)
+        return LSCVector2(self.x / length, self.y / length)
+
+    def normalize(self) -> 'LSCVector2':
+        """Normalize this vector in place"""
+        length = self.length()
+        if length != 0:
+            self.x /= length
+            self.y /= length
+        return self
+
+    def distance_to(self, other) -> float:
+        """Get distance to another vector"""
+        dx = self.x - other[0]
+        dy = self.y - other[1]
+        return math.sqrt(dx * dx + dy * dy)
+
+    def distance_squared_to(self, other) -> float:
+        """Get squared distance to another vector"""
+        dx = self.x - other[0]
+        dy = self.y - other[1]
+        return dx * dx + dy * dy
+
+    def dot(self, other) -> float:
+        """Dot product with another vector"""
+        return self.x * other[0] + self.y * other[1]
+
+    def cross(self, other) -> float:
+        """Cross product with another vector (returns scalar for 2D)"""
+        return self.x * other[1] - self.y * other[0]
+
+    def angle(self) -> float:
+        """Get angle of vector in radians"""
+        return math.atan2(self.y, self.x)
+
+    def angle_to(self, other) -> float:
+        """Get angle to another vector"""
+        return math.atan2(self.cross(other), self.dot(other))
+
+    def angle_to_point(self, other) -> float:
+        """Get angle to a point"""
+        return math.atan2(other[1] - self.y, other[0] - self.x)
+
+    def lerp(self, other, t: float) -> 'LSCVector2':
+        """Linear interpolation to another vector"""
+        return LSCVector2(
+            self.x + (other[0] - self.x) * t,
+            self.y + (other[1] - self.y) * t
+        )
+
+    def move_toward(self, target, delta: float) -> 'LSCVector2':
+        """Move toward target by delta amount"""
+        if isinstance(target, (LSCVector2, tuple, list)):
+            target_vec = LSCVector2(target[0], target[1])
+        else:
+            target_vec = target
+
+        diff = target_vec - self
+        distance = diff.length()
+
+        if distance <= delta:
+            return target_vec
+        else:
+            return self + diff.normalized() * delta
+
+    def slide(self, normal) -> 'LSCVector2':
+        """Slide along a surface normal"""
+        normal_vec = LSCVector2(normal[0], normal[1]) if not isinstance(normal, LSCVector2) else normal
+        return self - normal_vec * self.dot(normal_vec)
+
+    def reflect(self, normal) -> 'LSCVector2':
+        """Reflect off a surface normal"""
+        normal_vec = LSCVector2(normal[0], normal[1]) if not isinstance(normal, LSCVector2) else normal
+        return self - normal_vec * 2 * self.dot(normal_vec)
+
+    def rotated(self, angle: float) -> 'LSCVector2':
+        """Get rotated vector"""
+        cos_a = math.cos(angle)
+        sin_a = math.sin(angle)
+        return LSCVector2(
+            self.x * cos_a - self.y * sin_a,
+            self.x * sin_a + self.y * cos_a
+        )
+
+    def abs(self) -> 'LSCVector2':
+        """Get absolute value vector"""
+        return LSCVector2(abs(self.x), abs(self.y))
+
+    def sign(self) -> 'LSCVector2':
+        """Get sign vector"""
+        return LSCVector2(
+            1 if self.x > 0 else -1 if self.x < 0 else 0,
+            1 if self.y > 0 else -1 if self.y < 0 else 0
+        )
+
+    def floor(self) -> 'LSCVector2':
+        """Get floor vector"""
+        return LSCVector2(math.floor(self.x), math.floor(self.y))
+
+    def ceil(self) -> 'LSCVector2':
+        """Get ceiling vector"""
+        return LSCVector2(math.ceil(self.x), math.ceil(self.y))
+
+    def round(self) -> 'LSCVector2':
+        """Get rounded vector"""
+        return LSCVector2(round(self.x), round(self.y))
+
+
+class Vector2Factory:
+    """Factory class for Vector2 with constants as properties"""
+
+    def __call__(self, x: float = 0, y: float = 0) -> LSCVector2:
+        """Create a new Vector2"""
+        return LSCVector2(x, y)
+
+    @property
+    def ZERO(self) -> LSCVector2:
+        return LSCVector2(0, 0)
+
+    @property
+    def ONE(self) -> LSCVector2:
+        return LSCVector2(1, 1)
+
+    @property
+    def UP(self) -> LSCVector2:
+        return LSCVector2(0, -1)
+
+    @property
+    def DOWN(self) -> LSCVector2:
+        return LSCVector2(0, 1)
+
+    @property
+    def LEFT(self) -> LSCVector2:
+        return LSCVector2(-1, 0)
+
+    @property
+    def RIGHT(self) -> LSCVector2:
+        return LSCVector2(1, 0)
+
+
 class LSCBuiltins:
     """Built-in functions for LSC language"""
     
     def __init__(self, runtime: 'LSCRuntime'):
         self.runtime = runtime
+        self.vector2_factory = Vector2Factory()
         self.functions = self._create_builtin_functions()
         self.constants = self._create_constants()
 
@@ -117,6 +324,7 @@ class LSCBuiltins:
             
             # Time functions
             'get_time': self.get_time,
+            'get_runtime_time': self.get_runtime_time,
             'get_delta': self.get_delta,
             'get_fps': self.get_fps,
             'wait': self.wait,
@@ -133,12 +341,15 @@ class LSCBuiltins:
             'save': self.save_resource,
             
             # Vector functions
-            'Vector2': self.Vector2,
+            'Vector2': self.vector2_factory,
             'Vector3': self.Vector3,
             'distance': self.distance,
             'dot_product': self.dot_product,
             'cross_product': self.cross_product,
             'normalize': self.normalize,
+            'move_toward': self.move_toward,
+
+
             
             # Color functions
             'Color': self.Color,
@@ -371,6 +582,10 @@ class LSCBuiltins:
         """Get current time"""
         return self.runtime.get_time()
 
+    def get_runtime_time(self) -> float:
+        """Get runtime time (alias for get_time)"""
+        return self.runtime.get_runtime_time()
+
     def get_delta(self) -> float:
         """Get delta time"""
         return self.runtime.get_delta()
@@ -414,10 +629,6 @@ class LSCBuiltins:
         self.runtime.save_resource(resource, path)
 
     # Vector functions
-    def Vector2(self, x: float = 0, y: float = 0) -> tuple:
-        """Create 2D vector"""
-        return (x, y)
-
     def Vector3(self, x: float = 0, y: float = 0, z: float = 0) -> tuple:
         """Create 3D vector"""
         return (x, y, z)
@@ -451,6 +662,13 @@ class LSCBuiltins:
         if length == 0:
             return vector
         return tuple(x / length for x in vector)
+
+    def move_toward(self, current: float, target: float, delta: float) -> float:
+        """Move toward target by delta amount"""
+        if abs(target - current) <= delta:
+            return target
+        else:
+            return current + (1 if target > current else -1) * delta
 
     # Color functions
     def Color(self, r: float = 1, g: float = 1, b: float = 1, a: float = 1) -> tuple:

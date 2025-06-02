@@ -491,8 +491,22 @@ class SceneViewport(QOpenGLWidget):
             self.draw_panel(node_data)
         elif node_type == "Label":
             self.draw_label(node_data)
+        elif node_type == "Button":
+            self.draw_button(node_data)
         elif node_type == "CanvasLayer":
             self.draw_canvas_layer(node_data)
+        elif node_type == "CollisionShape2D":
+            self.draw_collision_shape(node_data)
+        elif node_type == "CollisionPolygon2D":
+            self.draw_collision_polygon(node_data)
+        elif node_type == "Area2D":
+            self.draw_area2d(node_data)
+        elif node_type == "RigidBody2D":
+            self.draw_rigid_body(node_data)
+        elif node_type == "StaticBody2D":
+            self.draw_static_body(node_data)
+        elif node_type == "KinematicBody2D":
+            self.draw_kinematic_body(node_data)
         else:
             # Default node representation
             self.draw_default_node(node_data)
@@ -989,6 +1003,119 @@ class SceneViewport(QOpenGLWidget):
         # Draw text using bitmap-based rendering
         self.draw_text_bitmap(text, text_x, text_y, font_color, font_size)
 
+    def draw_button(self, node_data: Dict[str, Any]):
+        """Draw Button node with interactive states"""
+        # Get button properties - now uses position like other nodes
+        rect_size = node_data.get("rect_size", [100.0, 30.0])
+        text = node_data.get("text", "Button")
+        font_color = node_data.get("font_color", [1.0, 1.0, 1.0, 1.0])
+
+        # Get button state colors
+        normal_color = node_data.get("normal_color", [0.3, 0.3, 0.3, 1.0])
+        hover_color = node_data.get("hover_color", [0.4, 0.4, 0.4, 1.0])
+        pressed_color = node_data.get("pressed_color", [0.2, 0.2, 0.2, 1.0])
+        disabled_color = node_data.get("disabled_color", [0.15, 0.15, 0.15, 1.0])
+
+        # Get button state
+        disabled = node_data.get("disabled", False)
+        toggle_mode = node_data.get("toggle_mode", False)
+        pressed = node_data.get("pressed", False)
+        is_hovered = node_data.get("_is_hovered", False)
+        is_mouse_pressed = node_data.get("_is_mouse_pressed", False)
+
+        # Get style properties
+        border_width = node_data.get("border_width", 1.0)
+        border_color = node_data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+        corner_radius = node_data.get("corner_radius", 4.0)
+
+        # Determine current button color based on state
+        if disabled:
+            current_color = disabled_color
+        elif is_mouse_pressed or (toggle_mode and pressed):
+            current_color = pressed_color
+        elif is_hovered:
+            current_color = hover_color
+        else:
+            current_color = normal_color
+
+        # Draw button background (centered on position)
+        glColor4f(current_color[0], current_color[1], current_color[2], current_color[3])
+        glBegin(GL_QUADS)
+        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+        glVertex2f(rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glEnd()
+
+        # Draw border if enabled
+        if border_width > 0:
+            glColor3f(border_color[0], border_color[1], border_color[2])
+            glLineWidth(border_width)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+            glLineWidth(1.0)
+
+        # Draw button text (centered)
+        glColor3f(font_color[0], font_color[1], font_color[2])
+
+        # Get font size for proper scaling
+        font_size = node_data.get("font_size", 14)
+
+        # Calculate text position (centered in button)
+        text_x = -len(text) * 3  # Approximate centering
+        text_y = -6  # Center vertically
+
+        # Draw text using bitmap-based rendering
+        self.draw_text_bitmap(text, text_x, text_y, font_color, font_size)
+
+        # Draw button indicator (B in corner)
+        glColor3f(1.0, 1.0, 1.0)
+        # Simple "B" representation with lines
+        glBegin(GL_LINES)
+        # Vertical line
+        glVertex2f(rect_size[0]/2 - 12, rect_size[1]/2 - 15)
+        glVertex2f(rect_size[0]/2 - 12, rect_size[1]/2 - 3)
+        # Top horizontal
+        glVertex2f(rect_size[0]/2 - 12, rect_size[1]/2 - 3)
+        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 3)
+        # Middle horizontal
+        glVertex2f(rect_size[0]/2 - 12, rect_size[1]/2 - 9)
+        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 9)
+        # Bottom horizontal
+        glVertex2f(rect_size[0]/2 - 12, rect_size[1]/2 - 15)
+        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 15)
+        # Right vertical (top half)
+        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 9)
+        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 3)
+        # Right vertical (bottom half)
+        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 15)
+        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 9)
+        glEnd()
+
+        # Draw state indicators
+        if disabled:
+            # Draw X for disabled
+            glColor3f(0.8, 0.2, 0.2)  # Red for disabled
+            glBegin(GL_LINES)
+            glVertex2f(-rect_size[0]/2 + 5, -rect_size[1]/2 + 5)
+            glVertex2f(rect_size[0]/2 - 5, rect_size[1]/2 - 5)
+            glVertex2f(rect_size[0]/2 - 5, -rect_size[1]/2 + 5)
+            glVertex2f(-rect_size[0]/2 + 5, rect_size[1]/2 - 5)
+            glEnd()
+        elif toggle_mode and pressed:
+            # Draw checkmark for pressed toggle
+            glColor3f(0.2, 0.8, 0.2)  # Green for pressed toggle
+            glBegin(GL_LINES)
+            glVertex2f(-rect_size[0]/2 + 8, 0)
+            glVertex2f(-rect_size[0]/2 + 12, -4)
+            glVertex2f(-rect_size[0]/2 + 12, -4)
+            glVertex2f(-rect_size[0]/2 + 18, 6)
+            glEnd()
+
     def draw_text_bitmap(self, text: str, x: float, y: float, color: list, font_size: int = 14):
         """Draw text using bitmap-based rendering with proper character shapes"""
         glColor3f(color[0], color[1], color[2])
@@ -1187,6 +1314,250 @@ class SceneViewport(QOpenGLWidget):
             glVertex2f(layer_size - 10, layer_size - 5)
             glEnd()
 
+    def draw_collision_shape(self, node_data: Dict[str, Any]):
+        """Draw CollisionShape2D node"""
+        shape_type = node_data.get("shape", "rectangle")
+        disabled = node_data.get("disabled", False)
+        debug_color = node_data.get("debug_color", [0.0, 0.6, 0.7, 0.5])
+
+        if disabled:
+            glColor3f(0.3, 0.3, 0.3)  # Gray for disabled
+        else:
+            glColor3f(debug_color[0], debug_color[1], debug_color[2])  # Use debug color
+
+        glLineWidth(2.0)
+
+        if shape_type == "rectangle":
+            size = node_data.get("size", [32, 32])
+            width, height = size[0], size[1]
+
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-width/2, -height/2)
+            glVertex2f(width/2, -height/2)
+            glVertex2f(width/2, height/2)
+            glVertex2f(-width/2, height/2)
+            glEnd()
+
+        elif shape_type == "circle":
+            radius = node_data.get("radius", 16.0)
+            segments = 32
+
+            glBegin(GL_LINE_LOOP)
+            for i in range(segments):
+                angle = 2 * math.pi * i / segments
+                x = radius * math.cos(angle)
+                y = radius * math.sin(angle)
+                glVertex2f(x, y)
+            glEnd()
+
+        elif shape_type == "capsule":
+            radius = node_data.get("capsule_radius", 16.0)
+            height = node_data.get("height", 32.0)
+
+            # Draw capsule as two circles connected by lines
+            segments = 16
+
+            # Top circle
+            glBegin(GL_LINE_STRIP)
+            for i in range(segments + 1):
+                angle = math.pi * i / segments  # Half circle
+                x = radius * math.cos(angle)
+                y = radius * math.sin(angle) + height/2 - radius
+                glVertex2f(x, y)
+            glEnd()
+
+            # Bottom circle
+            glBegin(GL_LINE_STRIP)
+            for i in range(segments + 1):
+                angle = math.pi + math.pi * i / segments  # Other half circle
+                x = radius * math.cos(angle)
+                y = radius * math.sin(angle) - height/2 + radius
+                glVertex2f(x, y)
+            glEnd()
+
+            # Side lines
+            glBegin(GL_LINES)
+            glVertex2f(-radius, height/2 - radius)
+            glVertex2f(-radius, -height/2 + radius)
+            glVertex2f(radius, height/2 - radius)
+            glVertex2f(radius, -height/2 + radius)
+            glEnd()
+
+        elif shape_type == "segment":
+            point_a = node_data.get("point_a", [0, 0])
+            point_b = node_data.get("point_b", [32, 0])
+
+            glLineWidth(4.0)
+            glBegin(GL_LINES)
+            glVertex2f(point_a[0], point_a[1])
+            glVertex2f(point_b[0], point_b[1])
+            glEnd()
+
+        glLineWidth(1.0)
+
+    def draw_collision_polygon(self, node_data: Dict[str, Any]):
+        """Draw CollisionPolygon2D node"""
+        polygon = node_data.get("polygon", [[0, 0], [32, 0], [32, 32], [0, 32]])
+        disabled = node_data.get("disabled", False)
+        debug_color = node_data.get("debug_color", [0.0, 0.6, 0.7, 0.5])
+
+        if disabled:
+            glColor3f(0.3, 0.3, 0.3)  # Gray for disabled
+        else:
+            glColor3f(debug_color[0], debug_color[1], debug_color[2])  # Use debug color
+
+        glLineWidth(2.0)
+
+        if len(polygon) >= 3:
+            glBegin(GL_LINE_LOOP)
+            for vertex in polygon:
+                if isinstance(vertex, list) and len(vertex) >= 2:
+                    glVertex2f(vertex[0], vertex[1])
+            glEnd()
+
+        glLineWidth(1.0)
+
+    def draw_area2d(self, node_data: Dict[str, Any]):
+        """Draw Area2D node"""
+        monitoring = node_data.get("monitoring", True)
+        monitorable = node_data.get("monitorable", True)
+
+        if monitoring and monitorable:
+            glColor3f(0.0, 1.0, 0.0)  # Green for both
+        elif monitoring:
+            glColor3f(0.0, 0.0, 1.0)  # Blue for monitoring only
+        elif monitorable:
+            glColor3f(1.0, 1.0, 0.0)  # Yellow for monitorable only
+        else:
+            glColor3f(0.5, 0.5, 0.5)  # Gray for disabled
+
+        # Draw area indicator (dashed circle)
+        glEnable(GL_LINE_STIPPLE)
+        glLineStipple(2, 0x5555)
+        glLineWidth(2.0)
+
+        segments = 32
+        radius = 30
+
+        glBegin(GL_LINE_LOOP)
+        for i in range(segments):
+            angle = 2 * math.pi * i / segments
+            x = radius * math.cos(angle)
+            y = radius * math.sin(angle)
+            glVertex2f(x, y)
+        glEnd()
+
+        glDisable(GL_LINE_STIPPLE)
+        glLineWidth(1.0)
+
+        # Draw "A" in center for Area
+        glBegin(GL_LINES)
+        # A shape
+        glVertex2f(-8, -10)
+        glVertex2f(0, 10)
+        glVertex2f(0, 10)
+        glVertex2f(8, -10)
+        glVertex2f(-4, 0)
+        glVertex2f(4, 0)
+        glEnd()
+
+    def draw_rigid_body(self, node_data: Dict[str, Any]):
+        """Draw RigidBody2D node"""
+        mode = node_data.get("mode", "rigid")
+        sleeping = node_data.get("sleeping", False)
+
+        if sleeping:
+            glColor3f(0.3, 0.3, 0.7)  # Dark blue for sleeping
+        else:
+            glColor3f(0.0, 0.7, 1.0)  # Cyan for active
+
+        # Draw physics body indicator (solid circle)
+        segments = 16
+        radius = 20
+
+        glBegin(GL_LINE_LOOP)
+        for i in range(segments):
+            angle = 2 * math.pi * i / segments
+            x = radius * math.cos(angle)
+            y = radius * math.sin(angle)
+            glVertex2f(x, y)
+        glEnd()
+
+        # Draw "R" in center
+        glBegin(GL_LINES)
+        # R shape
+        glVertex2f(-6, -8)
+        glVertex2f(-6, 8)
+        glVertex2f(-6, 8)
+        glVertex2f(2, 8)
+        glVertex2f(2, 8)
+        glVertex2f(2, 0)
+        glVertex2f(2, 0)
+        glVertex2f(-6, 0)
+        glVertex2f(-2, 0)
+        glVertex2f(4, -8)
+        glEnd()
+
+    def draw_static_body(self, node_data: Dict[str, Any]):
+        """Draw StaticBody2D node"""
+        constant_velocity = node_data.get("constant_linear_velocity", [0, 0])
+        is_moving = constant_velocity[0] != 0 or constant_velocity[1] != 0
+
+        if is_moving:
+            glColor3f(1.0, 0.5, 0.0)  # Orange for moving static
+        else:
+            glColor3f(0.7, 0.7, 0.7)  # Gray for static
+
+        # Draw static body indicator (square)
+        size = 20
+
+        glBegin(GL_LINE_LOOP)
+        glVertex2f(-size, -size)
+        glVertex2f(size, -size)
+        glVertex2f(size, size)
+        glVertex2f(-size, size)
+        glEnd()
+
+        # Draw "S" in center
+        glBegin(GL_LINES)
+        # S shape (simplified)
+        glVertex2f(-4, 6)
+        glVertex2f(4, 6)
+        glVertex2f(-4, 6)
+        glVertex2f(-4, 0)
+        glVertex2f(-4, 0)
+        glVertex2f(4, 0)
+        glVertex2f(4, 0)
+        glVertex2f(4, -6)
+        glVertex2f(4, -6)
+        glVertex2f(-4, -6)
+        glEnd()
+
+    def draw_kinematic_body(self, node_data: Dict[str, Any]):
+        """Draw KinematicBody2D node"""
+        glColor3f(1.0, 0.0, 1.0)  # Magenta for kinematic
+
+        # Draw kinematic body indicator (diamond)
+        size = 20
+
+        glBegin(GL_LINE_LOOP)
+        glVertex2f(0, size)
+        glVertex2f(size, 0)
+        glVertex2f(0, -size)
+        glVertex2f(-size, 0)
+        glEnd()
+
+        # Draw "K" in center
+        glBegin(GL_LINES)
+        # K shape
+        glVertex2f(-6, -8)
+        glVertex2f(-6, 8)
+        glVertex2f(-6, 0)
+        glVertex2f(6, 8)
+        glVertex2f(-6, 0)
+        glVertex2f(6, -8)
+        glEnd()
+
     def wheelEvent(self, event):
         """Handle mouse wheel for zooming"""
         delta = event.angleDelta().y()
@@ -1227,8 +1598,13 @@ class SceneViewport(QOpenGLWidget):
             # Check for node selection
             clicked_node = self.get_node_at_position(world_pos[0], world_pos[1])
             if clicked_node:
-                self.selected_node = clicked_node
-                self.node_selected.emit(clicked_node)
+                # If we clicked on a different node, select it
+                if self.selected_node != clicked_node:
+                    self.selected_node = clicked_node
+                    self.node_selected.emit(clicked_node)
+
+                # Always allow dragging when clicking on a node (even if no gizmo is hit)
+                # This allows dragging by clicking anywhere on the node body
                 self.is_dragging = True
                 self.drag_start_pos = world_pos
                 # All nodes now use position
@@ -1257,8 +1633,9 @@ class SceneViewport(QOpenGLWidget):
         elif self.is_dragging and self.selected_node:
             # Handle node dragging - all nodes now use world coordinates
             world_pos = self.screen_to_world(event.position().x(), event.position().y())
+            print(f"DEBUG: Mouse move - dragging, world_pos={world_pos}")
 
-            if self.drag_start_pos:
+            if self.drag_start_pos and self.drag_start_node_pos is not None:
                 delta_x = world_pos[0] - self.drag_start_pos[0]
                 delta_y = world_pos[1] - self.drag_start_pos[1]
 
@@ -1267,14 +1644,187 @@ class SceneViewport(QOpenGLWidget):
                     self.drag_start_node_pos[0] + delta_x,
                     self.drag_start_node_pos[1] + delta_y
                 ]
+
+                print(f"DEBUG: Updating position from {self.selected_node.get('position')} to {new_pos}")
+
+                # Update the node's position
                 self.selected_node["position"] = new_pos
+
+                # Apply recursive transformation to children
+                # For position changes, children should move with the parent
+                try:
+                    self.apply_recursive_transform(self.selected_node, "position", [delta_x, delta_y])
+                except Exception as e:
+                    print(f"Error in recursive transform: {e}")
+                    import traceback
+                    traceback.print_exc()
+
                 # Emit signal for inspector update
                 self.node_modified.emit(self.selected_node, "position", new_pos)
+            else:
+                print(f"DEBUG: Dragging conditions not met - drag_start_pos={self.drag_start_pos}, drag_start_node_pos={self.drag_start_node_pos}")
+
+            self.update()
+        elif self.is_rotating and self.selected_node:
+            # Handle node rotation
+            world_pos = self.screen_to_world(event.position().x(), event.position().y())
+
+            if self.drag_start_pos:
+                node_pos = self.selected_node.get("position", [0, 0])
+
+                # Calculate angles from node center
+                start_angle = math.atan2(self.drag_start_pos[1] - node_pos[1], self.drag_start_pos[0] - node_pos[0])
+                current_angle = math.atan2(world_pos[1] - node_pos[1], world_pos[0] - node_pos[0])
+
+                # Calculate rotation delta
+                rotation_delta = current_angle - start_angle
+
+                # Update node rotation
+                current_rotation = self.selected_node.get("rotation", 0.0)
+                new_rotation = current_rotation + rotation_delta
+                self.selected_node["rotation"] = new_rotation
+
+                # Apply recursive transformation to children
+                try:
+                    self.apply_recursive_transform(self.selected_node, "rotation", rotation_delta)
+                except Exception as e:
+                    print(f"Error in recursive transform: {e}")
+                    import traceback
+                    traceback.print_exc()
+
+                # Update start angle for next frame
+                self.drag_start_pos = world_pos
+
+                # Emit signal for inspector update
+                self.node_modified.emit(self.selected_node, "rotation", new_rotation)
+
+            self.update()
+        elif self.is_scaling and self.selected_node:
+            # Handle node scaling
+            world_pos = self.screen_to_world(event.position().x(), event.position().y())
+
+            if self.drag_start_pos:
+                node_pos = self.selected_node.get("position", [0, 0])
+
+                # Calculate distances from node center
+                start_distance = math.sqrt((self.drag_start_pos[0] - node_pos[0])**2 + (self.drag_start_pos[1] - node_pos[1])**2)
+                current_distance = math.sqrt((world_pos[0] - node_pos[0])**2 + (world_pos[1] - node_pos[1])**2)
+
+                if start_distance > 0:
+                    # Calculate scale factor
+                    scale_factor = current_distance / start_distance
+
+                    # Update node scale
+                    current_scale = self.selected_node.get("scale", [1.0, 1.0])
+                    new_scale = [current_scale[0] * scale_factor, current_scale[1] * scale_factor]
+                    self.selected_node["scale"] = new_scale
+
+                    # Apply recursive transformation to children
+                    try:
+                        self.apply_recursive_transform(self.selected_node, "scale", [scale_factor, scale_factor])
+                    except Exception as e:
+                        print(f"Error in recursive transform: {e}")
+                        import traceback
+                        traceback.print_exc()
+
+                    # Update start position for next frame
+                    self.drag_start_pos = world_pos
+
+                    # Emit signal for inspector update
+                    self.node_modified.emit(self.selected_node, "scale", new_scale)
 
             self.update()
 
         self.last_mouse_pos = event.position()
-    
+
+    def apply_recursive_transform(self, parent_node: Dict[str, Any], transform_type: str, delta):
+        """Apply transformation recursively to all children"""
+        try:
+            # Apply transformation to all children
+            children = parent_node.get("children", [])
+            for child in children:
+                if not isinstance(child, dict):
+                    continue  # Skip invalid child nodes
+
+                # Store original values for proper transformation
+                original_pos = child.get("position", [0, 0]).copy() if isinstance(child.get("position", [0, 0]), list) else [0, 0]
+                original_rotation = child.get("rotation", 0.0)
+                original_scale = child.get("scale", [1.0, 1.0]).copy() if isinstance(child.get("scale", [1.0, 1.0]), list) else [1.0, 1.0]
+
+                if transform_type == "position":
+                    # For position changes, children move with parent (maintaining relative position)
+                    if (isinstance(original_pos, list) and len(original_pos) >= 2 and
+                        isinstance(delta, list) and len(delta) >= 2):
+                        new_pos = [original_pos[0] + delta[0], original_pos[1] + delta[1]]
+                        child["position"] = new_pos
+
+                        # Emit signal for this child if it's currently selected
+                        if child == self.selected_node:
+                            self.node_modified.emit(child, "position", new_pos)
+
+                elif transform_type == "rotation":
+                    # For rotation, children rotate around parent's center and also rotate their positions
+                    parent_pos = parent_node.get("position", [0, 0])
+
+                    if (isinstance(parent_pos, list) and len(parent_pos) >= 2 and
+                        isinstance(original_pos, list) and len(original_pos) >= 2 and
+                        isinstance(delta, (int, float))):
+
+                        # Calculate relative position from parent
+                        rel_x = original_pos[0] - parent_pos[0]
+                        rel_y = original_pos[1] - parent_pos[1]
+
+                        # Rotate the relative position
+                        import math
+                        cos_delta = math.cos(delta)
+                        sin_delta = math.sin(delta)
+                        new_rel_x = rel_x * cos_delta - rel_y * sin_delta
+                        new_rel_y = rel_x * sin_delta + rel_y * cos_delta
+
+                        # Update child position
+                        new_pos = [parent_pos[0] + new_rel_x, parent_pos[1] + new_rel_y]
+                        child["position"] = new_pos
+
+                        # Update child rotation
+                        new_rotation = original_rotation + delta
+                        child["rotation"] = new_rotation
+
+                        # Emit signals for this child if it's currently selected
+                        if child == self.selected_node:
+                            self.node_modified.emit(child, "position", new_pos)
+                            self.node_modified.emit(child, "rotation", new_rotation)
+
+                elif transform_type == "scale":
+                    # For scale, children scale with parent and their positions scale relative to parent
+                    parent_pos = parent_node.get("position", [0, 0])
+
+                    if (isinstance(parent_pos, list) and len(parent_pos) >= 2 and
+                        isinstance(original_pos, list) and len(original_pos) >= 2 and
+                        isinstance(delta, list) and len(delta) >= 2):
+
+                        # Scale position relative to parent
+                        rel_x = original_pos[0] - parent_pos[0]
+                        rel_y = original_pos[1] - parent_pos[1]
+                        new_pos = [parent_pos[0] + rel_x * delta[0], parent_pos[1] + rel_y * delta[1]]
+                        child["position"] = new_pos
+
+                        # Scale the child's scale
+                        if isinstance(original_scale, list) and len(original_scale) >= 2:
+                            new_scale = [original_scale[0] * delta[0], original_scale[1] * delta[1]]
+                            child["scale"] = new_scale
+
+                            # Emit signals for this child if it's currently selected
+                            if child == self.selected_node:
+                                self.node_modified.emit(child, "position", new_pos)
+                                self.node_modified.emit(child, "scale", new_scale)
+
+                # Recursively apply to grandchildren
+                self.apply_recursive_transform(child, transform_type, delta)
+        except Exception as e:
+            print(f"Error in apply_recursive_transform: {e}")
+            import traceback
+            traceback.print_exc()
+
     def mouseReleaseEvent(self, event):
         """Handle mouse release"""
         if event.button() == Qt.MouseButton.MiddleButton:
@@ -1370,6 +1920,18 @@ class SceneViewport(QOpenGLWidget):
 
             return left <= local_x <= right and bottom <= local_y <= top
 
+        elif node_type in ["Button", "Panel", "Label"]:
+            # Check UI node bounds (using rect_size)
+            rect_size = node.get("rect_size", [100.0, 30.0])
+
+            # UI nodes are centered on their position
+            left = -rect_size[0] / 2
+            right = rect_size[0] / 2
+            bottom = -rect_size[1] / 2
+            top = rect_size[1] / 2
+
+            return left <= local_x <= right and bottom <= local_y <= top
+
         elif node_type == "Node2D":
             # Check small area around node center
             return abs(local_x) <= 10 and abs(local_y) <= 10
@@ -1443,6 +2005,22 @@ class SceneViewport(QOpenGLWidget):
                 right = offset[0] + frame_width
                 bottom = offset[1]
                 top = offset[1] + frame_height
+
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(left, bottom)
+            glVertex2f(right, bottom)
+            glVertex2f(right, top)
+            glVertex2f(left, top)
+            glEnd()
+        elif node_type in ["Button", "Panel", "Label"]:
+            # Draw around UI node bounds
+            rect_size = self.selected_node.get("rect_size", [100.0, 30.0])
+
+            # UI nodes are centered on their position
+            left = -rect_size[0] / 2
+            right = rect_size[0] / 2
+            bottom = -rect_size[1] / 2
+            top = rect_size[1] / 2
 
             glBegin(GL_LINE_LOOP)
             glVertex2f(left, bottom)
