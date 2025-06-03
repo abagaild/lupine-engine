@@ -8,7 +8,7 @@ from typing import Dict, Any
 from .base_node import Node
 
 # Import Vector2 from builtins for convenience
-from lsc.builtins import Vector2 as LSCVector2
+from core.lsc.builtins import Vector2 as LSCVector2
 
 
 class Node2D(Node):

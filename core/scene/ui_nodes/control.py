@@ -5,7 +5,7 @@ Defines the base Control node (UI element with rectangular region).
 """
 
 from typing import Dict, Any, List
-from scene.base_node import Node
+from core.scene.base_node import Node
 
 
 class Control(Node):

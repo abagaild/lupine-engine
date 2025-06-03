@@ -1,0 +1,195 @@
+# Timer Node - Fires timeout signal after set interval
+# Great for delays, cooldowns, and scheduled events
+extends Node
+
+# Timing properties
+export_group("Timing")
+export var wait_time: float = 1.0  # seconds until timeout
+export var one_shot: bool = true  # if true, fires only once; otherwise repeats
+export var autostart: bool = false  # if true, starts counting as soon as the node enters tree
+export var paused: bool = false  # freeze the timer until un-paused
+
+# Read-only properties (shown in inspector but not editable)
+var _time_left: float = 0.0  # seconds remaining until next timeout
+var _is_running: bool = false  # whether timer is currently active
+
+# Called when the node enters the scene tree
+func _ready():
+    super._ready()
+    
+    # Start timer automatically if autostart is enabled
+    if autostart:
+        start()
+
+# Called every frame
+func _process(delta: float):
+    # Only process if timer is running and not paused
+    if _is_running and not paused:
+        _time_left -= delta
+        
+        # Check if timer has reached zero
+        if _time_left <= 0.0:
+            _timeout()
+
+# Internal timeout handling
+func _timeout():
+    # Emit timeout signal
+    emit_signal("timeout")
+    
+    # Handle one-shot vs repeating behavior
+    if one_shot:
+        # Stop the timer for one-shot timers
+        stop()
+    else:
+        # Reset timer for repeating timers
+        _time_left = wait_time
+
+# Start the timer
+func start(time_sec: float = -1.0):
+    """Start the timer with optional custom time"""
+    if time_sec > 0.0:
+        wait_time = time_sec
+    
+    _time_left = wait_time
+    _is_running = true
+    
+    # Emit started signal for convenience
+    emit_signal("timer_started")
+
+# Stop the timer
+func stop():
+    """Stop the timer and reset time left"""
+    _is_running = false
+    _time_left = 0.0
+    
+    # Emit stopped signal for convenience
+    emit_signal("timer_stopped")
+
+# Pause the timer
+func pause():
+    """Pause the timer (preserves time left)"""
+    paused = true
+
+# Resume the timer
+func resume():
+    """Resume the timer from where it was paused"""
+    paused = false
+
+# Check if timer is running
+func is_running() -> bool:
+    """Returns true if timer is currently active"""
+    return _is_running
+
+# Check if timer is paused
+func is_paused() -> bool:
+    """Returns true if timer is paused"""
+    return paused
+
+# Get time left
+func get_time_left() -> float:
+    """Returns seconds remaining until timeout"""
+    return _time_left
+
+# Set wait time
+func set_wait_time(time_sec: float):
+    """Set the timer duration"""
+    wait_time = max(0.0, time_sec)
+    
+    # If timer is running, update time left proportionally
+    if _is_running:
+        _time_left = wait_time
+
+# Get wait time
+func get_wait_time() -> float:
+    """Get the timer duration"""
+    return wait_time
+
+# Set one shot mode
+func set_one_shot(enable: bool):
+    """Enable or disable one-shot mode"""
+    one_shot = enable
+
+# Check if one shot mode is enabled
+func is_one_shot() -> bool:
+    """Returns true if timer is in one-shot mode"""
+    return one_shot
+
+# Set autostart
+func set_autostart(enable: bool):
+    """Enable or disable autostart"""
+    autostart = enable
+
+# Check if autostart is enabled
+func is_autostart() -> bool:
+    """Returns true if autostart is enabled"""
+    return autostart
+
+# Restart the timer
+func restart():
+    """Restart the timer from the beginning"""
+    stop()
+    start()
+
+# Get progress (0.0 to 1.0)
+func get_progress() -> float:
+    """Get timer progress from 0.0 (just started) to 1.0 (about to timeout)"""
+    if wait_time <= 0.0:
+        return 1.0
+    
+    return 1.0 - (_time_left / wait_time)
+
+# Set timer from progress (0.0 to 1.0)
+func set_progress(progress: float):
+    """Set timer progress (0.0 = full time left, 1.0 = about to timeout)"""
+    progress = clamp(progress, 0.0, 1.0)
+    _time_left = wait_time * (1.0 - progress)
+
+# Connect timeout to a method
+func connect_timeout(target: Node, method: String):
+    """Convenience method to connect timeout signal"""
+    if not is_connected("timeout", target, method):
+        connect("timeout", target, method)
+
+# Disconnect timeout from a method
+func disconnect_timeout(target: Node, method: String):
+    """Convenience method to disconnect timeout signal"""
+    if is_connected("timeout", target, method):
+        disconnect("timeout", target, method)
+
+# Create a one-shot timer quickly
+static func create_one_shot(time_sec: float, target: Node, method: String) -> Timer:
+    """Create and start a one-shot timer that calls a method"""
+    var timer = Timer.new()
+    timer.wait_time = time_sec
+    timer.one_shot = true
+    timer.connect_timeout(target, method)
+    target.add_child(timer)
+    timer.start()
+    return timer
+
+# Create a repeating timer quickly
+static func create_repeating(time_sec: float, target: Node, method: String) -> Timer:
+    """Create and start a repeating timer that calls a method"""
+    var timer = Timer.new()
+    timer.wait_time = time_sec
+    timer.one_shot = false
+    timer.connect_timeout(target, method)
+    target.add_child(timer)
+    timer.start()
+    return timer
+
+# Signals
+signal timeout  # Emitted when timer reaches zero
+signal timer_started  # Emitted when timer starts
+signal timer_stopped  # Emitted when timer stops
+
+# Debug info
+func get_debug_info() -> String:
+    """Get debug information about timer state"""
+    var status = "stopped"
+    if _is_running:
+        status = "running"
+        if paused:
+            status = "paused"
+    
+    return f"Timer: {status}, Time Left: {_time_left:.2f}s, Wait Time: {wait_time}s, One Shot: {one_shot}"

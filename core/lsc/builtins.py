@@ -460,6 +460,18 @@ class LSCBuiltins:
             'dot_product': self.dot_product,
             'cross_product': self.cross_product,
             'normalize': self.normalize,
+
+            # Camera and viewport functions
+            'get_viewport_rect': self.get_viewport_rect,
+            'get_process_delta_time': self.get_process_delta_time,
+            'get_path_to': self.get_path_to,
+
+            # Node property and method checking
+            'has_method': self.has_method,
+            'has_property': self.has_property,
+            'get_global_position': self.get_global_position,
+            'get_script': self.get_script,
+            'get_path': self.get_path,
         }
 
     def _get_builtin_constants(self) -> Dict[str, Any]:
@@ -813,6 +825,69 @@ class LSCBuiltins:
     def get_global_mouse_position(self) -> Tuple[float, float]:
         """Return mouse position in global coordinates."""
         return self.runtime.get_global_mouse_position()
+
+    # --------------------------------------------------------------------------
+    # Camera and Viewport Functions
+    # --------------------------------------------------------------------------
+    def get_viewport_rect(self) -> Rect2:
+        """Get viewport rectangle."""
+        # Default viewport size - should be overridden by game engine
+        return Rect2(0, 0, 1024, 600)
+
+    def get_process_delta_time(self) -> float:
+        """Get delta time for current process frame."""
+        return self.runtime.get_delta()
+
+    def get_path_to(self, node: Any) -> str:
+        """Get path from current node to target node."""
+        if hasattr(node, 'name'):
+            return node.name
+        return str(id(node))
+
+    # --------------------------------------------------------------------------
+    # Node Property and Method Checking
+    # --------------------------------------------------------------------------
+    def has_method(self, obj: Any, method_name: str) -> bool:
+        """Check if object has a method."""
+        return hasattr(obj, method_name) and callable(getattr(obj, method_name, None))
+
+    def has_property(self, obj: Any, property_name: str) -> bool:
+        """Check if object has a property."""
+        return hasattr(obj, property_name)
+
+    def get_global_position(self, node: Any = None) -> Vector2:
+        """Get global position of node."""
+        if node is None:
+            # Return current node's global position
+            return Vector2(0, 0)  # Default
+
+        if hasattr(node, 'global_position'):
+            pos = node.global_position
+            if isinstance(pos, (list, tuple)) and len(pos) >= 2:
+                return Vector2(pos[0], pos[1])
+            elif hasattr(pos, 'x') and hasattr(pos, 'y'):
+                return Vector2(pos.x, pos.y)
+
+        if hasattr(node, 'position'):
+            pos = node.position
+            if isinstance(pos, (list, tuple)) and len(pos) >= 2:
+                return Vector2(pos[0], pos[1])
+            elif hasattr(pos, 'x') and hasattr(pos, 'y'):
+                return Vector2(pos.x, pos.y)
+
+        return Vector2(0, 0)
+
+    def get_script(self, node: Any = None) -> Any:
+        """Get script attached to node."""
+        if node is None:
+            return None
+        return getattr(node, 'script', None)
+
+    def get_path(self, script: Any) -> str:
+        """Get path of script."""
+        if hasattr(script, 'path'):
+            return script.path
+        return ""
 
     # --------------------------------------------------------------------------
     # Time & Frame Functions (Delegated to Runtime / Engine)

@@ -105,8 +105,11 @@ func _move_and_collide(motion: Vector2) -> Dictionary:
     position += motion
 
     # Debug output to verify movement is happening
-    if motion.length() > 0.1:  # Only print for significant movement
+    if motion.length() > 0.01:  # Print for any movement
         print("KinematicBody2D '", name, "' moving by: ", motion, " from ", old_position, " to ", position)
+
+    # Update child sprites after position change
+    _update_child_sprites()
 
     return collision_info
 
@@ -162,6 +165,24 @@ func get_slide_collision(index: int) -> Dictionary:
 func _update_collision_state():
     # This would be called by the physics system
     pass
+
+# Update child sprite positions when this node moves
+func _update_child_sprites():
+    # Update child sprites to follow parent position
+    if children:
+        for child in children:
+            if child and child.has_method("_update_sprite_position"):
+                child._update_sprite_position()
+            elif hasattr(child, 'arcade_sprite') and child.arcade_sprite:
+                # Calculate child world position
+                var child_world_x = position.x + child.position.x
+                var child_world_y = position.y + child.position.y
+
+                # Update arcade sprite position
+                child.arcade_sprite.center_x = child_world_x
+                child.arcade_sprite.center_y = child_world_y
+
+                print("Updated child sprite ", child.name, " to (", child_world_x, ", ", child_world_y, ")")
 
 # Set collision layer bit
 func set_collision_layer_bit(bit: int, value: bool):

@@ -77,8 +77,16 @@ class LSCInterpreter(ASTVisitor):
     def visit_identifier(self, node: Identifier) -> Any:
         """Visit identifier node"""
         try:
-            return self.runtime.get_variable(node.name)
-        except NameError:
+            value = self.runtime.get_variable(node.name)
+            # If the value exists but is None, check if we should provide a default
+            if value is None:
+                default_value = self._get_default_for_undefined_variable(node.name)
+                if default_value is not None:
+                    print(f"Warning: Using default value for undefined variable '{node.name}'")
+                    self.runtime.set_variable(node.name, default_value)
+                    return default_value
+            return value
+        except (NameError, KeyError):
             # Try to provide a reasonable default for common undefined variables
             default_value = self._get_default_for_undefined_variable(node.name)
             if default_value is not None:
@@ -88,25 +96,33 @@ class LSCInterpreter(ASTVisitor):
                 return default_value
             else:
                 print(f"Runtime Error: Undefined variable '{node.name}'")
-                # Return None instead of crashing to allow script to continue
-                return None
+                # Return 0 instead of None to prevent comparison errors
+                return 0
     
     def visit_binary_op(self, node: BinaryOp) -> Any:
         """Visit binary operation node"""
         left = self.evaluate_expression(node.left)
-        
+
+        # Convert None to 0 for numeric operations to prevent errors
+        if left is None:
+            left = 0
+
         # Short-circuit evaluation for logical operators
         if node.operator == "and" or node.operator == "&&":
             if not self._is_truthy(left):
                 return left
             return self.evaluate_expression(node.right)
-        
+
         if node.operator == "or" or node.operator == "||":
             if self._is_truthy(left):
                 return left
             return self.evaluate_expression(node.right)
-        
+
         right = self.evaluate_expression(node.right)
+
+        # Convert None to 0 for numeric operations to prevent errors
+        if right is None:
+            right = 0
         
         # Arithmetic operators
         if node.operator == "+":
@@ -187,9 +203,14 @@ class LSCInterpreter(ASTVisitor):
         """Visit function call node"""
         function = self.evaluate_expression(node.function)
 
+        # Get function name for better error messages
+        function_name = "unknown"
+        if isinstance(node.function, Identifier):
+            function_name = node.function.name
+
         if function is None:
             # If function is None (undefined), return None instead of crashing
-            print(f"Warning: Attempting to call undefined function")
+            print(f"Warning: Attempting to call undefined function '{function_name}'")
             return None
 
         if not callable(function):
@@ -202,7 +223,7 @@ class LSCInterpreter(ASTVisitor):
         try:
             return function(*args)
         except Exception as e:
-            print(f"Warning: Error calling function: {e}")
+            print(f"Warning: Error calling function '{function_name}': {e}")
             return None
     
     def visit_member_access(self, node: MemberAccess) -> Any:
@@ -551,6 +572,73 @@ class LSCInterpreter(ASTVisitor):
             'flip_v': False,
             'region_enabled': False,
             'region_rect': Rect2(0, 0, 0, 0),
+
+            # Camera2D specific defaults
+            'zoom': Vector2(1, 1),
+            'limit_left': -10000000,
+            'limit_top': -10000000,
+            'limit_right': 10000000,
+            'limit_bottom': 10000000,
+            'limit_smoothed': False,
+            'smoothing_enabled': False,
+            'smoothing_speed': 5.0,
+            'follow_target': "",
+            'follow_smoothing': True,
+            'auto_follow_player': False,
+            'shake_intensity': 0.0,
+            'shake_duration': 0.0,
+            'shake_timer': 0.0,
+            'process_mode': "idle",
+            'drag_margin_h_enabled': False,
+            'drag_margin_v_enabled': False,
+            'drag_margin_left': 0.2,
+            'drag_margin_top': 0.2,
+            'drag_margin_right': 0.2,
+            'drag_margin_bottom': 0.2,
+
+            # Viewport and screen properties
+            'rect_size': Vector2(1024, 600),
+            'size': Vector2(1024, 600),
+            'screen_size': Vector2(1024, 600),
+
+            # PlayerController specific variables that might be undefined
+            'current_stamina': 100.0,
+            'stamina_drain_rate': 20.0,
+            'stamina_regen_rate': 15.0,
+            'is_sprinting': False,
+            'can_sprint': True,
+            'sprint_stamina_enabled': False,
+            'sprint_speed_multiplier': 1.5,
+            'base_speed': 200.0,
+            'acceleration': 800.0,
+            'friction': 1000.0,
+            'max_speed': 400.0,
+            'controller_type': "topdown_8dir",
+            'input_vector': Vector2(0, 0),
+            'last_direction': Vector2(1, 0),
+            'is_on_ground': False,
+            'gravity': 980.0,
+            'jump_height': 400.0,
+            'max_fall_speed': 1000.0,
+            'coyote_time': 0.1,
+            'jump_buffer_time': 0.1,
+            'coyote_timer': 0.0,
+            'jump_buffer_timer': 0.0,
+
+            # Animation defaults
+            'idle_animation': "idle",
+            'walk_animation': "walk",
+            'run_animation': "run",
+            'jump_animation': "jump",
+            'fall_animation': "fall",
+
+            # Node references
+            'animated_sprite_node': None,
+            'sprite_node': None,
+            'collision_shape_node': None,
+            'interaction_area': None,
+            'interaction_shape': None,
+
             # Note: Function defaults removed - functions should be defined in first pass
         }
 
