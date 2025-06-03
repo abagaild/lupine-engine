@@ -4,13 +4,13 @@ extends Control
 
 # Text
 export_group("Text")
-export var text: string = "Button"  # button text to display
+export var text: String = "Button"  # button text to display
 
 # Font
 export_group("Font")
 export var font: Resource = null  # Font or BitmapFont resource
 export var font_size: int = 14  # font size for text
-export var font_style: string = "Regular"  # "Regular", "Bold", "Italic"
+export var font_style: String = "Regular"  # "Regular", "Bold", "Italic"
 
 # Button Colors
 export_group("Button Colors")
@@ -232,3 +232,43 @@ func get_debug_info() -> string:
         state = "hovered"
     
     return f"Button: '{text}', State: {state}, Toggle: {toggle_mode}, Pressed: {pressed}"
+
+
+# New signals
+signal pressed
+signal released
+signal toggled(state: bool)
+
+# Input processing
+func _input_event(event: InputEvent):
+    if disabled:
+        return
+
+    if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+        if event.pressed:
+            _is_mouse_pressed = true
+            if toggle_mode:
+                pressed = !pressed
+                emit_signal("toggled", pressed)
+            emit_signal("pressed")
+        else:
+            if _is_mouse_pressed:
+                emit_signal("released")
+            _is_mouse_pressed = false
+
+    update()
+
+# Updated draw method
+func _draw():
+    # Draw background
+    var bg_color = normal_color
+    if disabled:
+        bg_color = disabled_color
+    elif _is_mouse_pressed:
+        bg_color = pressed_color
+    elif _is_hovered:
+        bg_color = hover_color
+
+    draw_rect(Rect2(Vector2.ZERO, rect_size), bg_color)
+    
+    # ... rest of existing draw code ...

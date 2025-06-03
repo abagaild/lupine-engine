@@ -1,0 +1,152 @@
+# VSeparator Node - Vertical separator line for UI layout
+# Equivalent to Godot's VSeparator with customizable appearance
+extends Control
+
+# Style Properties
+export_group("Style")
+export var separator_color: Color = Color(0.5, 0.5, 0.5, 1.0)  # Color of the separator line
+export var separator_thickness: float = 1.0  # Thickness of the separator line
+export var margin_top: float = 0.0  # Top margin from edges
+export var margin_bottom: float = 0.0  # Bottom margin from edges
+
+# Visual Properties
+export_group("Visual")
+export var draw_shadow: bool = false  # Whether to draw a shadow effect
+export var shadow_color: Color = Color(0.0, 0.0, 0.0, 0.3)  # Shadow color
+export var shadow_offset: float = 1.0  # Shadow offset in pixels
+
+# Called when the node enters the scene tree
+func _ready():
+    super._ready()
+    
+    # Set default size if not specified
+    if rect_size == Vector2.ZERO:
+        rect_size = Vector2(max(separator_thickness, 2.0), 100)
+    
+    # Set minimum width based on thickness
+    rect_min_size.x = max(separator_thickness, 1.0)
+    if draw_shadow:
+        rect_min_size.x += shadow_offset
+
+# Called every frame
+func _process(delta: float):
+    pass
+
+# Set separator color
+func set_separator_color(color: Color):
+    separator_color = color
+    emit_signal("appearance_changed")
+
+# Get separator color
+func get_separator_color() -> Color:
+    return separator_color
+
+# Set separator thickness
+func set_separator_thickness(thickness: float):
+    separator_thickness = max(thickness, 0.5)
+    rect_min_size.x = max(separator_thickness, 1.0)
+    if draw_shadow:
+        rect_min_size.x += shadow_offset
+    emit_signal("appearance_changed")
+
+# Get separator thickness
+func get_separator_thickness() -> float:
+    return separator_thickness
+
+# Set top margin
+func set_margin_top(margin: float):
+    margin_top = max(margin, 0.0)
+    emit_signal("appearance_changed")
+
+# Get top margin
+func get_margin_top() -> float:
+    return margin_top
+
+# Set bottom margin
+func set_margin_bottom(margin: float):
+    margin_bottom = max(margin, 0.0)
+    emit_signal("appearance_changed")
+
+# Get bottom margin
+func get_margin_bottom() -> float:
+    return margin_bottom
+
+# Set shadow enabled
+func set_draw_shadow(enabled: bool):
+    draw_shadow = enabled
+    rect_min_size.x = max(separator_thickness, 1.0)
+    if draw_shadow:
+        rect_min_size.x += shadow_offset
+    emit_signal("appearance_changed")
+
+# Get shadow enabled
+func is_draw_shadow() -> bool:
+    return draw_shadow
+
+# Set shadow color
+func set_shadow_color(color: Color):
+    shadow_color = color
+    if draw_shadow:
+        emit_signal("appearance_changed")
+
+# Get shadow color
+func get_shadow_color() -> Color:
+    return shadow_color
+
+# Set shadow offset
+func set_shadow_offset(offset: float):
+    shadow_offset = max(offset, 0.0)
+    if draw_shadow:
+        rect_min_size.x = max(separator_thickness, 1.0) + shadow_offset
+        emit_signal("appearance_changed")
+
+# Get shadow offset
+func get_shadow_offset() -> float:
+    return shadow_offset
+
+# Get the rectangle for the main separator line
+func get_separator_rect() -> Rect2:
+    var x_center = rect_size.x * 0.5
+    var line_x = x_center - (separator_thickness * 0.5)
+    
+    return Rect2(
+        line_x,
+        margin_top,
+        separator_thickness,
+        rect_size.y - margin_top - margin_bottom
+    )
+
+# Get the rectangle for the shadow (if enabled)
+func get_shadow_rect() -> Rect2:
+    if not draw_shadow:
+        return Rect2()
+    
+    var separator_rect = get_separator_rect()
+    return Rect2(
+        separator_rect.position.x + shadow_offset,
+        separator_rect.position.y,
+        separator_rect.size.x,
+        separator_rect.size.y
+    )
+
+# Get minimum size required for this separator
+func get_minimum_size() -> Vector2:
+    var min_width = max(separator_thickness, 1.0)
+    if draw_shadow:
+        min_width += shadow_offset
+    
+    return Vector2(min_width, margin_top + margin_bottom + 1.0)
+
+# Override size flags to expand vertically by default
+func get_h_size_flags() -> int:
+    return 0  # Don't expand horizontally
+
+func get_v_size_flags() -> int:
+    return 1  # Expand vertically
+
+# Debug info
+func get_debug_info() -> String:
+    return f"VSeparator: Thickness: {separator_thickness}, Color: {separator_color}, Shadow: {draw_shadow}"
+
+# Signals
+signal appearance_changed  # Emitted when visual appearance changes

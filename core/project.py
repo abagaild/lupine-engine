@@ -185,7 +185,9 @@ class LupineProject:
                 "ui": ["ui/Control.lsc", "ui/Panel.lsc", "ui/Label.lsc", "ui/Button.lsc", "ui/CanvasLayer.lsc",
                        "ui/ColorRect.lsc", "ui/TextureRect.lsc", "ui/ProgressBar.lsc",
                        "ui/VBoxContainer.lsc", "ui/HBoxContainer.lsc", "ui/CenterContainer.lsc", "ui/GridContainer.lsc",
-                       "ui/RichTextLabel.lsc", "ui/PanelContainer.lsc", "ui/NinePatchRect.lsc", "ui/ItemList.lsc"],
+                       "ui/RichTextLabel.lsc", "ui/PanelContainer.lsc", "ui/NinePatchRect.lsc", "ui/ItemList.lsc",
+                       "ui/LineEdit.lsc", "ui/CheckBox.lsc", "ui/Slider.lsc", "ui/ScrollContainer.lsc",
+                       "ui/HSeparator.lsc", "ui/VSeparator.lsc"],
                 "audio": ["audio/AudioStreamPlayer.lsc", "audio/AudioStreamPlayer2D.lsc"],
                 "prefabs": []  # Will be populated with any remaining files
             }

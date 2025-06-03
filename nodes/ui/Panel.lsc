@@ -8,7 +8,7 @@ export var panel_color: Color = Color(0.2, 0.2, 0.2, 1.0)  # solid color fill
 export var corner_radius: float = 0.0  # rounded corners radius (0 = sharp)
 export var border_width: float = 0.0  # border thickness
 export var border_color: Color = Color(0.0, 0.0, 0.0, 1.0)  # border color
-export var texture: path = ""  # optional Texture to draw as background (stretches, uses file browser)
+export var texture: path = null  # optional Texture to draw as background (stretches)
 
 # Layout
 export_group("Layout")

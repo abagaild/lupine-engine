@@ -4,7 +4,7 @@ extends Control
 
 # Texture Properties
 export_group("Texture")
-export var texture: path = ""  # Texture resource to display (uses file browser)
+export var texture: path = null  # Texture resource to display
 
 # Stretch Properties
 export_group("Stretch")

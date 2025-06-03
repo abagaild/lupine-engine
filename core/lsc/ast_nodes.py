@@ -299,9 +299,18 @@ class ExportGroup(Statement):
     """Export group for organizing inspector variables"""
     name: str
     prefix: Optional[str] = None
-    
+
     def accept(self, visitor):
         return visitor.visit_export_group(self)
+
+
+@dataclass
+class ExtendsStatement(Statement):
+    """Extends statement for inheritance"""
+    base_class: str
+
+    def accept(self, visitor):
+        return visitor.visit_extends_statement(self)
 
 
 @dataclass
@@ -421,6 +430,9 @@ class ASTVisitor(ABC):
 
     @abstractmethod
     def visit_enum_declaration(self, node: EnumDeclaration): pass
+
+    @abstractmethod
+    def visit_extends_statement(self, node: 'ExtendsStatement'): pass
 
     @abstractmethod
     def visit_program(self, node: Program): pass

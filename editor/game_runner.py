@@ -183,6 +183,10 @@ class LupineGameWindow:
         # LSC Runtime for script execution
         if LSC_AVAILABLE:
             self.lsc_runtime = LSCRuntime(game_runtime=self)
+            # Initialize inheritance manager with project path
+            if hasattr(self, 'project_path') and self.project_path:
+                from pathlib import Path
+                self.lsc_runtime.initialize_inheritance_manager(Path(self.project_path))
             # Add game runtime methods to LSC scope
             self.setup_lsc_builtins()
         else:
@@ -410,9 +414,14 @@ class LupineGameWindow:
                         with open(script_file, 'r') as f:
                             script_content = f.read()
 
-                        # Create script instance for this node
+                        # Parse extends clause from script content to determine base class
+                        base_class = None
+                        if self.lsc_runtime.inheritance_manager:
+                            base_class = self.lsc_runtime.inheritance_manager.parse_extends_from_script(script_content)
+
+                        # Create script instance for this node with inheritance support
                         from core.lsc.runtime import LSCScriptInstance
-                        script_instance = LSCScriptInstance(node, node.script_path, self.lsc_runtime)
+                        script_instance = LSCScriptInstance(node, node.script_path, self.lsc_runtime, base_class)
 
                         # Execute the script in the script instance's scope
                         old_scope = self.lsc_runtime.current_scope
@@ -439,13 +448,21 @@ class LupineGameWindow:
                             # Attach script instance to node
                             node.script_instance = script_instance
 
-                            # Call on_ready if it exists
-                            if script_instance.scope.has('on_ready'):
+                            # Call ready method if it exists (support both _ready and on_ready)
+                            ready_called = False
+                            if script_instance.scope.has('_ready'):
+                                print(f"Calling _ready for {node.name}")
+                                script_instance.call_method('_ready')
+                                script_instance.ready_called = True
+                                ready_called = True
+                            elif script_instance.scope.has('on_ready'):
                                 print(f"Calling on_ready for {node.name}")
                                 script_instance.call_method('on_ready')
                                 script_instance.ready_called = True
-                            else:
-                                print(f"No on_ready method found for {node.name}")
+                                ready_called = True
+
+                            if not ready_called:
+                                print(f"No _ready or on_ready method found for {node.name}")
 
                             print(f"SUCCESS: Loaded script for {node.name}: {node.script_path}")
 
@@ -1302,10 +1319,14 @@ class LupineGameWindow:
                 # Call _process method (Godot-style update method)
                 if node.script_instance.scope.has('_process'):
                     node.script_instance.call_method('_process', delta_time)
+                elif node.script_instance.scope.has('process'):
+                    node.script_instance.call_method('process', delta_time)
 
                 # Call _physics_process method (Godot-style physics update method)
                 if node.script_instance.scope.has('_physics_process'):
                     node.script_instance.call_method('_physics_process', delta_time)
+                elif node.script_instance.scope.has('physics_process'):
+                    node.script_instance.call_method('physics_process', delta_time)
 
                 # Also call on_update for compatibility
                 if node.script_instance.scope.has('on_update'):

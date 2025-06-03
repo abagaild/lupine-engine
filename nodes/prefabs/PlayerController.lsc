@@ -1,0 +1,515 @@
+# PlayerController - Comprehensive player controller for multiple movement modes
+# Supports 8-directional topdown, 4-directional topdown, and sidescroller/platformer movement
+extends KinematicBody2D
+
+# Signals for external systems
+signal stamina_changed(current_stamina, max_stamina)
+signal interaction_available(interactable)
+signal interaction_unavailable()
+signal movement_state_changed(state)
+signal landed()
+signal jumped()
+
+# Controller Settings
+export_group("Controller Settings")
+export var controller_type: String = "topdown_8dir"  # "topdown_8dir", "topdown_4dir", "sidescroller", "platformer"
+export var enable_animations: bool = true
+export var debug_mode: bool = false
+
+# Movement Properties
+export_group("Movement")
+export var base_speed: float = 200.0
+export var acceleration: float = 800.0
+export var friction: float = 1000.0
+export var max_speed: float = 400.0
+
+# Sprint System
+export_group("Sprint")
+export var can_sprint: bool = true
+export var sprint_speed_multiplier: float = 1.8
+export var sprint_acceleration_multiplier: float = 1.2
+export var sprint_stamina_enabled: bool = false
+export var max_stamina: float = 100.0
+export var stamina_drain_rate: float = 20.0
+export var stamina_regen_rate: float = 15.0
+
+# Platformer/Sidescroller Physics
+export_group("Platformer Physics")
+export var gravity: float = 980.0
+export var jump_height: float = 400.0
+export var max_fall_speed: float = 1000.0
+export var coyote_time: float = 0.1
+export var jump_buffer_time: float = 0.1
+
+# Collision Settings
+export_group("Collision")
+export var floor_max_angle: float = 0.785398  # 45 degrees in radians
+export var snap_distance: float = 32.0
+
+# Internal state variables
+var velocity: Vector2 = Vector2.ZERO
+var input_vector: Vector2 = Vector2.ZERO
+var last_direction: Vector2 = Vector2(1, 0)
+var current_stamina: float = 100.0
+var is_sprinting: bool = false
+
+# Platformer state
+var is_on_ground: bool = false
+var was_on_ground: bool = false
+var coyote_timer: float = 0.0
+var jump_buffer_timer: float = 0.0
+
+# Interaction system
+var interaction_area: Area2D
+var current_interactable = null
+var nearby_interactables: Array = []
+
+# Movement state tracking
+var movement_state: String = "idle"  # "idle", "walking", "running", "jumping", "falling"
+
+func on_ready():
+    super.on_ready()
+
+    print("PlayerController _ready() called - script is loaded!")
+    print("Controller type: ", controller_type)
+    print("Debug mode: ", debug_mode)
+
+    # Initialize stamina
+    current_stamina = max_stamina
+
+    # Setup interaction area
+    _setup_interaction_area()
+
+    # Connect signals
+    if interaction_area:
+        interaction_area.connect("body_entered", self, "_on_interaction_area_entered")
+        interaction_area.connect("body_exited", self, "_on_interaction_area_exited")
+
+    # Set initial movement state
+    _update_movement_state("idle")
+
+func _setup_interaction_area():
+    """Setup the interaction detection area"""
+    interaction_area = Area2D.new()
+    interaction_area.name = "InteractionArea"
+    interaction_area.collision_layer = 0
+    interaction_area.collision_mask = 8  # Interaction layer
+    
+    var interaction_shape = CollisionShape2D.new()
+    interaction_shape.name = "InteractionShape"
+    # Create a circle shape for interaction detection
+    var circle_shape = CircleShape2D.new()
+    circle_shape.radius = 64.0
+    interaction_shape.shape = circle_shape
+    
+    interaction_area.add_child(interaction_shape)
+    add_child(interaction_area)
+
+func _physics_process(delta: float):
+    # Handle input
+    _handle_input()
+    
+    # Update timers
+    _update_timers(delta)
+    
+    # Apply movement based on controller type
+    match controller_type:
+        "topdown_8dir":
+            _handle_topdown_movement(delta, true)
+        "topdown_4dir":
+            _handle_topdown_movement(delta, false)
+        "sidescroller":
+            _handle_sidescroller_movement(delta)
+        "platformer":
+            _handle_platformer_movement(delta)
+    
+    # Update stamina
+    _update_stamina(delta)
+    
+    # Update ground detection for platformer modes
+    if controller_type in ["sidescroller", "platformer"]:
+        _update_ground_detection()
+    
+    # Apply movement (LSC version takes only velocity and up_direction)
+    velocity = move_and_slide(velocity, Vector2.UP)
+    
+    # Update movement state
+    _update_movement_state_from_velocity()
+    
+    # Handle interactions
+    _update_interactions()
+
+func _handle_input():
+    """Handle input based on controller type"""
+    input_vector = Vector2.ZERO
+
+    # Movement input
+    if is_action_pressed("move_left"):
+        input_vector.x -= 1
+        if debug_mode:
+            print("Move left pressed!")
+    if is_action_pressed("move_right"):
+        input_vector.x += 1
+        if debug_mode:
+            print("Move right pressed!")
+
+    # Vertical movement for topdown modes
+    if controller_type in ["topdown_8dir", "topdown_4dir"]:
+        if is_action_pressed("move_up"):
+            input_vector.y -= 1
+            if debug_mode:
+                print("Move up pressed!")
+        if is_action_pressed("move_down"):
+            input_vector.y += 1
+            if debug_mode:
+                print("Move down pressed!")
+    
+    # Normalize diagonal movement for 8-directional
+    if controller_type == "topdown_8dir" and input_vector.length() > 1.0:
+        input_vector = input_vector.normalized()
+    
+    # Restrict to 4 directions for 4-directional mode
+    if controller_type == "topdown_4dir":
+        if abs(input_vector.x) > abs(input_vector.y):
+            input_vector.y = 0
+        else:
+            input_vector.x = 0
+    
+    # Update last direction for animations
+    if input_vector and input_vector.length() > 0:
+        last_direction = input_vector.normalized()
+    
+    # Sprint input
+    is_sprinting = can_sprint and is_action_pressed("run") and input_vector and input_vector.length() > 0
+    if sprint_stamina_enabled and is_sprinting and current_stamina <= 0:
+        is_sprinting = false
+    
+    # Jump input (for platformer modes)
+    if controller_type in ["sidescroller", "platformer"]:
+        if is_action_just_pressed("jump"):
+            jump_buffer_timer = jump_buffer_time
+    
+    # Interaction input
+    if is_action_just_pressed("interact"):
+        _handle_interaction()
+
+func _update_timers(delta: float):
+    """Update various timers"""
+    if coyote_timer > 0:
+        coyote_timer -= delta
+    if jump_buffer_timer > 0:
+        jump_buffer_timer -= delta
+
+func _handle_topdown_movement(delta: float, allow_diagonal: bool):
+    """Handle topdown movement (4 or 8 directional)"""
+    var target_velocity = Vector2.ZERO
+    
+    if input_vector and input_vector.length() > 0:
+        var speed = base_speed
+        var accel = acceleration
+        
+        # Apply sprint modifiers
+        if is_sprinting:
+            speed *= sprint_speed_multiplier
+            accel *= sprint_acceleration_multiplier
+        
+        target_velocity = input_vector * speed
+        
+        # Apply acceleration
+        velocity = velocity.move_toward(target_velocity, accel * delta)
+    else:
+        # Apply friction
+        velocity = velocity.move_toward(Vector2.ZERO, friction * delta)
+    
+    # Clamp to max speed
+    if velocity and velocity.length() > max_speed:
+        velocity = velocity.normalized() * max_speed
+
+func _handle_sidescroller_movement(delta: float):
+    """Handle sidescroller movement (horizontal movement + gravity)"""
+    # Horizontal movement
+    var target_velocity_x = 0.0
+    
+    if input_vector.x != 0:
+        var speed = base_speed
+        var accel = acceleration
+        
+        # Apply sprint modifiers
+        if is_sprinting:
+            speed *= sprint_speed_multiplier
+            accel *= sprint_acceleration_multiplier
+        
+        target_velocity_x = input_vector.x * speed
+        velocity.x = move_toward(velocity.x, target_velocity_x, accel * delta)
+    else:
+        # Apply friction
+        velocity.x = move_toward(velocity.x, 0.0, friction * delta)
+    
+    # Apply gravity
+    velocity.y += gravity * delta
+    
+    # Clamp fall speed
+    if velocity.y > max_fall_speed:
+        velocity.y = max_fall_speed
+    
+    # Handle jumping
+    _handle_jump()
+
+func _handle_platformer_movement(delta: float):
+    """Handle platformer movement (full 2D movement + gravity)"""
+    # Horizontal movement (same as sidescroller)
+    var target_velocity_x = 0.0
+    
+    if input_vector.x != 0:
+        var speed = base_speed
+        var accel = acceleration
+        
+        # Apply sprint modifiers
+        if is_sprinting:
+            speed *= sprint_speed_multiplier
+            accel *= sprint_acceleration_multiplier
+        
+        target_velocity_x = input_vector.x * speed
+        velocity.x = move_toward(velocity.x, target_velocity_x, accel * delta)
+    else:
+        # Apply friction
+        velocity.x = move_toward(velocity.x, 0.0, friction * delta)
+    
+    # Apply gravity
+    velocity.y += gravity * delta
+    
+    # Clamp fall speed
+    if velocity.y > max_fall_speed:
+        velocity.y = max_fall_speed
+    
+    # Handle jumping
+    _handle_jump()
+
+func _handle_jump():
+    """Handle jump mechanics for platformer modes"""
+    var can_jump = false
+
+    # Check if we can jump (on ground or coyote time)
+    if is_on_ground or coyote_timer > 0:
+        can_jump = true
+
+    # Execute jump if buffered and able
+    if jump_buffer_timer > 0 and can_jump:
+        velocity.y = -jump_height
+        jump_buffer_timer = 0.0
+        coyote_timer = 0.0
+        emit_signal("jumped")
+        _update_movement_state("jumping")
+
+func _update_ground_detection():
+    """Update ground detection for platformer modes"""
+    was_on_ground = is_on_ground
+    is_on_ground = is_on_floor()
+
+    # Start coyote time when leaving ground
+    if was_on_ground and not is_on_ground:
+        coyote_timer = coyote_time
+
+    # Emit landed signal
+    if not was_on_ground and is_on_ground:
+        emit_signal("landed")
+
+func _update_stamina(delta: float):
+    """Update stamina system"""
+    if not sprint_stamina_enabled:
+        return
+
+    if is_sprinting and input_vector and input_vector.length() > 0:
+        # Drain stamina while sprinting
+        current_stamina -= stamina_drain_rate * delta
+        current_stamina = max(0.0, current_stamina)
+    else:
+        # Regenerate stamina when not sprinting
+        current_stamina += stamina_regen_rate * delta
+        current_stamina = min(max_stamina, current_stamina)
+
+    # Emit stamina changed signal
+    emit_signal("stamina_changed", current_stamina, max_stamina)
+
+func _update_movement_state_from_velocity():
+    """Update movement state based on current velocity and conditions"""
+    var new_state = movement_state
+
+    if controller_type in ["sidescroller", "platformer"]:
+        # Platformer state logic
+        if not is_on_ground:
+            if velocity.y < 0:
+                new_state = "jumping"
+            else:
+                new_state = "falling"
+        else:
+            if abs(velocity.x) > 10.0:  # Small threshold to avoid jitter
+                if is_sprinting:
+                    new_state = "running"
+                else:
+                    new_state = "walking"
+            else:
+                new_state = "idle"
+    else:
+        # Topdown state logic
+        if velocity and velocity.length() > 10.0:  # Small threshold to avoid jitter
+            if is_sprinting:
+                new_state = "running"
+            else:
+                new_state = "walking"
+        else:
+            new_state = "idle"
+
+    _update_movement_state(new_state)
+
+func _update_movement_state(new_state: String):
+    """Update movement state and emit signal if changed"""
+    if movement_state != new_state:
+        movement_state = new_state
+        emit_signal("movement_state_changed", movement_state)
+
+func _update_interactions():
+    """Update interaction system"""
+    # Find closest interactable
+    var closest_interactable = null
+    var closest_distance = INF
+
+    for interactable in nearby_interactables:
+        if interactable and is_instance_valid(interactable):
+            var distance = global_position.distance_to(interactable.global_position)
+            if distance < closest_distance:
+                closest_distance = distance
+                closest_interactable = interactable
+
+    # Update current interactable
+    if current_interactable != closest_interactable:
+        if current_interactable:
+            emit_signal("interaction_unavailable")
+
+        current_interactable = closest_interactable
+
+        if current_interactable:
+            emit_signal("interaction_available", current_interactable)
+
+func _handle_interaction():
+    """Handle interaction with current interactable"""
+    if current_interactable and current_interactable.has_method("interact"):
+        current_interactable.interact(self)
+
+func _on_interaction_area_entered(body):
+    """Called when something enters the interaction area"""
+    if body.has_method("interact") or body.has_method("get_interaction_text"):
+        nearby_interactables.append(body)
+
+func _on_interaction_area_exited(body):
+    """Called when something exits the interaction area"""
+    if body in nearby_interactables:
+        nearby_interactables.erase(body)
+
+    # Clear current interactable if it left
+    if body == current_interactable:
+        current_interactable = null
+        emit_signal("interaction_unavailable")
+
+# Public API methods
+
+func set_controller_type(new_type: String):
+    """Change the controller type at runtime"""
+    if new_type in ["topdown_8dir", "topdown_4dir", "sidescroller", "platformer"]:
+        controller_type = new_type
+
+        # Reset velocity when changing modes
+        if new_type in ["topdown_8dir", "topdown_4dir"]:
+            velocity.y = 0  # Remove vertical velocity for topdown modes
+
+        if debug_mode:
+            print("Controller type changed to: ", new_type)
+
+func add_speed_modifier(modifier: float, duration: float = 0.0):
+    """Add a temporary speed modifier"""
+    # This could be expanded to support temporary speed boosts
+    # For now, just apply it directly
+    base_speed *= modifier
+
+    if duration > 0.0:
+        # Could implement a timer system for temporary modifiers
+        pass
+
+func get_movement_state() -> String:
+    """Get current movement state"""
+    return movement_state
+
+func get_velocity() -> Vector2:
+    """Get current velocity"""
+    return velocity
+
+func get_input_vector() -> Vector2:
+    """Get current input vector"""
+    return input_vector
+
+func get_last_direction() -> Vector2:
+    """Get last movement direction (useful for animations)"""
+    return last_direction
+
+func is_moving() -> bool:
+    """Check if player is currently moving"""
+    return velocity and velocity.length() > 10.0
+
+func get_stamina_percentage() -> float:
+    """Get stamina as percentage (0.0 to 1.0)"""
+    if max_stamina <= 0:
+        return 1.0
+    return current_stamina / max_stamina
+
+func set_stamina(amount: float):
+    """Set current stamina"""
+    current_stamina = clamp(amount, 0.0, max_stamina)
+    emit_signal("stamina_changed", current_stamina, max_stamina)
+
+func add_stamina(amount: float):
+    """Add stamina"""
+    set_stamina(current_stamina + amount)
+
+func can_interact() -> bool:
+    """Check if player can interact with something"""
+    return current_interactable != null
+
+func get_interaction_text() -> String:
+    """Get interaction text for current interactable"""
+    if current_interactable and current_interactable.has_method("get_interaction_text"):
+        return current_interactable.get_interaction_text()
+    return ""
+
+# Debug methods
+
+func _draw():
+    """Draw debug information if enabled"""
+    if not debug_mode:
+        return
+
+    # Draw velocity vector
+    if velocity and velocity.length() > 0:
+        draw_line(Vector2.ZERO, velocity.normalized() * 50, Color.RED, 2.0)
+
+    # Draw input vector
+    if input_vector and input_vector.length() > 0:
+        draw_line(Vector2.ZERO, input_vector * 30, Color.BLUE, 2.0)
+
+    # Draw interaction range
+    if interaction_area:
+        var circle_shape = interaction_area.get_child(0).shape
+        if circle_shape:
+            draw_arc(Vector2.ZERO, circle_shape.radius, 0, TAU, 32, Color.GREEN, 1.0)
+
+func print_debug_info():
+    """Print debug information"""
+    print("=== PlayerController Debug ===")
+    print("Controller Type: ", controller_type)
+    print("Movement State: ", movement_state)
+    print("Velocity: ", velocity)
+    print("Input Vector: ", input_vector)
+    print("Is Sprinting: ", is_sprinting)
+    print("Stamina: ", current_stamina, "/", max_stamina)
+    print("On Ground: ", is_on_ground)
+    print("Can Interact: ", can_interact())
+    print("===============================")

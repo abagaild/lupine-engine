@@ -1,0 +1,357 @@
+# ScrollContainer Node - Scrollable container for content overflow
+# Equivalent to Godot's ScrollContainer with full scrolling functionality
+extends Control
+
+# Scroll Properties
+export_group("Scroll")
+export var scroll_horizontal_enabled: bool = true  # Enable horizontal scrolling
+export var scroll_vertical_enabled: bool = true  # Enable vertical scrolling
+export var scroll_deadzone: int = 0  # Deadzone for scroll detection
+
+# Scrollbar Properties
+export_group("Scrollbars")
+export var horizontal_scroll_mode: String = "auto"  # "auto", "always_show", "always_hide"
+export var vertical_scroll_mode: String = "auto"  # "auto", "always_show", "always_hide"
+export var scrollbar_h_size: int = 16  # Horizontal scrollbar thickness
+export var scrollbar_v_size: int = 16  # Vertical scrollbar thickness
+
+# Behavior Properties
+export_group("Behavior")
+export var follow_focus: bool = false  # Automatically scroll to focused child
+export var scroll_to_click: bool = true  # Click on scrollbar track to jump
+
+# Style Properties
+export_group("Style")
+export var scrollbar_bg_color: Color = Color(0.1, 0.1, 0.1, 1.0)  # Scrollbar background
+export var scrollbar_fg_color: Color = Color(0.4, 0.4, 0.4, 1.0)  # Scrollbar handle
+export var scrollbar_hover_color: Color = Color(0.5, 0.5, 0.5, 1.0)  # Scrollbar handle hover
+export var scrollbar_pressed_color: Color = Color(0.6, 0.6, 0.6, 1.0)  # Scrollbar handle pressed
+
+# Internal state
+var _scroll_position: Vector2 = Vector2.ZERO  # Current scroll position
+var _content_size: Vector2 = Vector2.ZERO  # Size of content
+var _viewport_size: Vector2 = Vector2.ZERO  # Size of visible area
+var _h_scrollbar_visible: bool = false  # Whether horizontal scrollbar is visible
+var _v_scrollbar_visible: bool = false  # Whether vertical scrollbar is visible
+
+# Scrollbar state
+var _h_scrollbar_rect: Rect2  # Horizontal scrollbar area
+var _v_scrollbar_rect: Rect2  # Vertical scrollbar area
+var _h_handle_rect: Rect2  # Horizontal scrollbar handle
+var _v_handle_rect: Rect2  # Vertical scrollbar handle
+var _dragging_h_scrollbar: bool = false  # Dragging horizontal scrollbar
+var _dragging_v_scrollbar: bool = false  # Dragging vertical scrollbar
+var _h_scrollbar_hovered: bool = false  # Hovering horizontal scrollbar
+var _v_scrollbar_hovered: bool = false  # Hovering vertical scrollbar
+var _drag_offset: Vector2 = Vector2.ZERO  # Offset for scrollbar dragging
+
+# Scroll mode constants
+const SCROLL_MODE_AUTO = "auto"
+const SCROLL_MODE_ALWAYS_SHOW = "always_show"
+const SCROLL_MODE_ALWAYS_HIDE = "always_hide"
+
+# Called when the node enters the scene tree
+func _ready():
+    super._ready()
+    
+    # Set default size if not specified
+    if rect_size == Vector2.ZERO:
+        rect_size = Vector2(200, 200)
+    
+    # Update layout
+    _update_layout()
+
+# Called every frame
+func _process(delta: float):
+    # Update content size by checking children
+    _update_content_size()
+    _update_layout()
+
+# Update the size of content based on children
+func _update_content_size():
+    var max_x = 0.0
+    var max_y = 0.0
+    
+    for child in get_children():
+        if child is Control:
+            var child_right = child.position.x + child.rect_size.x
+            var child_bottom = child.position.y + child.rect_size.y
+            max_x = max(max_x, child_right)
+            max_y = max(max_y, child_bottom)
+    
+    _content_size = Vector2(max_x, max_y)
+
+# Update layout of scrollbars and viewport
+func _update_layout():
+    # Calculate viewport size (excluding scrollbars)
+    var available_width = rect_size.x
+    var available_height = rect_size.y
+    
+    # Determine scrollbar visibility
+    _h_scrollbar_visible = _should_show_horizontal_scrollbar()
+    _v_scrollbar_visible = _should_show_vertical_scrollbar()
+    
+    # Adjust available space for scrollbars
+    if _v_scrollbar_visible:
+        available_width -= scrollbar_v_size
+    if _h_scrollbar_visible:
+        available_height -= scrollbar_h_size
+    
+    _viewport_size = Vector2(available_width, available_height)
+    
+    # Update scrollbar rectangles
+    if _h_scrollbar_visible:
+        _h_scrollbar_rect = Rect2(0, rect_size.y - scrollbar_h_size, available_width, scrollbar_h_size)
+        _update_horizontal_handle()
+    
+    if _v_scrollbar_visible:
+        _v_scrollbar_rect = Rect2(rect_size.x - scrollbar_v_size, 0, scrollbar_v_size, available_height)
+        _update_vertical_handle()
+    
+    # Clamp scroll position
+    _clamp_scroll_position()
+
+# Check if horizontal scrollbar should be shown
+func _should_show_horizontal_scrollbar() -> bool:
+    match horizontal_scroll_mode:
+        SCROLL_MODE_ALWAYS_SHOW:
+            return true
+        SCROLL_MODE_ALWAYS_HIDE:
+            return false
+        _:  # SCROLL_MODE_AUTO
+            return scroll_horizontal_enabled and _content_size.x > _viewport_size.x
+
+# Check if vertical scrollbar should be shown
+func _should_show_vertical_scrollbar() -> bool:
+    match vertical_scroll_mode:
+        SCROLL_MODE_ALWAYS_SHOW:
+            return true
+        SCROLL_MODE_ALWAYS_HIDE:
+            return false
+        _:  # SCROLL_MODE_AUTO
+            return scroll_vertical_enabled and _content_size.y > _viewport_size.y
+
+# Update horizontal scrollbar handle
+func _update_horizontal_handle():
+    if not _h_scrollbar_visible:
+        return
+    
+    var content_width = max(_content_size.x, _viewport_size.x)
+    var handle_width = (_viewport_size.x / content_width) * _h_scrollbar_rect.size.x
+    handle_width = max(handle_width, 20.0)  # Minimum handle size
+    
+    var scroll_ratio = _scroll_position.x / max(content_width - _viewport_size.x, 1.0)
+    var handle_x = _h_scrollbar_rect.position.x + (scroll_ratio * (_h_scrollbar_rect.size.x - handle_width))
+    
+    _h_handle_rect = Rect2(handle_x, _h_scrollbar_rect.position.y, handle_width, _h_scrollbar_rect.size.y)
+
+# Update vertical scrollbar handle
+func _update_vertical_handle():
+    if not _v_scrollbar_visible:
+        return
+    
+    var content_height = max(_content_size.y, _viewport_size.y)
+    var handle_height = (_viewport_size.y / content_height) * _v_scrollbar_rect.size.y
+    handle_height = max(handle_height, 20.0)  # Minimum handle size
+    
+    var scroll_ratio = _scroll_position.y / max(content_height - _viewport_size.y, 1.0)
+    var handle_y = _v_scrollbar_rect.position.y + (scroll_ratio * (_v_scrollbar_rect.size.y - handle_height))
+    
+    _v_handle_rect = Rect2(_v_scrollbar_rect.position.x, handle_y, _v_scrollbar_rect.size.x, handle_height)
+
+# Clamp scroll position to valid range
+func _clamp_scroll_position():
+    var max_scroll_x = max(_content_size.x - _viewport_size.x, 0.0)
+    var max_scroll_y = max(_content_size.y - _viewport_size.y, 0.0)
+    
+    _scroll_position.x = clamp(_scroll_position.x, 0.0, max_scroll_x)
+    _scroll_position.y = clamp(_scroll_position.y, 0.0, max_scroll_y)
+
+# Set scroll position
+func set_scroll_position(position: Vector2):
+    _scroll_position = position
+    _clamp_scroll_position()
+    _update_layout()
+    _update_children_positions()
+    emit_signal("scroll_changed")
+
+# Get scroll position
+func get_scroll_position() -> Vector2:
+    return _scroll_position
+
+# Scroll horizontally
+func scroll_horizontal(amount: float):
+    set_scroll_position(Vector2(_scroll_position.x + amount, _scroll_position.y))
+
+# Scroll vertically
+func scroll_vertical(amount: float):
+    set_scroll_position(Vector2(_scroll_position.x, _scroll_position.y + amount))
+
+# Update children positions based on scroll
+func _update_children_positions():
+    for child in get_children():
+        if child is Control:
+            # Apply scroll offset to child position
+            child.position = child.position - _scroll_position
+
+# Mouse interaction
+func _input_event(event: InputEvent):
+    if event is InputEventMouseButton:
+        if event.button_index == MOUSE_BUTTON_LEFT:
+            if event.pressed:
+                var local_pos = event.position - position
+                _handle_mouse_press(local_pos)
+            else:
+                _handle_mouse_release()
+        
+        elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
+            if scroll_vertical_enabled:
+                scroll_vertical(-30.0)  # Scroll up
+        elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+            if scroll_vertical_enabled:
+                scroll_vertical(30.0)  # Scroll down
+        elif event.button_index == MOUSE_BUTTON_WHEEL_LEFT:
+            if scroll_horizontal_enabled:
+                scroll_horizontal(-30.0)  # Scroll left
+        elif event.button_index == MOUSE_BUTTON_WHEEL_RIGHT:
+            if scroll_horizontal_enabled:
+                scroll_horizontal(30.0)  # Scroll right
+    
+    elif event is InputEventMouseMotion:
+        var local_pos = event.position - position
+        _handle_mouse_motion(local_pos)
+
+# Handle mouse press
+func _handle_mouse_press(pos: Vector2):
+    # Check horizontal scrollbar
+    if _h_scrollbar_visible and _h_scrollbar_rect.has_point(pos):
+        if _h_handle_rect.has_point(pos):
+            _dragging_h_scrollbar = true
+            _drag_offset.x = pos.x - _h_handle_rect.position.x
+        elif scroll_to_click:
+            _jump_horizontal_scrollbar(pos.x)
+    
+    # Check vertical scrollbar
+    elif _v_scrollbar_visible and _v_scrollbar_rect.has_point(pos):
+        if _v_handle_rect.has_point(pos):
+            _dragging_v_scrollbar = true
+            _drag_offset.y = pos.y - _v_handle_rect.position.y
+        elif scroll_to_click:
+            _jump_vertical_scrollbar(pos.y)
+
+# Handle mouse release
+func _handle_mouse_release():
+    _dragging_h_scrollbar = false
+    _dragging_v_scrollbar = false
+
+# Handle mouse motion
+func _handle_mouse_motion(pos: Vector2):
+    # Update hover states
+    _h_scrollbar_hovered = _h_scrollbar_visible and _h_handle_rect.has_point(pos)
+    _v_scrollbar_hovered = _v_scrollbar_visible and _v_handle_rect.has_point(pos)
+    
+    # Handle dragging
+    if _dragging_h_scrollbar:
+        _drag_horizontal_scrollbar(pos.x)
+    elif _dragging_v_scrollbar:
+        _drag_vertical_scrollbar(pos.y)
+
+# Jump horizontal scrollbar to position
+func _jump_horizontal_scrollbar(x: float):
+    var track_x = x - _h_scrollbar_rect.position.x
+    var track_ratio = track_x / _h_scrollbar_rect.size.x
+    var max_scroll = max(_content_size.x - _viewport_size.x, 0.0)
+    set_scroll_position(Vector2(track_ratio * max_scroll, _scroll_position.y))
+
+# Jump vertical scrollbar to position
+func _jump_vertical_scrollbar(y: float):
+    var track_y = y - _v_scrollbar_rect.position.y
+    var track_ratio = track_y / _v_scrollbar_rect.size.y
+    var max_scroll = max(_content_size.y - _viewport_size.y, 0.0)
+    set_scroll_position(Vector2(_scroll_position.x, track_ratio * max_scroll))
+
+# Drag horizontal scrollbar
+func _drag_horizontal_scrollbar(x: float):
+    var handle_x = x - _drag_offset.x
+    var track_x = handle_x - _h_scrollbar_rect.position.x
+    var track_ratio = track_x / (_h_scrollbar_rect.size.x - _h_handle_rect.size.x)
+    var max_scroll = max(_content_size.x - _viewport_size.x, 0.0)
+    set_scroll_position(Vector2(track_ratio * max_scroll, _scroll_position.y))
+
+# Drag vertical scrollbar
+func _drag_vertical_scrollbar(y: float):
+    var handle_y = y - _drag_offset.y
+    var track_y = handle_y - _v_scrollbar_rect.position.y
+    var track_ratio = track_y / (_v_scrollbar_rect.size.y - _v_handle_rect.size.y)
+    var max_scroll = max(_content_size.y - _viewport_size.y, 0.0)
+    set_scroll_position(Vector2(_scroll_position.x, track_ratio * max_scroll))
+
+# Scroll to ensure child is visible
+func ensure_control_visible(control: Control):
+    if not control or not control.get_parent() == self:
+        return
+    
+    var control_rect = control.get_rect()
+    var visible_rect = Rect2(_scroll_position, _viewport_size)
+    
+    # Calculate needed scroll adjustments
+    var scroll_x = _scroll_position.x
+    var scroll_y = _scroll_position.y
+    
+    # Horizontal scrolling
+    if control_rect.position.x < visible_rect.position.x:
+        scroll_x = control_rect.position.x
+    elif control_rect.position.x + control_rect.size.x > visible_rect.position.x + visible_rect.size.x:
+        scroll_x = control_rect.position.x + control_rect.size.x - visible_rect.size.x
+    
+    # Vertical scrolling
+    if control_rect.position.y < visible_rect.position.y:
+        scroll_y = control_rect.position.y
+    elif control_rect.position.y + control_rect.size.y > visible_rect.position.y + visible_rect.size.y:
+        scroll_y = control_rect.position.y + control_rect.size.y - visible_rect.size.y
+    
+    set_scroll_position(Vector2(scroll_x, scroll_y))
+
+# Get scrollbar rectangles for rendering
+func get_h_scrollbar_rect() -> Rect2:
+    return _h_scrollbar_rect if _h_scrollbar_visible else Rect2()
+
+func get_v_scrollbar_rect() -> Rect2:
+    return _v_scrollbar_rect if _v_scrollbar_visible else Rect2()
+
+func get_h_handle_rect() -> Rect2:
+    return _h_handle_rect if _h_scrollbar_visible else Rect2()
+
+func get_v_handle_rect() -> Rect2:
+    return _v_handle_rect if _v_scrollbar_visible else Rect2()
+
+# Get viewport rectangle
+func get_viewport_rect() -> Rect2:
+    return Rect2(Vector2.ZERO, _viewport_size)
+
+# Scrollbar visibility
+func is_h_scrollbar_visible() -> bool:
+    return _h_scrollbar_visible
+
+func is_v_scrollbar_visible() -> bool:
+    return _v_scrollbar_visible
+
+# Get scrollbar colors based on state
+func get_h_scrollbar_color() -> Color:
+    if _dragging_h_scrollbar:
+        return scrollbar_pressed_color
+    elif _h_scrollbar_hovered:
+        return scrollbar_hover_color
+    else:
+        return scrollbar_fg_color
+
+func get_v_scrollbar_color() -> Color:
+    if _dragging_v_scrollbar:
+        return scrollbar_pressed_color
+    elif _v_scrollbar_hovered:
+        return scrollbar_hover_color
+    else:
+        return scrollbar_fg_color
+
+# Signals
+signal scroll_changed  # Emitted when scroll position changes

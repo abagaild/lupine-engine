@@ -792,6 +792,17 @@ class Node:
         node.properties = data.get("properties", {})
         node.script_path = data.get("script") or ""
 
+        # Apply properties from the properties dict to the node itself
+        for prop_name, prop_value in node.properties.items():
+            if hasattr(node, prop_name):
+                try:
+                    setattr(node, prop_name, prop_value)
+                    print(f"Applied property {prop_name} = {prop_value} to {node.name}")
+                except Exception as e:
+                    print(f"Warning: Could not set property {prop_name} on {node.name}: {e}")
+
+        print(f"Node {node.name} script_path: {node.script_path}")
+
         # Set Node2D properties for Node2D-derived classes
         if isinstance(node, Node2D):
             from .lsc.builtins import LSCVector2

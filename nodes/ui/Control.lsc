@@ -87,9 +87,48 @@ func get_global_rect() -> Rect2:
 # Get global position (viewport-relative for UI)
 func get_global_position() -> Vector2:
     if parent and parent is Control:
-        return parent.get_global_position() + position
+        return parent.get_global_position() + get_anchored_position()
     else:
+        return get_anchored_position()
+
+# Calculate position based on anchors and margins
+func get_anchored_position() -> Vector2:
+    if not parent or not parent is Control:
         return position
+
+    var parent_size = parent.rect_size
+    var anchor_pos = Vector2(
+        anchor_left * parent_size.x,
+        anchor_top * parent_size.y
+    )
+
+    return anchor_pos + Vector2(margin_left, margin_top)
+
+# Calculate size based on anchors and margins
+func get_anchored_size() -> Vector2:
+    if not parent or not parent is Control:
+        return rect_size
+
+    var parent_size = parent.rect_size
+
+    # If anchors define a range (right > left or bottom > top), calculate size from anchors
+    if anchor_right > anchor_left or anchor_bottom > anchor_top:
+        var anchor_width = (anchor_right - anchor_left) * parent_size.x
+        var anchor_height = (anchor_bottom - anchor_top) * parent_size.y
+
+        return Vector2(
+            anchor_width - margin_left - margin_right,
+            anchor_height - margin_top - margin_bottom
+        )
+    else:
+        return rect_size
+
+# Update position and size based on anchors (called when parent resizes)
+func _update_anchored_layout():
+    if parent and parent is Control:
+        position = get_anchored_position()
+        rect_size = get_anchored_size()
+        emit_signal("resized")
 
 # Anchor management
 func set_anchor(side: String, anchor: float):
@@ -115,7 +154,10 @@ func get_anchor(side: String) -> float:
             return anchor_bottom
     return 0.0
 
-func set_anchors_preset(preset: String):
+func set_anchors_preset(preset: String, keep_margins: bool = false):
+    var old_pos = position
+    var old_size = rect_size
+
     match preset:
         "top_left":
             anchor_left = 0.0
@@ -142,11 +184,86 @@ func set_anchors_preset(preset: String):
             anchor_top = 0.5
             anchor_right = 0.5
             anchor_bottom = 0.5
+        "center_left":
+            anchor_left = 0.0
+            anchor_top = 0.5
+            anchor_right = 0.0
+            anchor_bottom = 0.5
+        "center_right":
+            anchor_left = 1.0
+            anchor_top = 0.5
+            anchor_right = 1.0
+            anchor_bottom = 0.5
+        "center_top":
+            anchor_left = 0.5
+            anchor_top = 0.0
+            anchor_right = 0.5
+            anchor_bottom = 0.0
+        "center_bottom":
+            anchor_left = 0.5
+            anchor_top = 1.0
+            anchor_right = 0.5
+            anchor_bottom = 1.0
+        "left_wide":
+            anchor_left = 0.0
+            anchor_top = 0.0
+            anchor_right = 0.0
+            anchor_bottom = 1.0
+        "top_wide":
+            anchor_left = 0.0
+            anchor_top = 0.0
+            anchor_right = 1.0
+            anchor_bottom = 0.0
+        "right_wide":
+            anchor_left = 1.0
+            anchor_top = 0.0
+            anchor_right = 1.0
+            anchor_bottom = 1.0
+        "bottom_wide":
+            anchor_left = 0.0
+            anchor_top = 1.0
+            anchor_right = 1.0
+            anchor_bottom = 1.0
+        "vcenter_wide":
+            anchor_left = 0.0
+            anchor_top = 0.5
+            anchor_right = 1.0
+            anchor_bottom = 0.5
+        "hcenter_wide":
+            anchor_left = 0.5
+            anchor_top = 0.0
+            anchor_right = 0.5
+            anchor_bottom = 1.0
         "full_rect":
             anchor_left = 0.0
             anchor_top = 0.0
             anchor_right = 1.0
             anchor_bottom = 1.0
+
+    # Update margins to maintain position/size if requested
+    if keep_margins and parent and parent is Control:
+        _set_margins_from_position_size(old_pos, old_size)
+
+    _update_anchored_layout()
+
+# Helper function to set margins based on desired position and size
+func _set_margins_from_position_size(desired_pos: Vector2, desired_size: Vector2):
+    if not parent or not parent is Control:
+        return
+
+    var parent_size = parent.rect_size
+    var anchor_pos = Vector2(
+        anchor_left * parent_size.x,
+        anchor_top * parent_size.y
+    )
+
+    margin_left = desired_pos.x - anchor_pos.x
+    margin_top = desired_pos.y - anchor_pos.y
+
+    if anchor_right > anchor_left:
+        margin_right = anchor_pos.x + desired_size.x - (anchor_right * parent_size.x)
+    if anchor_bottom > anchor_top:
+        margin_bottom = anchor_pos.y + desired_size.y - (anchor_bottom * parent_size.y)
 
 # Margin management
 func set_margin(side: String, margin: float):

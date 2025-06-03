@@ -4,7 +4,10 @@ Manages script execution, variable scopes, and game engine integration
 """
 
 import time
-from typing import Any, Dict, List, Optional, Callable, Union
+from typing import Any, Dict, List, Optional, Callable, Union, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .game_engine_interface import GameEngineInterface
 from .export_system import ExportSystem
 from .builtins import LSCBuiltins
 
@@ -47,27 +50,49 @@ class LSCScope:
 class LSCRuntime:
     """Runtime environment for LSC scripts"""
     
-    def __init__(self, game_runtime=None):
+    def __init__(self, game_runtime: Optional["GameEngineInterface"] = None):
+        """Initialize LSC runtime"""
         self.game_runtime = game_runtime
         self.global_scope = LSCScope()
         self.current_scope = self.global_scope
         self.scope_stack: List[LSCScope] = [self.global_scope]
-        
+
         # Systems
         self.export_system = ExportSystem()
         self.builtins = LSCBuiltins(self)
-        
+
         # Runtime state
         self.start_time = time.time()
         self.last_frame_time = time.time()
         self.delta_time = 0.0
         self.frame_count = 0
-        
+
         # Script instances
         self.script_instances: Dict[Any, 'LSCScriptInstance'] = {}
-        
+
+        # Inheritance system
+        self.current_extends: Optional[str] = None
+        self.inheritance_manager = None  # Will be initialized later
+
+        # Signal system
+        self.signals: Dict[str, List[Tuple[Any, str]]] = {}  # signal_name -> [(target, method), ...]
+        self.signal_queue: List[Tuple[str, tuple]] = []  # For deferred signal emission
+
+        # Resource cache
+        self.resource_cache: Dict[str, Any] = {}
+
+        # Timer system for wait functionality
+        self.timers: List[Dict[str, Any]] = []
+
         # Initialize built-in variables
         self._initialize_builtins()
+
+    def initialize_inheritance_manager(self, project_path=None):
+        """Initialize the inheritance manager with project path"""
+        from .inheritance import LSCInheritanceManager
+        self.inheritance_manager = LSCInheritanceManager(self)
+        if project_path:
+            self.inheritance_manager.set_project_path(project_path)
     
     def _initialize_builtins(self) -> None:
         """Initialize built-in functions and constants"""
@@ -79,12 +104,15 @@ class LSCRuntime:
         for name, value in self.builtins.constants.items():
             self.global_scope.define(name, value)
 
+        # Add super object for inheritance
+        self.global_scope.define('super', self._create_super_object())
+
         # Add common default values for export variables
         self._add_default_export_values()
 
     def _add_default_export_values(self) -> None:
         """Add common default values for export variables"""
-        from .builtins import LSCVector2, LSCRect2, LSCColor, LSCTexture
+        from .builtins import Vector2, Rect2, Color, Texture
 
         # Add base node class placeholders for extends statements
         base_classes = {
@@ -141,9 +169,9 @@ class LSCRuntime:
             'coyote_timer': 0.0,
             'jump_buffer_timer': 0.0,
             'is_sprinting': False,
-            'last_direction': LSCVector2(1, 0),
-            'input_vector': LSCVector2(0, 0),
-            'velocity': LSCVector2(0, 0),
+            'last_direction': Vector2(1, 0),
+            'input_vector': Vector2(0, 0),
+            'velocity': Vector2(0, 0),
 
             # Animation defaults
             'idle_animation': "idle",
@@ -164,7 +192,7 @@ class LSCRuntime:
             'frame_y': 0,
             'hframes': 1,
             'vframes': 1,
-            'region_rect': LSCRect2(0, 0, 0, 0),
+            'region_rect': Rect2(0, 0, 0, 0),
 
             # Camera defaults
             'enabled': True,
@@ -209,6 +237,41 @@ class LSCRuntime:
 
         return InputObject(self)
 
+    def _create_super_object(self):
+        """Create a super object for calling parent class methods"""
+        class SuperObject:
+            def __init__(self, runtime):
+                self.runtime = runtime
+
+            def _ready(self):
+                """Call parent _ready method - placeholder implementation"""
+                # In a full implementation, this would call the actual parent class method
+                # For now, just provide a no-op implementation
+                pass
+
+            def on_ready(self):
+                """Call parent on_ready method - placeholder implementation"""
+                # In a full implementation, this would call the actual parent class method
+                # For now, just provide a no-op implementation
+                pass
+
+            def _process(self, delta: float):
+                """Call parent _process method - placeholder implementation"""
+                pass
+
+            def _physics_process(self, delta: float):
+                """Call parent _physics_process method - placeholder implementation"""
+                pass
+
+            def __getattr__(self, name):
+                """Handle any other super method calls"""
+                def super_method(*args, **kwargs):
+                    # Placeholder - in a full implementation this would call the parent method
+                    pass
+                return super_method
+
+        return SuperObject(self)
+
     def push_scope(self) -> LSCScope:
         """Push a new scope onto the stack"""
         new_scope = LSCScope(self.current_scope)
@@ -252,11 +315,18 @@ class LSCRuntime:
         if self.game_runtime:
             return self.game_runtime.get_node(path)
         return None
-    
-    def find_node(self, name: str) -> Any:
+
+    def get_node_or_null(self, path: str) -> Any:
+        """Get node by path or return None if not found"""
+        try:
+            return self.get_node(path)
+        except:
+            return None
+
+    def find_node(self, name: str, recursive: bool = True) -> Any:
         """Find node by name"""
         if self.game_runtime:
-            return self.game_runtime.find_node(name)
+            return self.game_runtime.find_node(name, recursive)
         return None
     
     def get_parent(self, node: Any) -> Any:
@@ -323,50 +393,50 @@ class LSCRuntime:
     # Input methods
     def is_action_pressed(self, action: str) -> bool:
         """Check if action is pressed"""
-        if self.game_runtime and hasattr(self.game_runtime, 'input_manager'):
-            return self.game_runtime.input_manager.is_action_pressed(action)
+        if self.game_runtime:
+            return self.game_runtime.is_action_pressed(action)
         return False
-    
+
     def is_action_just_pressed(self, action: str) -> bool:
         """Check if action was just pressed"""
-        if self.game_runtime and hasattr(self.game_runtime, 'input_manager'):
-            return self.game_runtime.input_manager.is_action_just_pressed(action)
+        if self.game_runtime:
+            return self.game_runtime.is_action_just_pressed(action)
         return False
-    
+
     def is_action_just_released(self, action: str) -> bool:
         """Check if action was just released"""
-        if self.game_runtime and hasattr(self.game_runtime, 'input_manager'):
-            return self.game_runtime.input_manager.is_action_just_released(action)
+        if self.game_runtime:
+            return self.game_runtime.is_action_just_released(action)
         return False
-    
+
     def get_action_strength(self, action: str) -> float:
         """Get action strength"""
-        if self.game_runtime and hasattr(self.game_runtime, 'input_manager'):
-            return self.game_runtime.input_manager.get_action_strength(action)
+        if self.game_runtime:
+            return self.game_runtime.get_action_strength(action)
         return 0.0
-    
+
     def is_key_pressed(self, key) -> bool:
         """Check if key is pressed"""
-        if self.game_runtime and hasattr(self.game_runtime, 'is_key_pressed'):
+        if self.game_runtime:
             return self.game_runtime.is_key_pressed(key)
         return False
-    
+
     def is_mouse_button_pressed(self, button: int) -> bool:
         """Check if mouse button is pressed"""
-        if self.game_runtime and hasattr(self.game_runtime, 'input_manager'):
-            return self.game_runtime.input_manager.is_mouse_button_pressed(button)
+        if self.game_runtime:
+            return self.game_runtime.is_mouse_button_pressed(button)
         return False
-    
+
     def get_mouse_position(self) -> tuple:
         """Get mouse position"""
-        if self.game_runtime and hasattr(self.game_runtime, 'input_manager'):
-            return self.game_runtime.input_manager.get_mouse_position()
+        if self.game_runtime:
+            return self.game_runtime.get_mouse_position()
         return (0, 0)
-    
+
     def get_global_mouse_position(self) -> tuple:
         """Get global mouse position"""
-        if self.game_runtime and hasattr(self.game_runtime, 'input_manager'):
-            return self.game_runtime.input_manager.get_global_mouse_position()
+        if self.game_runtime:
+            return self.game_runtime.get_global_mouse_position()
         return (0, 0)
     
     # Time methods
@@ -389,65 +459,246 @@ class LSCRuntime:
         return self.get_time()
 
     def wait(self, seconds: float) -> None:
-        """Wait for specified time (placeholder - would need coroutine system)"""
-        # This would need to be implemented with a proper coroutine/async system
-        pass
+        """Wait for specified time using timer system"""
+        # Create a timer for this wait
+        timer = {
+            'start_time': time.time(),
+            'duration': seconds,
+            'callback': None,
+            'completed': False
+        }
+        self.timers.append(timer)
+
+        # For now, this is a simple blocking wait
+        # In a real game engine, this would yield control back to the main loop
+        time.sleep(seconds)
+
+    def create_timer(self, seconds: float, callback: Optional[Callable] = None) -> Dict[str, Any]:
+        """Create a non-blocking timer"""
+        timer = {
+            'start_time': time.time(),
+            'duration': seconds,
+            'callback': callback,
+            'completed': False
+        }
+        self.timers.append(timer)
+        return timer
+
+    def update_timers(self) -> None:
+        """Update all active timers (should be called each frame)"""
+        current_time = time.time()
+        completed_timers = []
+
+        for timer in self.timers:
+            if not timer['completed']:
+                elapsed = current_time - timer['start_time']
+                if elapsed >= timer['duration']:
+                    timer['completed'] = True
+                    if timer['callback'] and callable(timer['callback']):
+                        try:
+                            timer['callback']()
+                        except Exception as e:
+                            print(f"Error in timer callback: {e}")
+                    completed_timers.append(timer)
+
+        # Remove completed timers
+        for timer in completed_timers:
+            if timer in self.timers:
+                self.timers.remove(timer)
+
+    def clear_timers(self) -> None:
+        """Clear all timers"""
+        self.timers.clear()
     
-    # Signal methods (placeholder implementations)
+    # Signal methods (full implementation)
     def connect(self, signal_name: str, target: Any, method: str) -> None:
         """Connect signal to method"""
-        # Would need proper signal system implementation
-        pass
-    
+        if signal_name not in self.signals:
+            self.signals[signal_name] = []
+
+        # Check if already connected
+        connection = (target, method)
+        if connection not in self.signals[signal_name]:
+            self.signals[signal_name].append(connection)
+
     def disconnect(self, signal_name: str, target: Any, method: str) -> None:
         """Disconnect signal from method"""
-        # Would need proper signal system implementation
-        pass
-    
+        if signal_name in self.signals:
+            connection = (target, method)
+            if connection in self.signals[signal_name]:
+                self.signals[signal_name].remove(connection)
+
+                # Clean up empty signal lists
+                if not self.signals[signal_name]:
+                    del self.signals[signal_name]
+
     def emit_signal(self, signal_name: str, *args) -> None:
         """Emit signal"""
-        # Would need proper signal system implementation
-        pass
-    
+        if signal_name in self.signals:
+            for target, method_name in self.signals[signal_name]:
+                try:
+                    if hasattr(target, method_name):
+                        method = getattr(target, method_name)
+                        if callable(method):
+                            method(*args)
+                    else:
+                        print(f"Warning: Method '{method_name}' not found on target {target}")
+                except Exception as e:
+                    print(f"Error calling signal handler {method_name}: {e}")
+
     def is_connected(self, signal_name: str, target: Any, method: str) -> bool:
         """Check if signal is connected"""
-        # Would need proper signal system implementation
-        return False
+        if signal_name not in self.signals:
+            return False
+        return (target, method) in self.signals[signal_name]
+
+    def disconnect_all(self, signal_name: str) -> None:
+        """Disconnect all connections for a signal"""
+        if signal_name in self.signals:
+            del self.signals[signal_name]
+
+    def get_signal_connections(self, signal_name: str) -> List[Tuple[Any, str]]:
+        """Get all connections for a signal"""
+        return self.signals.get(signal_name, []).copy()
     
-    # Resource methods (placeholder implementations)
+    # Resource methods (basic implementation with caching)
     def load_resource(self, path: str) -> Any:
-        """Load resource"""
-        # Would need proper resource loading system
-        return None
-    
+        """Load resource with caching"""
+        # Check cache first
+        if path in self.resource_cache:
+            return self.resource_cache[path]
+
+        # Try to load the resource
+        try:
+            from pathlib import Path
+
+            file_path = Path(path)
+            if not file_path.exists():
+                print(f"Warning: Resource not found: {path}")
+                return None
+
+            # Basic file type detection and loading
+            extension = file_path.suffix.lower()
+
+            if extension in ['.txt', '.lsc', '.json', '.xml']:
+                # Text-based files
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                self.resource_cache[path] = content
+                return content
+
+            elif extension in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']:
+                # Image files - return path for now (actual loading would need PIL/pygame)
+                from .builtins import Texture
+                texture = Texture(str(file_path))
+                self.resource_cache[path] = texture
+                return texture
+
+            elif extension in ['.wav', '.mp3', '.ogg']:
+                # Audio files - return path for now (actual loading would need pygame/pydub)
+                audio_resource = {'type': 'audio', 'path': str(file_path)}
+                self.resource_cache[path] = audio_resource
+                return audio_resource
+
+            else:
+                # Unknown file type - return path
+                self.resource_cache[path] = str(file_path)
+                return str(file_path)
+
+        except Exception as e:
+            print(f"Error loading resource {path}: {e}")
+            return None
+
     def preload_resource(self, path: str) -> Any:
-        """Preload resource"""
-        # Would need proper resource loading system
-        return None
-    
+        """Preload resource (same as load for now)"""
+        return self.load_resource(path)
+
     def save_resource(self, resource: Any, path: str) -> None:
-        """Save resource"""
-        # Would need proper resource saving system
-        pass
+        """Save resource to file"""
+        try:
+            from pathlib import Path
+
+            file_path = Path(path)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Basic saving based on resource type
+            if isinstance(resource, str):
+                # Text content
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(resource)
+
+            elif isinstance(resource, dict):
+                # JSON-like data
+                import json
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(resource, f, indent=2)
+
+            else:
+                # Try to convert to string
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(str(resource))
+
+            # Update cache
+            self.resource_cache[path] = resource
+
+        except Exception as e:
+            print(f"Error saving resource to {path}: {e}")
+
+    def clear_resource_cache(self) -> None:
+        """Clear the resource cache"""
+        self.resource_cache.clear()
+
+    def get_cached_resources(self) -> List[str]:
+        """Get list of cached resource paths"""
+        return list(self.resource_cache.keys())
+
+    def load(self, path: str) -> Any:
+        """Load resource (alias for load_resource)"""
+        return self.load_resource(path)
+
+    def preload(self, path: str) -> Any:
+        """Preload resource (alias for preload_resource)"""
+        return self.preload_resource(path)
+
+    def save(self, resource: Any, path: str) -> None:
+        """Save resource (alias for save_resource)"""
+        self.save_resource(resource, path)
 
 
 class LSCScriptInstance:
     """Represents an instance of an LSC script attached to a node"""
-    
-    def __init__(self, node: Any, script_path: str, runtime: LSCRuntime):
+
+    def __init__(self, node: Any, script_path: str, runtime: LSCRuntime, base_class: Optional[str] = None):
         self.node = node
         self.script_path = script_path
         self.runtime = runtime
-        self.scope = LSCScope(runtime.global_scope)
+        self.base_class = base_class
+        self.lsc_class = None
+
+        # Create scope with inheritance support
+        if runtime.inheritance_manager and base_class:
+            self.scope = runtime.inheritance_manager.create_instance_scope(base_class)
+            self.lsc_class = runtime.inheritance_manager.get_class(base_class)
+        else:
+            self.scope = LSCScope(runtime.global_scope)
+
+        if not self.scope:
+            self.scope = LSCScope(runtime.global_scope)
+
         self.export_variables: Dict[str, Any] = {}
-        
+
         # Lifecycle flags
         self.ready_called = False
         self.enabled = True
+
+        # Setup proper super object if we have inheritance
+        if self.lsc_class and runtime.inheritance_manager:
+            super_obj = runtime.inheritance_manager.create_super_object(self.lsc_class, self.scope)
+            self.scope.define('super', super_obj)
     
     def call_method(self, method_name: str, *args) -> Any:
         """Call a method on this script instance"""
-        if not self.enabled:
+        if not self.enabled or not self.scope:
             return None
 
         # Set up scope for method call
@@ -482,7 +733,8 @@ class LSCScriptInstance:
     def set_export_variable(self, name: str, value: Any) -> None:
         """Set an export variable value"""
         self.export_variables[name] = value
-        self.scope.set(name, value)
+        if self.scope:
+            self.scope.set(name, value)
     
     def get_export_variable(self, name: str) -> Any:
         """Get an export variable value"""

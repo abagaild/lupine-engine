@@ -267,14 +267,14 @@ class LSCParser:
         
         return EnumDeclaration(name, values)
 
-    def extends_statement(self) -> ExpressionStatement:
+    def extends_statement(self) -> 'ExtendsStatement':
         """Parse top-level extends statement"""
         base_class = self.consume(TokenType.IDENTIFIER, "Expected base class name").value
         self.consume_newline()
 
-        # For now, treat extends as a simple expression statement
-        # In a full implementation, this would set up inheritance
-        return ExpressionStatement(Identifier(base_class))
+        # Create proper extends statement for inheritance
+        from .ast_nodes import ExtendsStatement
+        return ExtendsStatement(base_class)
 
     def var_declaration(self) -> VarDeclaration:
         """Parse variable declaration"""

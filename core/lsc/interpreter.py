@@ -6,6 +6,7 @@ Implements the visitor pattern to traverse and execute the abstract syntax tree
 from typing import Any, List, Dict, Optional
 from .ast_nodes import *
 from .runtime import LSCRuntime, LSCScope
+from .inheritance import LSCInheritanceManager
 
 
 class LSCRuntimeError(Exception):
@@ -476,6 +477,12 @@ class LSCInterpreter(ASTVisitor):
         """Visit export group node"""
         self.runtime.export_system.add_export_group(node.name, node.prefix)
 
+    def visit_extends_statement(self, node: ExtendsStatement) -> None:
+        """Visit extends statement node"""
+        # Store the base class information for inheritance
+        # This will be used when creating script instances
+        self.runtime.current_extends = node.base_class
+
     def visit_signal_declaration(self, node: SignalDeclaration) -> None:
         """Visit signal declaration node"""
         # For now, just define an empty signal function
@@ -512,7 +519,7 @@ class LSCInterpreter(ASTVisitor):
 
     def _get_default_for_undefined_variable(self, name: str) -> Any:
         """Get a reasonable default value for common undefined variables"""
-        from .builtins import LSCVector2, LSCRect2, LSCColor, LSCTexture
+        from .builtins import Vector2, Rect2, Color, Texture
 
         # Common defaults for frequently used undefined variables
         defaults = {
@@ -522,13 +529,13 @@ class LSCInterpreter(ASTVisitor):
             'enable_animations': True,
             'texture': None,
             'null': None,
-            'position': LSCVector2(0, 0),
-            'global_position': LSCVector2(0, 0),
-            'velocity': LSCVector2(0, 0),
-            'scale': LSCVector2(1, 1),
+            'position': Vector2(0, 0),
+            'global_position': Vector2(0, 0),
+            'velocity': Vector2(0, 0),
+            'scale': Vector2(1, 1),
             'rotation': 0.0,
             'visible': True,
-            'modulate': LSCColor(1, 1, 1, 1),
+            'modulate': Color(1, 1, 1, 1),
             'z_index': 0,
             'safe_margin': 0.08,
             'enabled': True,
@@ -539,11 +546,11 @@ class LSCInterpreter(ASTVisitor):
             'frame_x': 0,
             'frame_y': 0,
             'centered': True,
-            'offset': LSCVector2(0, 0),
+            'offset': Vector2(0, 0),
             'flip_h': False,
             'flip_v': False,
             'region_enabled': False,
-            'region_rect': LSCRect2(0, 0, 0, 0),
+            'region_rect': Rect2(0, 0, 0, 0),
             # Note: Function defaults removed - functions should be defined in first pass
         }
 

@@ -1,0 +1,293 @@
+# CheckBox Node - Toggle checkbox with label and customizable appearance
+# Equivalent to Godot's CheckBox with full functionality
+extends Control
+
+# Text Properties
+export_group("Text")
+export var text: String = "CheckBox"  # Label text
+export var align: String = "left"  # Text alignment relative to checkbox
+
+# State Properties
+export_group("State")
+export var button_pressed: bool = false  # Whether checkbox is checked
+export var disabled: bool = false  # Whether checkbox is disabled
+
+# Behavior Properties
+export_group("Behavior")
+export var toggle_mode: bool = true  # Always true for checkboxes
+export var action_mode: String = "button_press"  # When to trigger: "button_press", "button_release"
+
+# Style Properties
+export_group("Style")
+export var checkbox_size: Vector2 = Vector2(16, 16)  # Size of the checkbox
+export var text_spacing: float = 4.0  # Space between checkbox and text
+
+# Checkbox Colors
+export_group("Checkbox Colors")
+export var checkbox_bg_color: Color = Color(0.2, 0.2, 0.2, 1.0)  # Background color
+export var checkbox_border_color: Color = Color(0.5, 0.5, 0.5, 1.0)  # Border color
+export var checkbox_check_color: Color = Color(0.8, 0.8, 0.8, 1.0)  # Check mark color
+export var checkbox_hover_color: Color = Color(0.3, 0.3, 0.3, 1.0)  # Hover background
+export var checkbox_pressed_color: Color = Color(0.4, 0.4, 0.4, 1.0)  # Pressed background
+export var checkbox_disabled_color: Color = Color(0.1, 0.1, 0.1, 1.0)  # Disabled background
+
+# Text Colors
+export_group("Text Colors")
+export var font_color: Color = Color(1.0, 1.0, 1.0, 1.0)  # Normal text color
+export var font_color_hover: Color = Color(1.0, 1.0, 1.0, 1.0)  # Hover text color
+export var font_color_pressed: Color = Color(0.9, 0.9, 0.9, 1.0)  # Pressed text color
+export var font_color_disabled: Color = Color(0.5, 0.5, 0.5, 1.0)  # Disabled text color
+
+# Font Properties
+export_group("Font")
+export var font: Resource = null  # Font resource
+export var font_size: int = 14  # Font size
+
+# Border Properties
+export_group("Border")
+export var border_width: float = 1.0  # Border thickness
+export var corner_radius: float = 2.0  # Rounded corners
+
+# Internal state
+var _is_hovered: bool = false  # Whether mouse is hovering
+var _is_pressed: bool = false  # Whether mouse is pressed down
+var _checkbox_rect: Rect2  # Rectangle for the checkbox
+var _text_rect: Rect2  # Rectangle for the text
+
+# Alignment constants
+const ALIGN_LEFT = "left"
+const ALIGN_RIGHT = "right"
+
+# Action mode constants
+const ACTION_MODE_BUTTON_PRESS = "button_press"
+const ACTION_MODE_BUTTON_RELEASE = "button_release"
+
+# Called when the node enters the scene tree
+func _ready():
+    super._ready()
+    
+    # Set default size if not specified
+    if rect_size == Vector2.ZERO:
+        rect_size = Vector2(100, 24)
+    
+    # Set focus mode to allow keyboard input
+    focus_mode = "click"
+    
+    # Calculate layout
+    _update_layout()
+
+# Called every frame
+func _process(delta: float):
+    pass
+
+# Update the layout of checkbox and text
+func _update_layout():
+    var checkbox_x = 0.0
+    var text_x = 0.0
+    
+    if align == ALIGN_LEFT:
+        # Checkbox on left, text on right
+        checkbox_x = 0.0
+        text_x = checkbox_size.x + text_spacing
+    else:  # ALIGN_RIGHT
+        # Text on left, checkbox on right
+        var text_width = _calculate_text_width()
+        text_x = 0.0
+        checkbox_x = text_width + text_spacing
+    
+    # Center checkbox vertically
+    var checkbox_y = (rect_size.y - checkbox_size.y) * 0.5
+    
+    # Center text vertically
+    var text_height = _calculate_text_height()
+    var text_y = (rect_size.y - text_height) * 0.5
+    
+    _checkbox_rect = Rect2(checkbox_x, checkbox_y, checkbox_size.x, checkbox_size.y)
+    _text_rect = Rect2(text_x, text_y, rect_size.x - text_x, text_height)
+
+# Calculate text width (would be implemented by renderer)
+func _calculate_text_width() -> float:
+    # Placeholder - would use actual font metrics
+    return text.length() * (font_size * 0.6)
+
+# Calculate text height (would be implemented by renderer)
+func _calculate_text_height() -> float:
+    # Placeholder - would use actual font metrics
+    return font_size
+
+# Set checkbox state
+func set_pressed(pressed: bool):
+    if button_pressed != pressed:
+        button_pressed = pressed
+        emit_signal("toggled", button_pressed)
+        
+        if pressed:
+            emit_signal("pressed")
+        else:
+            emit_signal("released")
+
+# Get checkbox state
+func is_pressed() -> bool:
+    return button_pressed
+
+# Toggle checkbox state
+func toggle():
+    set_pressed(!button_pressed)
+
+# Set text content
+func set_text(new_text: String):
+    text = new_text
+    _update_layout()
+
+# Get text content
+func get_text() -> String:
+    return text
+
+# Set disabled state
+func set_disabled(is_disabled: bool):
+    disabled = is_disabled
+    if disabled:
+        _is_hovered = false
+        _is_pressed = false
+
+# Check if disabled
+func is_disabled() -> bool:
+    return disabled
+
+# Mouse interaction
+func _input_event(event: InputEvent):
+    if disabled:
+        return
+    
+    if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+        if event.pressed:
+            _is_pressed = true
+            grab_focus()
+            
+            if action_mode == ACTION_MODE_BUTTON_PRESS:
+                toggle()
+        else:
+            if _is_pressed:
+                _is_pressed = false
+                
+                if action_mode == ACTION_MODE_BUTTON_RELEASE:
+                    toggle()
+    
+    elif event is InputEventMouseMotion:
+        # Check if mouse is inside the control
+        var mouse_pos = event.position
+        var is_inside = has_point(mouse_pos)
+        
+        if is_inside != _is_hovered:
+            _is_hovered = is_inside
+            if _is_hovered:
+                emit_signal("mouse_entered")
+            else:
+                emit_signal("mouse_exited")
+                _is_pressed = false
+
+# Keyboard interaction
+func _gui_input(event: InputEvent):
+    if disabled:
+        return
+    
+    if event is InputEventKey and event.pressed:
+        if event.keycode == KEY_SPACE or event.keycode == KEY_ENTER:
+            toggle()
+
+# Check if point is inside control (override to include both checkbox and text)
+func has_point(point: Vector2) -> bool:
+    var local_point = point - position
+    return _checkbox_rect.has_point(local_point) or _text_rect.has_point(local_point)
+
+# Get current visual state for rendering
+func get_draw_mode() -> String:
+    if disabled:
+        return "disabled"
+    elif _is_pressed:
+        return "pressed"
+    elif _is_hovered:
+        return "hover"
+    else:
+        return "normal"
+
+# Get checkbox background color based on state
+func get_checkbox_bg_color() -> Color:
+    match get_draw_mode():
+        "disabled":
+            return checkbox_disabled_color
+        "pressed":
+            return checkbox_pressed_color
+        "hover":
+            return checkbox_hover_color
+        _:
+            return checkbox_bg_color
+
+# Get text color based on state
+func get_text_color() -> Color:
+    match get_draw_mode():
+        "disabled":
+            return font_color_disabled
+        "pressed":
+            return font_color_pressed
+        "hover":
+            return font_color_hover
+        _:
+            return font_color
+
+# Focus management
+func grab_focus():
+    super.grab_focus()
+    emit_signal("focus_entered")
+
+func release_focus():
+    super.release_focus()
+    emit_signal("focus_exited")
+
+# Size management
+func set_checkbox_size(size: Vector2):
+    checkbox_size = size
+    _update_layout()
+
+func get_checkbox_size() -> Vector2:
+    return checkbox_size
+
+func set_text_spacing(spacing: float):
+    text_spacing = max(0.0, spacing)
+    _update_layout()
+
+func get_text_spacing() -> float:
+    return text_spacing
+
+# Get minimum size needed for the checkbox and text
+func get_minimum_size() -> Vector2:
+    var text_width = _calculate_text_width()
+    var text_height = _calculate_text_height()
+    
+    var total_width = checkbox_size.x + text_spacing + text_width
+    var total_height = max(checkbox_size.y, text_height)
+    
+    return Vector2(total_width, total_height)
+
+# Alignment
+func set_align(alignment: String):
+    if alignment == ALIGN_LEFT or alignment == ALIGN_RIGHT:
+        align = alignment
+        _update_layout()
+
+func get_align() -> String:
+    return align
+
+# Debug info
+func get_debug_info() -> String:
+    var state = get_draw_mode()
+    return f"CheckBox: '{text}', State: {state}, Pressed: {button_pressed}, Disabled: {disabled}"
+
+# Signals
+signal pressed  # Emitted when checkbox is pressed
+signal released  # Emitted when checkbox is released
+signal toggled(button_pressed: bool)  # Emitted when checkbox state changes
+signal mouse_entered  # Emitted when mouse enters
+signal mouse_exited  # Emitted when mouse exits
+signal focus_entered  # Emitted when focus is gained
+signal focus_exited  # Emitted when focus is lost

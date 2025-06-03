@@ -1,0 +1,341 @@
+# Slider Node - Value slider with customizable range and appearance
+# Equivalent to Godot's HSlider/VSlider with full functionality
+extends Control
+
+# Value Properties
+export_group("Value")
+export var min_value: float = 0.0  # Minimum value
+export var max_value: float = 100.0  # Maximum value
+export var value: float = 0.0  # Current value
+export var step: float = 1.0  # Step increment for value changes
+export var page: float = 10.0  # Page increment (for page up/down keys)
+
+# Behavior Properties
+export_group("Behavior")
+export var orientation: String = "horizontal"  # "horizontal" or "vertical"
+export var editable: bool = true  # Whether the slider can be interacted with
+export var scrollable: bool = true  # Whether mouse wheel can change value
+export var tick_count: int = 0  # Number of tick marks (0 = no ticks)
+export var ticks_on_borders: bool = false  # Whether to show ticks on borders
+
+# Style Properties
+export_group("Style")
+export var grabber_size: Vector2 = Vector2(16, 16)  # Size of the grabber handle
+
+# Track Colors
+export_group("Track Colors")
+export var track_color: Color = Color(0.2, 0.2, 0.2, 1.0)  # Track background color
+export var track_fill_color: Color = Color(0.4, 0.6, 0.8, 1.0)  # Filled portion color
+export var track_border_color: Color = Color(0.5, 0.5, 0.5, 1.0)  # Track border color
+
+# Grabber Colors
+export_group("Grabber Colors")
+export var grabber_color: Color = Color(0.8, 0.8, 0.8, 1.0)  # Normal grabber color
+export var grabber_hover_color: Color = Color(0.9, 0.9, 0.9, 1.0)  # Hover grabber color
+export var grabber_pressed_color: Color = Color(0.7, 0.7, 0.7, 1.0)  # Pressed grabber color
+export var grabber_disabled_color: Color = Color(0.4, 0.4, 0.4, 1.0)  # Disabled grabber color
+
+# Tick Colors
+export_group("Tick Colors")
+export var tick_color: Color = Color(0.6, 0.6, 0.6, 1.0)  # Tick mark color
+
+# Border Properties
+export_group("Border")
+export var track_border_width: float = 1.0  # Track border thickness
+export var track_corner_radius: float = 2.0  # Track rounded corners
+export var grabber_border_width: float = 1.0  # Grabber border thickness
+export var grabber_corner_radius: float = 8.0  # Grabber rounded corners
+
+# Internal state
+var _is_dragging: bool = false  # Whether grabber is being dragged
+var _is_hovered: bool = false  # Whether mouse is hovering over grabber
+var _drag_offset: Vector2 = Vector2.ZERO  # Offset for dragging
+var _track_rect: Rect2  # Rectangle for the track
+var _grabber_rect: Rect2  # Rectangle for the grabber
+
+# Orientation constants
+const ORIENTATION_HORIZONTAL = "horizontal"
+const ORIENTATION_VERTICAL = "vertical"
+
+# Called when the node enters the scene tree
+func _ready():
+    super._ready()
+    
+    # Set default size based on orientation
+    if rect_size == Vector2.ZERO:
+        if orientation == ORIENTATION_HORIZONTAL:
+            rect_size = Vector2(200, 24)
+        else:
+            rect_size = Vector2(24, 200)
+    
+    # Set focus mode to allow keyboard input
+    focus_mode = "click"
+    
+    # Clamp initial value
+    value = clamp(value, min_value, max_value)
+    
+    # Update layout
+    _update_layout()
+
+# Called every frame
+func _process(delta: float):
+    pass
+
+# Update the layout of track and grabber
+func _update_layout():
+    var track_thickness = 8.0  # Default track thickness
+    
+    if orientation == ORIENTATION_HORIZONTAL:
+        # Horizontal slider
+        var track_y = (rect_size.y - track_thickness) * 0.5
+        _track_rect = Rect2(grabber_size.x * 0.5, track_y, rect_size.x - grabber_size.x, track_thickness)
+        
+        # Calculate grabber position based on value
+        var value_ratio = _get_value_ratio()
+        var grabber_x = _track_rect.position.x + (value_ratio * _track_rect.size.x) - (grabber_size.x * 0.5)
+        var grabber_y = (rect_size.y - grabber_size.y) * 0.5
+        _grabber_rect = Rect2(grabber_x, grabber_y, grabber_size.x, grabber_size.y)
+    else:
+        # Vertical slider
+        var track_x = (rect_size.x - track_thickness) * 0.5
+        _track_rect = Rect2(track_x, grabber_size.y * 0.5, track_thickness, rect_size.y - grabber_size.y)
+        
+        # Calculate grabber position based on value (inverted for vertical)
+        var value_ratio = 1.0 - _get_value_ratio()  # Invert for top-to-bottom
+        var grabber_x = (rect_size.x - grabber_size.x) * 0.5
+        var grabber_y = _track_rect.position.y + (value_ratio * _track_rect.size.y) - (grabber_size.y * 0.5)
+        _grabber_rect = Rect2(grabber_x, grabber_y, grabber_size.x, grabber_size.y)
+
+# Get value as ratio (0.0 to 1.0)
+func _get_value_ratio() -> float:
+    if max_value <= min_value:
+        return 0.0
+    return (value - min_value) / (max_value - min_value)
+
+# Set value from ratio (0.0 to 1.0)
+func _set_value_from_ratio(ratio: float):
+    ratio = clamp(ratio, 0.0, 1.0)
+    var new_value = min_value + (ratio * (max_value - min_value))
+    set_value(new_value)
+
+# Set the current value
+func set_value(new_value: float):
+    # Apply step if specified
+    if step > 0.0:
+        new_value = round(new_value / step) * step
+    
+    # Clamp to range
+    new_value = clamp(new_value, min_value, max_value)
+    
+    if value != new_value:
+        value = new_value
+        _update_layout()
+        emit_signal("value_changed", value)
+
+# Get the current value
+func get_value() -> float:
+    return value
+
+# Set minimum value
+func set_min(minimum: float):
+    min_value = minimum
+    if max_value < min_value:
+        max_value = min_value
+    value = clamp(value, min_value, max_value)
+    _update_layout()
+
+# Get minimum value
+func get_min() -> float:
+    return min_value
+
+# Set maximum value
+func set_max(maximum: float):
+    max_value = maximum
+    if min_value > max_value:
+        min_value = max_value
+    value = clamp(value, min_value, max_value)
+    _update_layout()
+
+# Get maximum value
+func get_max() -> float:
+    return max_value
+
+# Set step value
+func set_step(step_value: float):
+    step = max(0.0, step_value)
+
+# Get step value
+func get_step() -> float:
+    return step
+
+# Set orientation
+func set_orientation(orient: String):
+    if orient == ORIENTATION_HORIZONTAL or orient == ORIENTATION_VERTICAL:
+        orientation = orient
+        _update_layout()
+
+# Get orientation
+func get_orientation() -> String:
+    return orientation
+
+# Mouse interaction
+func _input_event(event: InputEvent):
+    if not editable:
+        return
+    
+    if event is InputEventMouseButton:
+        if event.button_index == MOUSE_BUTTON_LEFT:
+            if event.pressed:
+                var local_pos = event.position - position
+                
+                # Check if clicking on grabber
+                if _grabber_rect.has_point(local_pos):
+                    _is_dragging = true
+                    _drag_offset = local_pos - _grabber_rect.position
+                    grab_focus()
+                else:
+                    # Click on track - jump to position
+                    _jump_to_position(local_pos)
+                    grab_focus()
+            else:
+                _is_dragging = false
+        
+        elif event.button_index == MOUSE_BUTTON_WHEEL_UP and scrollable:
+            set_value(value + step)
+        elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and scrollable:
+            set_value(value - step)
+    
+    elif event is InputEventMouseMotion:
+        var local_pos = event.position - position
+        
+        if _is_dragging:
+            _drag_to_position(local_pos)
+        else:
+            # Update hover state
+            var was_hovered = _is_hovered
+            _is_hovered = _grabber_rect.has_point(local_pos)
+            
+            if _is_hovered != was_hovered:
+                if _is_hovered:
+                    emit_signal("mouse_entered")
+                else:
+                    emit_signal("mouse_exited")
+
+# Jump grabber to clicked position
+func _jump_to_position(pos: Vector2):
+    if orientation == ORIENTATION_HORIZONTAL:
+        var track_local_x = pos.x - _track_rect.position.x
+        var ratio = track_local_x / _track_rect.size.x
+        _set_value_from_ratio(ratio)
+    else:
+        var track_local_y = pos.y - _track_rect.position.y
+        var ratio = 1.0 - (track_local_y / _track_rect.size.y)  # Invert for vertical
+        _set_value_from_ratio(ratio)
+
+# Drag grabber to position
+func _drag_to_position(pos: Vector2):
+    if orientation == ORIENTATION_HORIZONTAL:
+        var grabber_center_x = pos.x - _drag_offset.x + (grabber_size.x * 0.5)
+        var track_local_x = grabber_center_x - _track_rect.position.x
+        var ratio = track_local_x / _track_rect.size.x
+        _set_value_from_ratio(ratio)
+    else:
+        var grabber_center_y = pos.y - _drag_offset.y + (grabber_size.y * 0.5)
+        var track_local_y = grabber_center_y - _track_rect.position.y
+        var ratio = 1.0 - (track_local_y / _track_rect.size.y)  # Invert for vertical
+        _set_value_from_ratio(ratio)
+
+# Keyboard interaction
+func _gui_input(event: InputEvent):
+    if not editable:
+        return
+    
+    if event is InputEventKey and event.pressed:
+        match event.keycode:
+            KEY_LEFT, KEY_DOWN:
+                set_value(value - step)
+            KEY_RIGHT, KEY_UP:
+                set_value(value + step)
+            KEY_HOME:
+                set_value(min_value)
+            KEY_END:
+                set_value(max_value)
+            KEY_PAGE_UP:
+                set_value(value + page)
+            KEY_PAGE_DOWN:
+                set_value(value - page)
+
+# Get current visual state for rendering
+func get_draw_mode() -> String:
+    if not editable:
+        return "disabled"
+    elif _is_dragging:
+        return "pressed"
+    elif _is_hovered:
+        return "hover"
+    else:
+        return "normal"
+
+# Get grabber color based on state
+func get_grabber_color() -> Color:
+    match get_draw_mode():
+        "disabled":
+            return grabber_disabled_color
+        "pressed":
+            return grabber_pressed_color
+        "hover":
+            return grabber_hover_color
+        _:
+            return grabber_color
+
+# Get track rectangles for rendering
+func get_track_rect() -> Rect2:
+    return _track_rect
+
+func get_grabber_rect() -> Rect2:
+    return _grabber_rect
+
+# Get fill rectangle (portion of track that's filled)
+func get_fill_rect() -> Rect2:
+    var ratio = _get_value_ratio()
+    
+    if orientation == ORIENTATION_HORIZONTAL:
+        var fill_width = _track_rect.size.x * ratio
+        return Rect2(_track_rect.position.x, _track_rect.position.y, fill_width, _track_rect.size.y)
+    else:
+        var fill_height = _track_rect.size.y * ratio
+        var fill_y = _track_rect.position.y + _track_rect.size.y - fill_height
+        return Rect2(_track_rect.position.x, fill_y, _track_rect.size.x, fill_height)
+
+# Get tick positions for rendering
+func get_tick_positions() -> Array:
+    var positions = []
+    
+    if tick_count <= 0:
+        return positions
+    
+    var tick_step = 1.0 / float(tick_count - 1) if tick_count > 1 else 0.0
+    
+    for i in range(tick_count):
+        var ratio = i * tick_step
+        
+        if orientation == ORIENTATION_HORIZONTAL:
+            var x = _track_rect.position.x + (ratio * _track_rect.size.x)
+            positions.append(Vector2(x, _track_rect.position.y))
+        else:
+            var y = _track_rect.position.y + ((1.0 - ratio) * _track_rect.size.y)
+            positions.append(Vector2(_track_rect.position.x, y))
+    
+    return positions
+
+# Debug info
+func get_debug_info() -> String:
+    var state = get_draw_mode()
+    return f"Slider: Value: {value}, Range: [{min_value}, {max_value}], State: {state}, Orientation: {orientation}"
+
+# Signals
+signal value_changed(value: float)  # Emitted when value changes
+signal drag_started  # Emitted when dragging starts
+signal drag_ended  # Emitted when dragging ends
+signal mouse_entered  # Emitted when mouse enters grabber
+signal mouse_exited  # Emitted when mouse exits grabber

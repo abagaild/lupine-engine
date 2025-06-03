@@ -231,6 +231,54 @@ class NodeRegistry:
             description="UI node that displays a list of selectable items with icons and text"
         ))
 
+        self.register_node(NodeDefinition(
+            name="LineEdit",
+            category=NodeCategory.UI,
+            class_name="LineEdit",
+            script_path="nodes/ui/LineEdit.lsc",
+            description="Single-line text input field with cursor, selection, and editing capabilities"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="CheckBox",
+            category=NodeCategory.UI,
+            class_name="CheckBox",
+            script_path="nodes/ui/CheckBox.lsc",
+            description="Toggle checkbox with label and customizable appearance"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="Slider",
+            category=NodeCategory.UI,
+            class_name="Slider",
+            script_path="nodes/ui/Slider.lsc",
+            description="Value slider with customizable range and appearance"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="ScrollContainer",
+            category=NodeCategory.UI,
+            class_name="ScrollContainer",
+            script_path="nodes/ui/ScrollContainer.lsc",
+            description="Scrollable container for content overflow with horizontal and vertical scrollbars"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="HSeparator",
+            category=NodeCategory.UI,
+            class_name="HSeparator",
+            script_path="nodes/ui/HSeparator.lsc",
+            description="Horizontal separator line for UI layout"
+        ))
+
+        self.register_node(NodeDefinition(
+            name="VSeparator",
+            category=NodeCategory.UI,
+            class_name="VSeparator",
+            script_path="nodes/ui/VSeparator.lsc",
+            description="Vertical separator line for UI layout"
+        ))
+
         # Audio nodes
         self.register_node(NodeDefinition(
             name="AudioStreamPlayer",
@@ -312,7 +360,14 @@ class NodeRegistry:
             self.unregister_node(node_name)
 
         # Also clear built-in nodes that will be replaced by project versions
-        builtin_nodes_to_replace = ["Node", "Node2D", "Control", "Sprite", "AnimatedSprite", "Timer", "Panel", "Label", "Button", "CanvasLayer", "Camera2D", "ColorRect", "TextureRect", "ProgressBar", "AudioStreamPlayer", "AudioStreamPlayer2D", "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList", "Area2D", "CollisionShape2D", "CollisionPolygon2D", "RigidBody2D", "StaticBody2D", "KinematicBody2D"]
+        builtin_nodes_to_replace = [
+            "Node", "Node2D", "Control", "Sprite", "AnimatedSprite", "Timer", "Panel", "Label", "Button",
+            "CanvasLayer", "Camera2D", "ColorRect", "TextureRect", "ProgressBar", "AudioStreamPlayer",
+            "AudioStreamPlayer2D", "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer",
+            "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList", "LineEdit", "CheckBox",
+            "Slider", "ScrollContainer", "HSeparator", "VSeparator", "Area2D", "CollisionShape2D",
+            "CollisionPolygon2D", "RigidBody2D", "StaticBody2D", "KinematicBody2D"
+        ]
         for node_name in builtin_nodes_to_replace:
             if node_name in self._nodes and self._nodes[node_name].is_builtin:
                 self.unregister_node(node_name)
@@ -369,7 +424,15 @@ class NodeRegistry:
         """Determine the class name for a node from its LSC file"""
         try:
             # First, check if this is a known specific node type
-            if node_name in ["Sprite", "AnimatedSprite", "Camera2D", "Timer", "Panel", "Label", "Button", "CanvasLayer", "ColorRect", "TextureRect", "ProgressBar", "AudioStreamPlayer", "AudioStreamPlayer2D", "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList", "Area2D", "CollisionShape2D", "CollisionPolygon2D", "RigidBody2D", "StaticBody2D", "KinematicBody2D"]:
+            known_nodes = [
+                "Sprite", "AnimatedSprite", "Camera2D", "Timer", "Panel", "Label", "Button", "CanvasLayer",
+                "ColorRect", "TextureRect", "ProgressBar", "AudioStreamPlayer", "AudioStreamPlayer2D",
+                "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer", "RichTextLabel",
+                "PanelContainer", "NinePatchRect", "ItemList", "LineEdit", "CheckBox", "Slider",
+                "ScrollContainer", "HSeparator", "VSeparator", "Area2D", "CollisionShape2D",
+                "CollisionPolygon2D", "RigidBody2D", "StaticBody2D", "KinematicBody2D"
+            ]
+            if node_name in known_nodes:
                 return node_name
 
             # For other nodes, check the extends clause
@@ -479,7 +542,7 @@ class NodeRegistry:
         
         # Set script path if available
         if node_def.script_path:
-            instance.script_path = str(node_def.script_path)
+            setattr(instance, 'script_path', str(node_def.script_path))
         
         return instance
     
@@ -495,11 +558,18 @@ class NodeRegistry:
 
                 # Register prefab as a node type using the actual node type from prefab data
                 prefab_name = prefab_file.stem
-                prefab_type = prefab_data.get("type", "Node")  # Get the actual node type
+
+                # Handle both old nested format and new direct format for type extraction
+                if "nodes" in prefab_data and isinstance(prefab_data["nodes"], list):
+                    # Old nested format - get type from first node
+                    prefab_type = prefab_data["nodes"][0].get("type", "Node") if prefab_data["nodes"] else "Node"
+                else:
+                    # New direct format - get type directly
+                    prefab_type = prefab_data.get("type", "Node")
 
                 # Create a closure to capture prefab_data correctly
-                def create_factory(data):
-                    return lambda name: self._create_prefab_instance(name, data)
+                def create_factory(data, prefab_name):
+                    return lambda name: self._create_prefab_instance(name, data, prefab_name)
 
                 self.register_node(NodeDefinition(
                     name=prefab_name,
@@ -508,19 +578,34 @@ class NodeRegistry:
                     script_path=prefab_data.get("script_path"),
                     description=f"Prefab: {prefab_name} ({prefab_type})",
                     is_builtin=False,
-                    factory_func=create_factory(prefab_data)
+                    factory_func=create_factory(prefab_data, prefab_name)
                 ))
 
             except Exception as e:
                 print(f"Error loading prefab {prefab_file}: {e}")
     
-    def _create_prefab_instance(self, instance_name: str, prefab_data: Dict[str, Any]):
+    def _create_prefab_instance(self, instance_name: str, prefab_data: Dict[str, Any], prefab_name: str):
         """Create an instance from prefab data"""
         from core.scene import Node
 
+        # Handle both old nested format and new direct format
+        if "nodes" in prefab_data and isinstance(prefab_data["nodes"], list):
+            # Old nested format - extract the first node
+            if prefab_data["nodes"]:
+                node_data = prefab_data["nodes"][0]
+            else:
+                raise ValueError("Prefab has empty nodes array")
+        else:
+            # New direct format - use the data directly
+            node_data = prefab_data
+
         # Create node from prefab data using Node.from_dict which handles proper type creation
-        root_node = Node.from_dict(prefab_data)
+        root_node = Node.from_dict(node_data)
         root_node.name = instance_name
+
+        # Set the type to the prefab name so it can be recognized as a prefab instance
+        root_node.type = prefab_name
+
         return root_node
     
     def register_custom_node(self, name: str, category: NodeCategory, 
