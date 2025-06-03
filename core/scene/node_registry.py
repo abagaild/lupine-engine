@@ -137,13 +137,13 @@ class NodeRegistry:
 
     def load_custom_nodes(self, directory: Path) -> None:
         """
-        Search for .lsc script files in `directory` (and subdirectories),
+        Search for .py script files in `directory` (and subdirectories),
         parse their `class <ClassName>` declaration, and register them
         at runtime so that user-defined node types become available.
         """
         for root, _, files in os.walk(directory):
             for fname in files:
-                if not fname.endswith(".lsc"):
+                if not fname.endswith(".py"):
                     continue
                 script_path = Path(root) / fname
                 with open(script_path, "r", encoding="utf-8") as f:
@@ -152,10 +152,12 @@ class NodeRegistry:
                 for line in lines:
                     stripped = line.strip()
                     if stripped.startswith("class "):
-                        # e.g. "class Enemy extends Node2D:"
+                        # e.g. "class Enemy(Node2D):"
                         parts = stripped.split()
                         if len(parts) >= 2:
                             class_name = parts[1]
+                            if "(" in class_name:
+                                class_name = class_name.split("(")[0]
                             if class_name.endswith(":"):
                                 class_name = class_name[:-1]
                         break

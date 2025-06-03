@@ -1,6 +1,6 @@
 """
 Inspector Widget for Lupine Engine
-Displays and edits properties of selected nodes using LSC export variables
+Displays and edits properties of selected nodes using Python export variables
 """
 
 from typing import Dict, Any, Optional, List
@@ -17,7 +17,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QSize
 from PyQt6.QtGui import QFont, QAction, QPainter, QPen, QBrush, QColor
 
 from core.project import LupineProject
-from core.lsc.export_parser import LSCExportParser, ExportGroup, ExportVariable
+from core.python_runtime import PythonScriptRuntime
 from .script_dialog import ScriptAttachmentDialog
 
 
@@ -214,7 +214,7 @@ class InspectorWidget(QWidget):
         self.project = project
         self.current_node = None
         self.property_widgets = {}
-        self.export_parser = LSCExportParser()
+        self.python_runtime = PythonScriptRuntime()
         self.setup_ui()
     
     def setup_ui(self):
@@ -277,14 +277,14 @@ class InspectorWidget(QWidget):
             if not node_data.get("script"):
                 # Add default script path for built-in nodes
                 script_paths = {
-                    "Button": "nodes/Button.lsc",
-                    "Sprite": "nodes/Sprite.lsc",
-                    "Timer": "nodes/Timer.lsc",
-                    "Panel": "nodes/Panel.lsc",
-                    "Label": "nodes/Label.lsc",
-                    "CanvasLayer": "nodes/CanvasLayer.lsc",
-                    "Camera2D": "nodes/Camera2D.lsc",
-                    "AnimatedSprite": "nodes/AnimatedSprite.lsc"
+                    "Button": "nodes/ui/Button.py",
+                    "Sprite": "nodes/node2d/Sprite.py",
+                    "Timer": "nodes/base/Timer.py",
+                    "Panel": "nodes/ui/Panel.py",
+                    "Label": "nodes/ui/Label.py",
+                    "CanvasLayer": "nodes/ui/CanvasLayer.py",
+                    "Camera2D": "nodes/node2d/Camera2D.py",
+                    "AnimatedSprite": "nodes/node2d/AnimatedSprite.py"
                 }
                 if node_type in script_paths:
                     node_data["script"] = script_paths[node_type]
@@ -374,8 +374,8 @@ class InspectorWidget(QWidget):
         for prop_name in string_props:
             value = self.current_node.get(prop_name)
             if value is not None:
-                # Try both old hardcoded keys and new export keys
-                keys = [prop_name, f"export_{prop_name}"]
+                # Try both old hardcoded keys, new export keys, and path widget keys
+                keys = [prop_name, f"export_{prop_name}", f"{prop_name}_edit"]
 
                 for key in keys:
                     if key in self.property_widgets:
@@ -912,46 +912,69 @@ class InspectorWidget(QWidget):
         self.properties_layout.addWidget(group)
 
     def create_script_export_group(self, script_path: str, script_index: int):
-        """Create export variables group for a specific script, including parent class variables"""
+        """Create export variables group for a specific script"""
         try:
-            # Parse LSC file for export variables
+            # Parse Python file for export variables
             full_path = self.project.project_path / script_path
             if not full_path.exists():
                 return
 
-            # Get all export variables including from parent classes
-            all_groups, all_ungrouped = self.get_all_export_variables(str(full_path))
+            # Read and parse the script file
+            with open(full_path, 'r', encoding='utf-8') as f:
+                script_content = f.read()
 
-            # Process grouped variables
-            for export_group in all_groups:
-                if not export_group.variables:
-                    continue
+            # Parse export variables using Python runtime
+            parsed_data = self.python_runtime.parse_export_variables(script_content)
 
-                # Create group for this script's exports
-                group_widget = QGroupBox(f"{export_group.name}")
-                layout = QFormLayout(group_widget)
+            if not parsed_data or not parsed_data.get('variables'):
+                return
 
-                # Special handling for Anchors group
-                if export_group.name == "Anchors":
-                    self.create_anchor_controls_for_export_group(layout, export_group.variables)
-                else:
-                    for var in export_group.variables:
-                        self.create_export_variable_widget(layout, var)
+            export_vars = parsed_data['variables']
+            export_groups = parsed_data.get('groups', {})
 
-                self.properties_layout.addWidget(group_widget)
+            # Create group for this script's exports
+            script_name = Path(script_path).stem
+            group_widget = QGroupBox(f"Script Properties - {script_name}")
+            layout = QFormLayout(group_widget)
 
-            # Process ungrouped variables
-            if all_ungrouped:
-                group_widget = QGroupBox("Properties")
-                layout = QFormLayout(group_widget)
+            # Add ungrouped variables first
+            ungrouped_vars = {name: info for name, info in export_vars.items() if not info.get('group')}
+            for var_name, var_info in ungrouped_vars.items():
+                self.create_python_export_variable_widget(layout, var_name, var_info)
 
-                for var in all_ungrouped:
-                    self.create_export_variable_widget(layout, var)
+            # Add grouped variables
+            for group_name, group_info in export_groups.items():
+                # Create group separator
+                group_label = QLabel(f"--- {group_name} ---")
+                group_label.setStyleSheet("font-weight: bold; color: #8b5fbf; margin-top: 10px;")
+                layout.addRow(group_label)
 
-                self.properties_layout.addWidget(group_widget)
+                # Add group description if available
+                if group_info.get('description'):
+                    desc_label = QLabel(group_info['description'])
+                    desc_label.setStyleSheet("color: #b0b0b0; font-style: italic; font-size: 10px; margin-bottom: 5px;")
+                    layout.addRow(desc_label)
+
+                # Add variables in this group
+                for var_name in group_info['variables']:
+                    if var_name in export_vars:
+                        self.create_python_export_variable_widget(layout, var_name, export_vars[var_name])
+
+            self.properties_layout.addWidget(group_widget)
 
         except Exception as e:
             print(f"Error parsing script exports for {script_path}: {e}")
+
+
+
+    def update_vector_component(self, var_name: str, index: int, value: float):
+        """Update a component of a vector property"""
+        if self.current_node:
+            vector = self.current_node.get(var_name, [0.0, 0.0])
+            if isinstance(vector, list) and len(vector) > index:
+                vector[index] = value
+                self.current_node[var_name] = vector
+                self.property_changed.emit(self.current_node.get("name", ""), var_name, vector)
 
     def create_anchor_controls_for_export_group(self, layout: QFormLayout, anchor_variables: List):
         """Create anchor controls for export group with visual selector"""
@@ -1053,10 +1076,20 @@ class InspectorWidget(QWidget):
             processed_files.add(file_path)
 
             try:
-                # Parse current file
-                groups, ungrouped_vars = self.export_parser.parse_script_file(file_path)
-                all_groups.extend(groups)
-                all_ungrouped.extend(ungrouped_vars)
+                # Parse current file using Python runtime
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    script_content = f.read()
+
+                parsed_data = self.python_runtime.parse_export_variables(script_content)
+                export_vars = parsed_data.get('variables', {})
+                # Convert to old format for compatibility
+                for var_name, var_info in export_vars.items():
+                    all_ungrouped.append(type('ExportVar', (), {
+                        'name': var_name,
+                        'type': var_info['type'],
+                        'default_value': var_info['value'],
+                        'hint': ''
+                    })())
 
                 # Check for extends clause to find parent class
                 with open(file_path, 'r', encoding='utf-8') as f:
@@ -1116,12 +1149,12 @@ class InspectorWidget(QWidget):
         # Open save dialog
         file_dialog = QFileDialog(self)
         file_dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
-        file_dialog.setNameFilter("LSC Scripts (*.lsc)")
-        file_dialog.setDefaultSuffix("lsc")
+        file_dialog.setNameFilter("Python Scripts (*.py)")
+        file_dialog.setDefaultSuffix("py")
 
         # Set default name based on node and script type
         node_name = self.current_node.get("name", "Node")
-        default_name = f"{node_name}_custom.lsc"
+        default_name = f"{node_name}_custom.py"
         file_dialog.selectFile(default_name)
 
         if file_dialog.exec() == QFileDialog.DialogCode.Accepted:
@@ -1157,11 +1190,11 @@ class InspectorWidget(QWidget):
         # Open file dialog to create new script
         file_dialog = QFileDialog(self)
         file_dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
-        file_dialog.setNameFilter("LSC Scripts (*.lsc)")
-        file_dialog.setDefaultSuffix("lsc")
+        file_dialog.setNameFilter("Python Scripts (*.py)")
+        file_dialog.setDefaultSuffix("py")
 
         node_name = self.current_node.get("name", "Node")
-        default_name = f"{node_name}_script.lsc"
+        default_name = f"{node_name}_script.py"
         file_dialog.selectFile(default_name)
 
         if file_dialog.exec() == QFileDialog.DialogCode.Accepted:
@@ -1174,19 +1207,43 @@ class InspectorWidget(QWidget):
                     script_template = f"""# Custom script for {node_name}
 # Generated by Lupine Engine
 
-extends {self.current_node.get("type", "Node")}
+# @export_group("Basic Properties", "Basic configuration options")
+!speed = 100.0  # @type:float "Movement speed"
+!enabled = True  # @type:bool "Enable this component"
+!player_name = "Player"  # @type:str "Name of the player"
 
-# Export variables
-export_group("Custom Properties")
-export var custom_property: String = "default_value"
+# @export_group("Advanced Settings", "Advanced configuration")
+!texture_path = ""  # @type:path "Path to texture file"
+!target_node = ""  # @type:nodepath "Target node path"
+!color = [1.0, 0.0, 0.0, 1.0]  # @type:color "RGBA color values"
+
+# @export_group("Transform", "Position and movement settings")
+!position = [0.0, 0.0]  # Vector2 position
+!max_health = 100  # @type:int "Maximum health points"
 
 # Called when the node enters the scene tree
-func _ready():
-    pass
+def _ready():
+    print(f"Custom script for {node_name} is ready!")
+    print(f"Speed: {{speed}}, Enabled: {{enabled}}")
+    print(f"Player: {{player_name}}, Health: {{max_health}}")
 
 # Called every frame
-func _process(delta: float):
+def _process(delta):
+    if enabled:
+        # Move based on speed
+        position[0] += speed * delta
+
+# Called for physics updates
+def _physics_process(delta):
     pass
+
+# Custom method example
+def take_damage(amount):
+    global max_health
+    max_health -= amount
+    if max_health <= 0:
+        print("Player died!")
+        emit_signal("player_died")
 """
 
                     with open(new_script_path, 'w', encoding='utf-8') as f:
@@ -1210,7 +1267,7 @@ func _process(delta: float):
         """Attach an existing script to the node"""
         file_dialog = QFileDialog(self)
         file_dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
-        file_dialog.setNameFilter("LSC Scripts (*.lsc)")
+        file_dialog.setNameFilter("Python Scripts (*.py)")
 
         if file_dialog.exec() == QFileDialog.DialogCode.Accepted:
             selected_files = file_dialog.selectedFiles()
@@ -1327,90 +1384,79 @@ func _process(delta: float):
             if not full_path.exists():
                 return
 
-            # Parse export variables
-            groups, ungrouped_vars = self.export_parser.parse_script_file(str(full_path))
+            # Parse export variables and groups using Python runtime
+            with open(full_path, 'r', encoding='utf-8') as f:
+                script_content = f.read()
+
+            parsed_data = self.python_runtime.parse_export_variables(script_content)
+            export_vars = parsed_data.get('variables', {})
+            export_groups = parsed_data.get('groups', {})
 
             # Add ungrouped variables first
-            for var in ungrouped_vars:
-                self.create_export_variable_widget(var, layout)
+            ungrouped_vars = {name: info for name, info in export_vars.items() if not info.get('group')}
+            for var_name, var_info in ungrouped_vars.items():
+                self.create_python_export_variable_widget(layout, var_name, var_info)
 
             # Add grouped variables
-            for group in groups:
+            for group_name, group_info in export_groups.items():
                 # Create group separator
-                group_label = QLabel(f"--- {group.name} ---")
+                group_label = QLabel(f"--- {group_name} ---")
                 group_label.setStyleSheet("font-weight: bold; color: #8b5fbf; margin-top: 10px;")
                 layout.addRow(group_label)
 
-                if group.hint:
-                    hint_label = QLabel(group.hint)
-                    hint_label.setStyleSheet("color: #b0b0b0; font-style: italic; font-size: 10px;")
-                    layout.addRow(hint_label)
+                # Add group description if available
+                if group_info.get('description'):
+                    desc_label = QLabel(group_info['description'])
+                    desc_label.setStyleSheet("color: #b0b0b0; font-style: italic; font-size: 10px; margin-bottom: 5px;")
+                    layout.addRow(desc_label)
 
-                for var in group.variables:
-                    self.create_export_variable_widget(var, layout)
+                # Add variables in this group
+                for var_name in group_info['variables']:
+                    if var_name in export_vars:
+                        self.create_python_export_variable_widget(layout, var_name, export_vars[var_name])
 
         except Exception as e:
             print(f"Error loading export variables: {e}")
 
-    def create_export_variable_widget(self, layout: QFormLayout, var: ExportVariable):
-        """Create widget for an export variable"""
-        widget_key = f"export_{var.name}"
+    def create_python_export_variable_widget(self, layout: QFormLayout, var_name: str, var_info: Dict[str, Any]):
+        """Create widget for a Python export variable"""
+        var_type = var_info['type']
+        # Use current node value if available, otherwise use default from script
+        var_value = self.current_node.get(var_name, var_info['value']) if self.current_node else var_info['value']
+        base_type = var_info.get('base_type', var_type)
+        hint = var_info.get('hint', '')
 
-        # Get current value from node or use default
-        current_value = self.current_node.get(var.name, var.default_value) if self.current_node else var.default_value
-
-        if var.type in ['int', 'integer']:
-            widget = QSpinBox()
-            widget.setRange(-999999, 999999)
-            widget.setValue(int(current_value) if current_value is not None else 0)
-            widget.valueChanged.connect(lambda v: self.update_property(var.name, v))
-
-        elif var.type in ['float', 'real']:
-            widget = QDoubleSpinBox()
-            widget.setRange(-999999.0, 999999.0)
-            widget.setDecimals(3)
-            widget.setValue(float(current_value) if current_value is not None else 0.0)
-            widget.valueChanged.connect(lambda v: self.update_property(var.name, v))
-
-        elif var.type in ['bool', 'boolean']:
-            widget = QCheckBox()
-            widget.setChecked(bool(current_value) if current_value is not None else False)
-            widget.toggled.connect(lambda v: self.update_property(var.name, v))
-
-        elif var.type in ['string', 'str']:
-            widget = QLineEdit()
-            widget.setText(str(current_value) if current_value is not None else "")
-            widget.textChanged.connect(lambda text: self.update_property(var.name, text))
-
-        elif var.type == 'Vector2':
+        # Handle special type hints
+        if var_type == 'path':
+            # Path type with browse button
             widget = QWidget()
             widget_layout = QHBoxLayout(widget)
             widget_layout.setContentsMargins(0, 0, 0, 0)
 
-            value = current_value if isinstance(current_value, list) else [0.0, 0.0]
+            path_edit = QLineEdit()
+            path_edit.setText(str(var_value) if var_value is not None else "")
+            path_edit.textChanged.connect(lambda text: self.update_property(var_name, text))
+            widget_layout.addWidget(path_edit)
 
-            x_spin = QDoubleSpinBox()
-            x_spin.setRange(-999999.0, 999999.0)
-            x_spin.setValue(value[0])
-            x_spin.valueChanged.connect(lambda v: self.update_vector2(var.name, 0, v))
+            browse_btn = QPushButton("Browse")
+            browse_btn.clicked.connect(lambda: self.browse_path_for_variable(var_name, path_edit))
+            widget_layout.addWidget(browse_btn)
 
-            y_spin = QDoubleSpinBox()
-            y_spin.setRange(-999999.0, 999999.0)
-            y_spin.setValue(value[1])
-            y_spin.valueChanged.connect(lambda v: self.update_vector2(var.name, 1, v))
+            # Store the edit widget for updates, not the container
+            self.property_widgets[var_name] = path_edit
+            self.property_widgets[f"{var_name}_edit"] = path_edit
 
-            widget_layout.addWidget(x_spin)
-            widget_layout.addWidget(y_spin)
-
-            self.property_widgets[f"{widget_key}_x"] = x_spin
-            self.property_widgets[f"{widget_key}_y"] = y_spin
-
-        elif var.type == 'Color':
+        elif var_type == 'color':
+            # Color type with color picker
             widget = QWidget()
             widget_layout = QHBoxLayout(widget)
             widget_layout.setContentsMargins(0, 0, 0, 0)
 
-            value = current_value if isinstance(current_value, list) else [1.0, 1.0, 1.0, 1.0]
+            # Ensure we have a valid color value
+            if isinstance(var_value, list) and len(var_value) >= 3:
+                color_value = var_value[:4] if len(var_value) >= 4 else var_value + [1.0]
+            else:
+                color_value = [1.0, 1.0, 1.0, 1.0]
 
             # R, G, B, A spinboxes
             for i, component in enumerate(['R', 'G', 'B', 'A']):
@@ -1422,60 +1468,131 @@ func _process(delta: float):
                 spin.setRange(0.0, 1.0)
                 spin.setSingleStep(0.01)
                 spin.setDecimals(3)
-                spin.setValue(value[i] if i < len(value) else (1.0 if i == 3 else 0.0))
-                spin.valueChanged.connect(lambda v, idx=i: self.update_color_component(var.name, idx, v))
+                spin.setValue(color_value[i] if i < len(color_value) else (1.0 if i == 3 else 0.0))
+                spin.valueChanged.connect(lambda v, idx=i: self.update_color_component(var_name, idx, v))
                 widget_layout.addWidget(spin)
-                self.property_widgets[f"{widget_key}_{component.lower()}"] = spin
+                self.property_widgets[f"{var_name}_{component.lower()}"] = spin
 
-        elif var.type == 'path':
-            # Special path type with file browser
-            widget = QWidget()
-            widget_layout = QHBoxLayout(widget)
-            widget_layout.setContentsMargins(0, 0, 0, 0)
+            # Color preview button
+            color_btn = QPushButton()
+            color_btn.setFixedSize(30, 20)
+            color_btn.setStyleSheet(f"background-color: rgb({int(color_value[0]*255)}, {int(color_value[1]*255)}, {int(color_value[2]*255)})")
+            color_btn.clicked.connect(lambda: self.open_color_picker(var_name))
+            widget_layout.addWidget(color_btn)
+            self.property_widgets[f"{var_name}_preview"] = color_btn
 
-            path_edit = QLineEdit()
-            path_edit.setText(str(current_value) if current_value is not None else "")
-            path_edit.textChanged.connect(lambda text: self.update_property(var.name, text))
-            widget_layout.addWidget(path_edit)
-
-            browse_btn = QPushButton("Browse")
-            browse_btn.clicked.connect(lambda: self.browse_path_for_variable(var.name, path_edit))
-            widget_layout.addWidget(browse_btn)
-
-            self.property_widgets[f"{widget_key}_edit"] = path_edit
-
-        elif var.type == 'nodepath':
-            # Special nodepath type with node browser
+        elif var_type == 'nodepath':
+            # Node path type with node picker
             widget = QWidget()
             widget_layout = QHBoxLayout(widget)
             widget_layout.setContentsMargins(0, 0, 0, 0)
 
             nodepath_edit = QLineEdit()
-            nodepath_edit.setText(str(current_value) if current_value is not None else "")
-            nodepath_edit.textChanged.connect(lambda text: self.update_property(var.name, text))
+            nodepath_edit.setText(str(var_value) if var_value is not None else "")
+            nodepath_edit.textChanged.connect(lambda text: self.update_property(var_name, text))
             widget_layout.addWidget(nodepath_edit)
 
             pick_btn = QPushButton("Pick Node")
-            pick_btn.clicked.connect(lambda: self.pick_node_for_variable(var.name, nodepath_edit))
+            pick_btn.clicked.connect(lambda: self.pick_node_for_variable(var_name, nodepath_edit))
             widget_layout.addWidget(pick_btn)
 
-            self.property_widgets[f"{widget_key}_edit"] = nodepath_edit
+            # Store the edit widget for updates, not the container
+            self.property_widgets[var_name] = nodepath_edit
+            self.property_widgets[f"{var_name}_edit"] = nodepath_edit
+
+        # Handle base types
+        elif base_type in ['int']:
+            widget = QSpinBox()
+            widget.setRange(-999999, 999999)
+            widget.setValue(int(var_value) if var_value is not None else 0)
+            widget.valueChanged.connect(lambda v: self.update_property(var_name, v))
+
+        elif base_type in ['float']:
+            widget = QDoubleSpinBox()
+            widget.setRange(-999999.0, 999999.0)
+            widget.setDecimals(3)
+            widget.setValue(float(var_value) if var_value is not None else 0.0)
+            widget.valueChanged.connect(lambda v: self.update_property(var_name, v))
+
+        elif base_type in ['bool']:
+            widget = QCheckBox()
+            widget.setChecked(bool(var_value) if var_value is not None else False)
+            widget.toggled.connect(lambda v: self.update_property(var_name, v))
+
+        elif base_type in ['str']:
+            widget = QLineEdit()
+            widget.setText(str(var_value) if var_value is not None else "")
+            widget.textChanged.connect(lambda text: self.update_property(var_name, text))
+
+        elif base_type == 'list':
+            # Handle list types (Vector2, Color, etc.)
+            if isinstance(var_value, list) and len(var_value) == 2:
+                # Assume Vector2
+                widget = QWidget()
+                widget_layout = QHBoxLayout(widget)
+                widget_layout.setContentsMargins(0, 0, 0, 0)
+
+                x_spin = QDoubleSpinBox()
+                x_spin.setRange(-999999.0, 999999.0)
+                x_spin.setValue(var_value[0])
+                x_spin.valueChanged.connect(lambda v: self.update_vector2(var_name, 0, v))
+
+                y_spin = QDoubleSpinBox()
+                y_spin.setRange(-999999.0, 999999.0)
+                y_spin.setValue(var_value[1])
+                y_spin.valueChanged.connect(lambda v: self.update_vector2(var_name, 1, v))
+
+                widget_layout.addWidget(x_spin)
+                widget_layout.addWidget(y_spin)
+
+                self.property_widgets[f"{var_name}_x"] = x_spin
+                self.property_widgets[f"{var_name}_y"] = y_spin
+
+            elif isinstance(var_value, list) and len(var_value) >= 3:
+                # Assume Color (RGB or RGBA)
+                widget = QWidget()
+                widget_layout = QHBoxLayout(widget)
+                widget_layout.setContentsMargins(0, 0, 0, 0)
+
+                color_value = var_value[:4] if len(var_value) >= 4 else var_value + [1.0] * (4 - len(var_value))
+
+                # R, G, B, A spinboxes
+                for i, component in enumerate(['R', 'G', 'B', 'A']):
+                    label = QLabel(component)
+                    label.setMinimumWidth(15)
+                    widget_layout.addWidget(label)
+
+                    spin = QDoubleSpinBox()
+                    spin.setRange(0.0, 1.0)
+                    spin.setSingleStep(0.01)
+                    spin.setDecimals(3)
+                    spin.setValue(color_value[i])
+                    spin.valueChanged.connect(lambda v, idx=i: self.update_color_component(var_name, idx, v))
+                    widget_layout.addWidget(spin)
+                    self.property_widgets[f"{var_name}_{component.lower()}"] = spin
+            else:
+                # Generic list - treat as string for now
+                widget = QLineEdit()
+                widget.setText(str(var_value) if var_value is not None else "")
+                widget.textChanged.connect(lambda text: self.update_property(var_name, text))
 
         else:
             # Default to string for unknown types
             widget = QLineEdit()
-            widget.setText(str(current_value) if current_value is not None else "")
-            widget.textChanged.connect(lambda text: self.update_property(var.name, text))
+            widget.setText(str(var_value) if var_value is not None else "")
+            widget.textChanged.connect(lambda text: self.update_property(var_name, text))
 
-        # Add tooltip if hint is available
-        if var.hint:
-            widget.setToolTip(var.hint)
+        # Create label with type info and hint
+        label_text = f"{var_name} ({var_type})"
+        if hint:
+            widget.setToolTip(hint)
 
-        # Create label with type info
-        label_text = f"{var.name} ({var.type})"
         layout.addRow(label_text, widget)
 
-        self.property_widgets[widget_key] = widget
+        # Only store the widget reference if it hasn't been stored already
+        # (path and nodepath types store their edit widgets separately)
+        if var_name not in self.property_widgets:
+            self.property_widgets[var_name] = widget
 
     def create_control_group(self):
         """Create Control node properties group"""
@@ -2135,3 +2252,81 @@ func _process(delta: float):
         except Exception as e:
             print(f"Error in pick_node_for_variable: {e}")
             QMessageBox.critical(self, "Error", f"Failed to open node picker: {e}")
+
+    def browse_path_for_variable(self, var_name: str, path_edit: QLineEdit):
+        """Open file browser for path variable"""
+        file_dialog = QFileDialog(self)
+        file_dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptOpen)
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+
+        if file_dialog.exec() == QFileDialog.DialogCode.Accepted:
+            selected_files = file_dialog.selectedFiles()
+            if selected_files:
+                # Make path relative to project if possible
+                selected_path = selected_files[0]
+                try:
+                    relative_path = str(Path(selected_path).relative_to(self.project.project_path))
+                    path_edit.setText(relative_path)
+                    self.update_property(var_name, relative_path)
+                except ValueError:
+                    # Path is outside project, use absolute path
+                    path_edit.setText(selected_path)
+                    self.update_property(var_name, selected_path)
+
+    def open_color_picker(self, var_name: str):
+        """Open color picker for color variable"""
+        from PyQt6.QtWidgets import QColorDialog
+        from PyQt6.QtGui import QColor
+
+        # Get current color value
+        current_value = self.current_node.get(var_name, [1.0, 1.0, 1.0, 1.0]) if self.current_node else [1.0, 1.0, 1.0, 1.0]
+        if isinstance(current_value, list) and len(current_value) >= 3:
+            color = QColor(int(current_value[0] * 255), int(current_value[1] * 255), int(current_value[2] * 255))
+            if len(current_value) >= 4:
+                color.setAlphaF(current_value[3])
+        else:
+            color = QColor(255, 255, 255)
+
+        color_dialog = QColorDialog(color, self)
+        color_dialog.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
+
+        if color_dialog.exec() == QColorDialog.DialogCode.Accepted:
+            selected_color = color_dialog.selectedColor()
+            new_color = [
+                selected_color.redF(),
+                selected_color.greenF(),
+                selected_color.blueF(),
+                selected_color.alphaF()
+            ]
+
+            # Update the color spinboxes
+            for i, component in enumerate(['r', 'g', 'b', 'a']):
+                widget_key = f"{var_name}_{component}"
+                if widget_key in self.property_widgets:
+                    self.property_widgets[widget_key].setValue(new_color[i])
+
+            # Update the color preview button
+            preview_key = f"{var_name}_preview"
+            if preview_key in self.property_widgets:
+                self.property_widgets[preview_key].setStyleSheet(
+                    f"background-color: rgb({int(new_color[0]*255)}, {int(new_color[1]*255)}, {int(new_color[2]*255)})"
+                )
+
+            self.update_property(var_name, new_color)
+
+    def update_color_component(self, var_name: str, component_index: int, value: float):
+        """Update a component of a color property"""
+        if self.current_node:
+            color = self.current_node.get(var_name, [1.0, 1.0, 1.0, 1.0])
+            if isinstance(color, list) and len(color) > component_index:
+                color[component_index] = value
+                self.current_node[var_name] = color
+
+                # Update color preview if it exists
+                preview_key = f"{var_name}_preview"
+                if preview_key in self.property_widgets:
+                    self.property_widgets[preview_key].setStyleSheet(
+                        f"background-color: rgb({int(color[0]*255)}, {int(color[1]*255)}, {int(color[2]*255)})"
+                    )
+
+                self.property_changed.emit(self.current_node.get("name", ""), var_name, color)

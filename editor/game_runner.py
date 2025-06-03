@@ -89,15 +89,14 @@ except ImportError as e:
     print(f"Input constants not available: {e}")
     INPUT_CONSTANTS_AVAILABLE = False
 
-# Import LSC runtime for script execution
+# Import Python runtime for script execution
 try:
-    from core.lsc import LSCRuntime, LSCInterpreter
-    from core.lsc.interpreter import execute_lsc_script
+    from core.python_runtime import PythonScriptRuntime, PythonScriptInstance
     from core.scene import Scene, Node, Node2D, Sprite, Camera2D
-    LSC_AVAILABLE = True
+    PYTHON_RUNTIME_AVAILABLE = True
 except ImportError as e:
-    print(f"LSC not available: {e}")
-    LSC_AVAILABLE = False
+    print(f"Python runtime not available: {e}")
+    PYTHON_RUNTIME_AVAILABLE = False
 
 class LupineGameWindow:
     def __init__(self, project_path: str):
@@ -180,25 +179,24 @@ class LupineGameWindow:
             traceback.print_exc()
             self.input_manager = None
 
-        # LSC Runtime for script execution
-        if LSC_AVAILABLE:
-            self.lsc_runtime = LSCRuntime(game_runtime=self)
-            # Initialize inheritance manager with project path
-            if hasattr(self, 'project_path') and self.project_path:
-                from pathlib import Path
-                self.lsc_runtime.initialize_inheritance_manager(Path(self.project_path))
-            # Add game runtime methods to LSC scope
-            self.setup_lsc_builtins()
+        # Python Runtime for script execution
+        if PYTHON_RUNTIME_AVAILABLE:
+            self.python_runtime = PythonScriptRuntime(game_runtime=self)
+            # Add game runtime methods to Python scope
+            self.setup_python_builtins()
         else:
-            self.lsc_runtime = None
+            self.python_runtime = None
+
+        # LSC runtime compatibility (for backward compatibility)
+        self.lsc_runtime = self.python_runtime
 
         print("DEBUG: About to call load_scene()")
         self.load_scene()
         print("DEBUG: load_scene() completed")
 
-    def setup_lsc_builtins(self):
-        """Setup additional built-in functions for LSC scripts"""
-        if not self.lsc_runtime:
+    def setup_python_builtins(self):
+        """Setup additional built-in functions for Python scripts"""
+        if not self.python_runtime:
             return
 
         # Add game-specific functions to global scope
@@ -210,9 +208,9 @@ class LupineGameWindow:
             "change_scene": self.change_scene,
             "reload_scene": self.reload_scene,
             "get_scene": self.get_scene,
-            "get_delta_time": lambda: self.lsc_runtime.delta_time if self.lsc_runtime else 0.0,
-            "get_runtime_time": lambda: self.lsc_runtime.get_runtime_time() if self.lsc_runtime else 0.0,
-            "get_fps": lambda: 1.0 / self.lsc_runtime.delta_time if self.lsc_runtime and self.lsc_runtime.delta_time > 0 else 0.0,
+            "get_delta_time": lambda: self.python_runtime.delta_time if self.python_runtime else 0.0,
+            "get_runtime_time": lambda: self.python_runtime.get_runtime_time() if self.python_runtime else 0.0,
+            "get_fps": lambda: 1.0 / self.python_runtime.delta_time if self.python_runtime and self.python_runtime.delta_time > 0 else 0.0,
 
             # Input action functions
             "is_action_pressed": self.is_action_pressed,
@@ -278,7 +276,7 @@ class LupineGameWindow:
             builtins.update(input_constants)
 
         for name, func in builtins.items():
-            self.lsc_runtime.global_scope.define(name, func)
+            self.python_runtime.add_builtin(name, func)
 
     def load_game_bounds_from_project(self):
         """Load game bounds from project settings"""
@@ -316,8 +314,8 @@ class LupineGameWindow:
             print(f"Scene nodes: {len(self.scene_data.get('nodes', []))}")
 
             # Load scene using proper Scene class
-            if LSC_AVAILABLE:
-                print("LSC is available, attempting to load Scene object...")
+            if PYTHON_RUNTIME_AVAILABLE:
+                print("Python runtime is available, attempting to load Scene object...")
                 try:
                     self.scene = Scene.load_from_file(scene_file)
                     print(f"Scene object loaded successfully! Root nodes: {len(self.scene.root_nodes)}")
@@ -329,7 +327,7 @@ class LupineGameWindow:
                     print("Falling back to basic scene rendering")
                     self.scene = None
             else:
-                print("LSC not available, using basic scene rendering")
+                print("Python runtime not available, using basic scene rendering")
 
         except Exception as e:
             print(f"Error loading scene: {e}")
@@ -406,7 +404,7 @@ class LupineGameWindow:
             # Load and execute node script if it exists
             if hasattr(node, 'script_path') and node.script_path:
                 print(f"Node {node.name} has script_path: {node.script_path}")
-                if self.lsc_runtime:
+                if self.python_runtime:
                     script_file = Path(self.project_path) / node.script_path
                     print(f"Looking for script file: {script_file}")
                     if script_file.exists():
@@ -414,70 +412,46 @@ class LupineGameWindow:
                         with open(script_file, 'r') as f:
                             script_content = f.read()
 
-                        # Parse extends clause from script content to determine base class
-                        base_class = None
-                        if self.lsc_runtime.inheritance_manager:
-                            base_class = self.lsc_runtime.inheritance_manager.parse_extends_from_script(script_content)
-
-                        # Create script instance for this node with inheritance support
-                        from core.lsc.runtime import LSCScriptInstance
-                        script_instance = LSCScriptInstance(node, node.script_path, self.lsc_runtime, base_class)
-
-                        # Execute the script in the script instance's scope
-                        old_scope = self.lsc_runtime.current_scope
-                        self.lsc_runtime.current_scope = script_instance.scope
+                        # Create script instance for this node
+                        script_instance = PythonScriptInstance(node, node.script_path, self.python_runtime)
 
                         try:
-                            # Add node reference to script scope
-                            script_instance.scope.define('self', node)
-                            script_instance.scope.define('node', node)
-
-                            # Expose common node properties directly to scope for easier access
-                            if hasattr(node, 'position'):
-                                script_instance.scope.define('position', node.position)
-                            if hasattr(node, 'rotation'):
-                                script_instance.scope.define('rotation', node.rotation)
-                            if hasattr(node, 'scale'):
-                                script_instance.scope.define('scale', node.scale)
-                            if hasattr(node, 'name'):
-                                script_instance.scope.define('name', node.name)
-
                             # Execute script
-                            execute_lsc_script(script_content, self.lsc_runtime)
+                            success = self.python_runtime.execute_script(script_content, script_instance)
 
                             # Attach script instance to node
                             node.script_instance = script_instance
 
-                            # Call ready method if it exists (support both _ready and on_ready)
-                            ready_called = False
-                            if script_instance.scope.has('_ready'):
-                                print(f"Calling _ready for {node.name}")
-                                script_instance.call_method('_ready')
-                                script_instance.ready_called = True
-                                ready_called = True
-                            elif script_instance.scope.has('on_ready'):
-                                print(f"Calling on_ready for {node.name}")
-                                script_instance.call_method('on_ready')
-                                script_instance.ready_called = True
-                                ready_called = True
+                            if success:
+                                # Call ready method if it exists (support both _ready and _on_ready)
+                                ready_called = False
+                                if script_instance.has_method('_ready'):
+                                    print(f"Calling _ready for {node.name}")
+                                    script_instance.call_method('_ready')
+                                    script_instance.ready_called = True
+                                    ready_called = True
+                                elif script_instance.has_method('_on_ready'):
+                                    print(f"Calling _on_ready for {node.name}")
+                                    script_instance.call_method('_on_ready')
+                                    script_instance.ready_called = True
+                                    ready_called = True
 
-                            if not ready_called:
-                                print(f"No _ready or on_ready method found for {node.name}")
+                                if not ready_called:
+                                    print(f"No _ready or _on_ready method found for {node.name}")
 
-                            print(f"SUCCESS: Loaded script for {node.name}: {node.script_path}")
+                                print(f"SUCCESS: Loaded script for {node.name}: {node.script_path}")
+                            else:
+                                print(f"Failed to execute script for {node.name}")
 
                         except Exception as e:
                             print(f"Error loading script for {node.name}: {e}")
                             # Don't crash the entire game - continue with other nodes
                             # Create a minimal script instance so the node still works
                             node.script_instance = script_instance
-                        finally:
-                            # Restore scope
-                            self.lsc_runtime.current_scope = old_scope
                     else:
                         print(f"Script file not found: {script_file}")
                 else:
-                    print(f"LSC runtime not available for {node.name}")
+                    print(f"Python runtime not available for {node.name}")
             else:
                 print(f"Node {node.name} has no script_path")
 
@@ -1171,12 +1145,12 @@ class LupineGameWindow:
                 self.mouse_position, self.current_modifiers
             )
 
-        # Update LSC runtime timing
-        if self.lsc_runtime:
-            self.lsc_runtime.update_time(delta_time)
+        # Update Python runtime timing
+        if self.python_runtime:
+            self.python_runtime.update_time(delta_time)
 
         # Call script update methods if available (before physics to allow script-driven movement)
-        if self.lsc_runtime and self.scene:
+        if self.python_runtime and self.scene:
             for root_node in self.scene.root_nodes:
                 self.update_node_scripts(root_node, delta_time)
 
@@ -1315,21 +1289,21 @@ class LupineGameWindow:
         """Update scripts attached to nodes"""
         try:
             # Call script update methods if the node has a script
-            if hasattr(node, 'script_instance'):
+            if hasattr(node, 'script_instance') and node.script_instance is not None:
                 # Call _process method (Godot-style update method)
-                if node.script_instance.scope.has('_process'):
+                if hasattr(node.script_instance, 'has_method') and node.script_instance.has_method('_process'):
                     node.script_instance.call_method('_process', delta_time)
-                elif node.script_instance.scope.has('process'):
+                elif hasattr(node.script_instance, 'has_method') and node.script_instance.has_method('process'):
                     node.script_instance.call_method('process', delta_time)
 
                 # Call _physics_process method (Godot-style physics update method)
-                if node.script_instance.scope.has('_physics_process'):
+                if hasattr(node.script_instance, 'has_method') and node.script_instance.has_method('_physics_process'):
                     node.script_instance.call_method('_physics_process', delta_time)
-                elif node.script_instance.scope.has('physics_process'):
+                elif hasattr(node.script_instance, 'has_method') and node.script_instance.has_method('physics_process'):
                     node.script_instance.call_method('physics_process', delta_time)
 
                 # Also call on_update for compatibility
-                if node.script_instance.scope.has('on_update'):
+                if hasattr(node.script_instance, 'has_method') and node.script_instance.has_method('on_update'):
                     node.script_instance.call_method('on_update', delta_time)
 
         except Exception as e:
@@ -1338,8 +1312,9 @@ class LupineGameWindow:
             traceback.print_exc()
 
         # Update children
-        for child in node.children:
-            self.update_node_scripts(child, delta_time)
+        if hasattr(node, 'children'):
+            for child in node.children:
+                self.update_node_scripts(child, delta_time)
 
 
 
@@ -1455,9 +1430,10 @@ class LupineGameWindow:
 
                 # Check if mouse is over this UI node
                 if self.is_point_in_ui_node(node, ui_x, ui_y):
-                    if hasattr(node, 'script_instance'):
+                    if hasattr(node, 'script_instance') and node.script_instance is not None:
                         # Call the mouse event method
-                        node.script_instance.call_method(method_name, button, [ui_x, ui_y])
+                        if hasattr(node.script_instance, 'call_method'):
+                            node.script_instance.call_method(method_name, button, [ui_x, ui_y])
 
                         # For buttons, also update internal state
                         if node.type == 'Button':
@@ -1469,8 +1445,9 @@ class LupineGameWindow:
             print(f"Error handling mouse event for {node.name}: {e}")
 
         # Handle mouse events for children
-        for child in node.children:
-            self.handle_mouse_event(child, method_name, x, y, button, modifiers)
+        if hasattr(node, 'children'):
+            for child in node.children:
+                self.handle_mouse_event(child, method_name, x, y, button, modifiers)
 
     def update_mouse_hover(self, node, x, y):
         """Update hover state for UI nodes"""
@@ -1487,17 +1464,19 @@ class LupineGameWindow:
                     node._is_hovered = is_hovered
 
                     # Call hover events if node has script
-                    if hasattr(node, 'script_instance'):
-                        if is_hovered:
-                            node.script_instance.call_method('mouse_entered')
-                        else:
-                            node.script_instance.call_method('mouse_exited')
+                    if hasattr(node, 'script_instance') and node.script_instance is not None:
+                        if hasattr(node.script_instance, 'call_method'):
+                            if is_hovered:
+                                node.script_instance.call_method('mouse_entered')
+                            else:
+                                node.script_instance.call_method('mouse_exited')
         except Exception as e:
             print(f"Error updating hover for {node.name}: {e}")
 
         # Update hover for children
-        for child in node.children:
-            self.update_mouse_hover(child, x, y)
+        if hasattr(node, 'children'):
+            for child in node.children:
+                self.update_mouse_hover(child, x, y)
 
     def screen_to_ui_coordinates(self, screen_x, screen_y):
         """Convert screen coordinates to UI coordinates"""
@@ -1531,14 +1510,16 @@ class LupineGameWindow:
     def handle_node_input(self, node, method_name, *args):
         """Handle input events for node scripts"""
         try:
-            if hasattr(node, 'script_instance'):
-                node.script_instance.call_method(method_name, *args)
+            if hasattr(node, 'script_instance') and node.script_instance is not None:
+                if hasattr(node.script_instance, 'call_method'):
+                    node.script_instance.call_method(method_name, *args)
         except Exception as e:
             print(f"Error handling input for {node.name}: {e}")
 
         # Handle input for children
-        for child in node.children:
-            self.handle_node_input(child, method_name, *args)
+        if hasattr(node, 'children'):
+            for child in node.children:
+                self.handle_node_input(child, method_name, *args)
 
     def _update_modifiers(self, modifiers):
         """Update current modifier keys state"""

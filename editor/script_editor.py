@@ -1,6 +1,6 @@
 """
 Script Editor Widget for Lupine Engine
-Provides LSC script editing with syntax highlighting and code completion
+Provides Python script editing with syntax highlighting and code completion
 """
 
 import os
@@ -19,9 +19,9 @@ import re
 from core.project import LupineProject
 
 
-class LSCSyntaxHighlighter(QSyntaxHighlighter):
-    """Syntax highlighter for LSC (Lupine Script) language"""
-    
+class PythonSyntaxHighlighter(QSyntaxHighlighter):
+    """Syntax highlighter for Python language"""
+
     def __init__(self, document: QTextDocument):
         super().__init__(document)
         self.setup_highlighting_rules()
@@ -36,11 +36,11 @@ class LSCSyntaxHighlighter(QSyntaxHighlighter):
         keyword_format.setFontWeight(QFont.Weight.Bold)
         
         keywords = [
-            "class", "extends", "func", "var", "const", "if", "else", "elif",
-            "for", "while", "do", "break", "continue", "return", "pass",
-            "and", "or", "not", "in", "is", "true", "false", "null",
-            "export", "export_group", "signal", "enum", "tool", "onready",
-            "self", "super", "yield", "await", "match", "when"
+            "def", "class", "if", "else", "elif", "for", "while", "break",
+            "continue", "return", "pass", "and", "or", "not", "in", "is",
+            "True", "False", "None", "import", "from", "as", "try", "except",
+            "finally", "raise", "with", "lambda", "global", "nonlocal", "yield",
+            "self", "super"
         ]
         
         for keyword in keywords:
@@ -89,22 +89,31 @@ class LSCSyntaxHighlighter(QSyntaxHighlighter):
         function_format.setForeground(QColor("#dcdcaa"))  # Yellow
         function_format.setFontWeight(QFont.Weight.Bold)
         
-        self.highlighting_rules.append((re.compile(r"\\bfunc\\s+(\\w+)"), function_format))
-        
+        self.highlighting_rules.append((re.compile(r"\\bdef\\s+(\\w+)"), function_format))
+
         # Class definitions
         class_format = QTextCharFormat()
         class_format.setForeground(QColor("#4ec9b0"))  # Cyan
         class_format.setFontWeight(QFont.Weight.Bold)
-        
+
         self.highlighting_rules.append((re.compile(r"\\bclass\\s+(\\w+)"), class_format))
-        
-        # Export variables
+
+        # Export variables (variables starting with '!')
         export_format = QTextCharFormat()
         export_format.setForeground(QColor("#c586c0"))  # Purple
         export_format.setFontWeight(QFont.Weight.Bold)
-        
-        self.highlighting_rules.append((re.compile(r"\\bexport\\b"), export_format))
-        self.highlighting_rules.append((re.compile(r"\\bexport_group\\b"), export_format))
+
+        self.highlighting_rules.append((re.compile(r"!\\w+"), export_format))
+
+        # Special game engine methods
+        special_format = QTextCharFormat()
+        special_format.setForeground(QColor("#ff64ff"))  # Magenta
+        special_format.setFontWeight(QFont.Weight.Bold)
+
+        special_methods = ["_ready", "_on_ready", "_process", "_physics_process", "_input", "_unhandled_input"]
+        for method in special_methods:
+            pattern = f"\\b{method}\\b"
+            self.highlighting_rules.append((re.compile(pattern), special_format))
     
     def highlightBlock(self, text: str):
         """Apply syntax highlighting to a block of text"""
@@ -143,7 +152,7 @@ class ScriptEditorTab(QWidget):
         self.text_edit.textChanged.connect(self.on_text_changed)
         
         # Apply syntax highlighting
-        self.highlighter = LSCSyntaxHighlighter(self.text_edit.document())
+        self.highlighter = PythonSyntaxHighlighter(self.text_edit.document())
         
         layout.addWidget(self.text_edit)
     
@@ -249,12 +258,12 @@ class ScriptEditorWidget(QWidget):
         welcome_layout = QVBoxLayout(welcome_widget)
         welcome_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        welcome_label = QLabel("LSC Script Editor")
+        welcome_label = QLabel("Python Script Editor")
         welcome_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #8b5fbf;")
         welcome_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         welcome_layout.addWidget(welcome_label)
-        
-        info_label = QLabel("Create a new script or open an existing one to start editing")
+
+        info_label = QLabel("Create a new Python script or open an existing one to start editing")
         info_label.setStyleSheet("color: #b0b0b0; margin-top: 10px;")
         info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         welcome_layout.addWidget(info_label)
@@ -263,27 +272,25 @@ class ScriptEditorWidget(QWidget):
     
     def new_script(self):
         """Create a new script"""
-        # Default LSC script template
-        template = '''# LSC Script
-# Lupine Scripting Language
-
-extends Node2D
+        # Default Python script template
+        template = '''# Python Script for Lupine Engine
+# Use '!' prefix for export variables (shown in inspector)
 
 # Export variables (shown in inspector)
-export var speed: float = 100.0
-export var health: int = 100
+!speed = 100.0
+!health = 100
 
 # Called when the node enters the scene tree
-func _ready():
+def _ready():
     print("Script ready!")
 
 # Called every frame
-func _process(delta: float):
+def _process(delta):
     # Update logic here
     pass
 
 # Called for physics updates
-func _physics_process(delta: float):
+def _physics_process(delta):
     # Physics logic here
     pass
 '''
@@ -303,7 +310,7 @@ func _physics_process(delta: float):
         """Open an existing script"""
         scripts_dir = self.project.get_absolute_path("scripts")
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "Open Script", str(scripts_dir), "LSC Scripts (*.lsc);;All Files (*)"
+            self, "Open Script", str(scripts_dir), "Python Scripts (*.py);;All Files (*)"
         )
         
         if file_path:
@@ -379,7 +386,7 @@ func _physics_process(delta: float):
             # Need to save as
             scripts_dir = self.project.get_absolute_path("scripts")
             file_path, _ = QFileDialog.getSaveFileName(
-                self, "Save Script", str(scripts_dir), "LSC Scripts (*.lsc)"
+                self, "Save Script", str(scripts_dir), "Python Scripts (*.py)"
             )
             
             if not file_path:

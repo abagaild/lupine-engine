@@ -391,19 +391,19 @@ class NodeRegistry:
             self.load_prefabs_from_directory(prefabs_dir)
 
     def _load_nodes_from_directory(self, directory: Path, category: NodeCategory):
-        """Load all .lsc files from a directory as nodes"""
-        for lsc_file in directory.glob("*.lsc"):
+        """Load all .py files from a directory as nodes"""
+        for py_file in directory.glob("*.py"):
             try:
-                node_name = lsc_file.stem
+                node_name = py_file.stem
 
                 # Determine class name from node name or content
-                class_name = self._determine_class_name(lsc_file, node_name)
+                class_name = self._determine_class_name(py_file, node_name)
 
                 # Create relative script path from project root
                 if self._project_path:
-                    script_path = str(lsc_file.relative_to(self._project_path))
+                    script_path = str(py_file.relative_to(self._project_path))
                 else:
-                    script_path = str(lsc_file)
+                    script_path = str(py_file)
 
                 # Register the node
                 self.register_node(NodeDefinition(
@@ -418,10 +418,10 @@ class NodeRegistry:
                 print(f"Loaded project node: {node_name} ({category.value})")
 
             except Exception as e:
-                print(f"Error loading node {lsc_file}: {e}")
+                print(f"Error loading node {py_file}: {e}")
 
-    def _determine_class_name(self, lsc_file: Path, node_name: str) -> str:
-        """Determine the class name for a node from its LSC file"""
+    def _determine_class_name(self, py_file: Path, node_name: str) -> str:
+        """Determine the class name for a node from its Python file"""
         try:
             # First, check if this is a known specific node type
             known_nodes = [
@@ -435,16 +435,16 @@ class NodeRegistry:
             if node_name in known_nodes:
                 return node_name
 
-            # For other nodes, check the extends clause
-            with open(lsc_file, 'r', encoding='utf-8') as f:
+            # For other nodes, check for class inheritance in Python
+            with open(py_file, 'r', encoding='utf-8') as f:
                 content = f.read()
 
-            # Look for extends clause to determine base class
-            if "extends Control" in content:
+            # Look for class inheritance to determine base class
+            if "class" in content and "Control" in content:
                 return "Control"
-            elif "extends Node2D" in content:
+            elif "class" in content and "Node2D" in content:
                 return "Node2D"
-            elif "extends Node" in content:
+            elif "class" in content and "Node" in content:
                 return "Node"
             else:
                 return "Node"  # Fallback
@@ -624,25 +624,25 @@ class NodeRegistry:
         """Scan directory for custom node scripts"""
         if not nodes_dir.exists():
             return
-        
-        for script_file in nodes_dir.glob("*.lsc"):
+
+        for script_file in nodes_dir.glob("*.py"):
             try:
                 # Parse script to determine node type and category
                 with open(script_file, 'r', encoding='utf-8') as f:
                     content = f.read()
-                
-                # Extract extends clause to determine category
-                if "extends Control" in content:
+
+                # Extract class inheritance to determine category
+                if "Control" in content:
                     category = NodeCategory.UI
-                elif "extends Node2D" in content:
+                elif "Node2D" in content:
                     category = NodeCategory.NODE_2D
-                elif "extends Node" in content and ("AudioStreamPlayer" in content or "audio" in script_file.name.lower()):
+                elif "Node" in content and ("AudioStreamPlayer" in content or "audio" in script_file.name.lower()):
                     category = NodeCategory.AUDIO
                 else:
                     category = NodeCategory.BASE
-                
+
                 node_name = script_file.stem
-                
+
                 # Don't register if already exists (builtin takes precedence)
                 if node_name not in self._nodes:
                     self.register_custom_node(
@@ -651,7 +651,7 @@ class NodeRegistry:
                         script_path=str(script_file.relative_to(nodes_dir.parent)),
                         description=f"Custom {category.value} node"
                     )
-                    
+
             except Exception as e:
                 print(f"Error scanning custom node {script_file}: {e}")
 

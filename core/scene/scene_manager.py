@@ -77,10 +77,12 @@ class Scene:
         return scene
 
     def save_to_file(self, file_path: str) -> None:
+        from ..json_utils import safe_json_dump
+
         p = Path(file_path)
         p.parent.mkdir(parents=True, exist_ok=True)
         with open(p, "w", encoding="utf-8") as f:
-            json.dump(self.to_dict(), f, indent=2)
+            safe_json_dump(self.to_dict(), f, indent=2)
 
     @classmethod
     def load_from_file(cls, file_path: str) -> Optional["Scene"]:

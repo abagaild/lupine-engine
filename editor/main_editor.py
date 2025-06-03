@@ -418,7 +418,8 @@ class MainEditor(QMainWindow):
             return
 
         try:
-            import json
+            from core.json_utils import safe_json_dump, convert_to_json_serializable
+
             scene_file = self.project.get_absolute_path(scene_path)
             scene_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -432,8 +433,11 @@ class MainEditor(QMainWindow):
                 # Update open_scenes to match
                 self.open_scenes[scene_path] = scene_data_to_save
 
+            # Ensure all data is JSON serializable
+            scene_data_to_save = convert_to_json_serializable(scene_data_to_save)
+
             with open(scene_file, 'w') as f:
-                json.dump(scene_data_to_save, f, indent=2)
+                safe_json_dump(scene_data_to_save, f, indent=2)
 
             self.status_bar.showMessage(f"Saved {scene_path}", 2000)
 

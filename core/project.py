@@ -114,7 +114,8 @@ class LupineProject:
         
         scene_path = self.project_path / "scenes" / "Main.scene"
         with open(scene_path, 'w') as f:
-            json.dump(scene_content, f, indent=2)
+            from .json_utils import safe_json_dump
+            safe_json_dump(scene_content, f, indent=2)
         
         self.config["main_scene"] = "scenes/Main.scene"
         self.save_project()
@@ -141,9 +142,10 @@ class LupineProject:
         """Save project configuration"""
         try:
             with open(self.project_file, 'w') as f:
-                json.dump(self.config, f, indent=2)
+                from .json_utils import safe_json_dump
+                safe_json_dump(self.config, f, indent=2)
             return True
-            
+
         except Exception as e:
             print(f"Error saving project: {e}")
             return False
@@ -178,17 +180,17 @@ class LupineProject:
 
             # Define node categorization based on new directory structure
             node_categories = {
-                "base": ["base/Node.lsc", "base/Node2D.lsc", "base/Timer.lsc"],
-                "node2d": ["node2d/Sprite.lsc", "node2d/AnimatedSprite.lsc", "node2d/Camera2D.lsc",
-                          "node2d/Area2D.lsc", "node2d/CollisionShape2D.lsc", "node2d/CollisionPolygon2D.lsc",
-                          "node2d/RigidBody2D.lsc", "node2d/StaticBody2D.lsc", "node2d/KinematicBody2D.lsc"],
-                "ui": ["ui/Control.lsc", "ui/Panel.lsc", "ui/Label.lsc", "ui/Button.lsc", "ui/CanvasLayer.lsc",
-                       "ui/ColorRect.lsc", "ui/TextureRect.lsc", "ui/ProgressBar.lsc",
-                       "ui/VBoxContainer.lsc", "ui/HBoxContainer.lsc", "ui/CenterContainer.lsc", "ui/GridContainer.lsc",
-                       "ui/RichTextLabel.lsc", "ui/PanelContainer.lsc", "ui/NinePatchRect.lsc", "ui/ItemList.lsc",
-                       "ui/LineEdit.lsc", "ui/CheckBox.lsc", "ui/Slider.lsc", "ui/ScrollContainer.lsc",
-                       "ui/HSeparator.lsc", "ui/VSeparator.lsc"],
-                "audio": ["audio/AudioStreamPlayer.lsc", "audio/AudioStreamPlayer2D.lsc"],
+                "base": ["base/Node.py", "base/Node2D.py", "base/Timer.py"],
+                "node2d": ["node2d/Sprite.py", "node2d/AnimatedSprite.py", "node2d/Camera2D.py",
+                          "node2d/Area2D.py", "node2d/CollisionShape2D.py", "node2d/CollisionPolygon2D.py",
+                          "node2d/RigidBody2D.py", "node2d/StaticBody2D.py", "node2d/KinematicBody2D.py"],
+                "ui": ["ui/Control.py", "ui/Panel.py", "ui/Label.py", "ui/Button.py", "ui/CanvasLayer.py",
+                       "ui/ColorRect.py", "ui/TextureRect.py", "ui/ProgressBar.py",
+                       "ui/VBoxContainer.py", "ui/HBoxContainer.py", "ui/CenterContainer.py", "ui/GridContainer.py",
+                       "ui/RichTextLabel.py", "ui/PanelContainer.py", "ui/NinePatchRect.py", "ui/ItemList.py",
+                       "ui/LineEdit.py", "ui/CheckBox.py", "ui/Slider.py", "ui/ScrollContainer.py",
+                       "ui/HSeparator.py", "ui/VSeparator.py"],
+                "audio": ["audio/AudioStreamPlayer.py", "audio/AudioStreamPlayer2D.py"],
                 "prefabs": []  # Will be populated with any remaining files
             }
 
@@ -206,20 +208,20 @@ class LupineProject:
                     else:
                         print(f"Warning: Node file {node_file} not found in engine")
 
-            # Copy any remaining .lsc files to prefabs
+            # Copy any remaining .py files to prefabs
             prefabs_dir = self.project_path / "nodes" / "prefabs"
-            for lsc_file in engine_nodes_dir.glob("*.lsc"):
+            for py_file in engine_nodes_dir.glob("*.py"):
                 # Check if already copied to another category
                 already_copied = False
                 for category_files in node_categories.values():
-                    if lsc_file.name in category_files:
+                    if py_file.name in category_files:
                         already_copied = True
                         break
 
                 if not already_copied:
-                    dest_file = prefabs_dir / lsc_file.name
-                    shutil.copy2(lsc_file, dest_file)
-                    print(f"Copied {lsc_file.name} to prefabs/")
+                    dest_file = prefabs_dir / py_file.name
+                    shutil.copy2(py_file, dest_file)
+                    print(f"Copied {py_file.name} to prefabs/")
 
         except Exception as e:
             print(f"Error copying node definitions: {e}")
@@ -240,8 +242,8 @@ class LupineProject:
 
             for prefab_file in engine_prefabs_dir.glob("*"):
                 if prefab_file.is_file():
-                    # Copy LSC files to nodes/prefabs for node registry
-                    if prefab_file.suffix == ".lsc":
+                    # Copy Python files to nodes/prefabs for node registry
+                    if prefab_file.suffix == ".py":
                         nodes_dest_file = nodes_prefabs_dir / prefab_file.name
                         shutil.copy2(prefab_file, nodes_dest_file)
                         print(f"Copied prefab script: {prefab_file.name} to nodes/prefabs/")
@@ -305,7 +307,8 @@ class ProjectManager:
                 "recent_projects": self.recent_projects
             }
             with open(self.config_file, 'w') as f:
-                json.dump(config, f, indent=2)
+                from .json_utils import safe_json_dump
+                safe_json_dump(config, f, indent=2)
         except Exception as e:
             print(f"Error saving config: {e}")
     
