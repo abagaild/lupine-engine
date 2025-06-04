@@ -8,7 +8,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QDockWidget, QMenuBar, QMenu, QToolBar, QStatusBar, QSplitter,
-    QMessageBox, QFileDialog, QApplication
+    QMessageBox, QFileDialog, QApplication, QDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon, QKeySequence
@@ -110,6 +110,7 @@ class MainEditor(QMainWindow):
         
         # Project settings
         project_settings_action = QAction("Project Settings", self)
+        project_settings_action.setShortcut("Ctrl+Alt+P")
         project_settings_action.triggered.connect(self.open_project_settings)
         file_menu.addAction(project_settings_action)
         
@@ -418,7 +419,8 @@ class MainEditor(QMainWindow):
             return
 
         try:
-            import json
+            from core.json_utils import safe_json_dump, convert_to_json_serializable
+
             scene_file = self.project.get_absolute_path(scene_path)
             scene_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -432,8 +434,11 @@ class MainEditor(QMainWindow):
                 # Update open_scenes to match
                 self.open_scenes[scene_path] = scene_data_to_save
 
+            # Ensure all data is JSON serializable
+            scene_data_to_save = convert_to_json_serializable(scene_data_to_save)
+
             with open(scene_file, 'w') as f:
-                json.dump(scene_data_to_save, f, indent=2)
+                safe_json_dump(scene_data_to_save, f, indent=2)
 
             self.status_bar.showMessage(f"Saved {scene_path}", 2000)
 
@@ -476,8 +481,13 @@ class MainEditor(QMainWindow):
         self.script_editor_dock.raise_()
 
     def open_project_settings(self):
-        """Open project settings (placeholder)"""
-        QMessageBox.information(self, "Project Settings", "Project settings dialog coming soon!")
+        """Open project settings dialog"""
+        from .project_settings_dialog import ProjectSettingsDialog
+        dialog = ProjectSettingsDialog(self.project, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # Reload project to reflect changes
+            self.project.load_project()
+            self.status_bar.showMessage("Project settings saved", 3000)
 
     def show_about(self):
         """Show about dialog"""

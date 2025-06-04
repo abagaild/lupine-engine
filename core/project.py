@@ -41,6 +41,7 @@ class LupineProject:
                 "nodes/base",
                 "nodes/node2d",
                 "nodes/ui",
+                "nodes/audio",
                 "nodes/prefabs"
             ]
 
@@ -59,10 +60,12 @@ class LupineProject:
                 "main_scene": "",
                 "settings": {
                     "display": {
-                        "width": 1024,
-                        "height": 768,
+                        "width": 1920,
+                        "height": 1080,
                         "fullscreen": False,
-                        "resizable": True
+                        "resizable": True,
+                        "scaling_mode": "stretch",
+                        "scaling_filter": "linear"
                     },
                     "audio": {
                         "master_volume": 1.0,
@@ -113,7 +116,8 @@ class LupineProject:
         
         scene_path = self.project_path / "scenes" / "Main.scene"
         with open(scene_path, 'w') as f:
-            json.dump(scene_content, f, indent=2)
+            from .json_utils import safe_json_dump
+            safe_json_dump(scene_content, f, indent=2)
         
         self.config["main_scene"] = "scenes/Main.scene"
         self.save_project()
@@ -140,9 +144,10 @@ class LupineProject:
         """Save project configuration"""
         try:
             with open(self.project_file, 'w') as f:
-                json.dump(self.config, f, indent=2)
+                from .json_utils import safe_json_dump
+                safe_json_dump(self.config, f, indent=2)
             return True
-            
+
         except Exception as e:
             print(f"Error saving project: {e}")
             return False
@@ -175,44 +180,31 @@ class LupineProject:
                 print(f"Warning: Engine nodes directory not found at {engine_nodes_dir}")
                 return
 
-            # Define node categorization based on new directory structure
-            node_categories = {
-                "base": ["base/Node.lsc", "base/Node2D.lsc", "base/Timer.lsc"],
-                "node2d": ["node2d/Sprite.lsc", "node2d/AnimatedSprite.lsc", "node2d/Camera2D.lsc",
-                          "node2d/Area2D.lsc", "node2d/CollisionShape2D.lsc", "node2d/CollisionPolygon2D.lsc",
-                          "node2d/RigidBody2D.lsc", "node2d/StaticBody2D.lsc", "node2d/KinematicBody2D.lsc"],
-                "ui": ["ui/Control.lsc", "ui/Panel.lsc", "ui/Label.lsc", "ui/Button.lsc", "ui/CanvasLayer.lsc"],
-                "prefabs": []  # Will be populated with any remaining files
-            }
+            # Dynamically copy nodes based on engine directory structure
+            # This preserves the engine's organization without hardcoding
 
-            # Copy categorized nodes
-            for category, node_files in node_categories.items():
-                category_dir = self.project_path / "nodes" / category
+            # First, copy the entire nodes directory structure
+            if engine_nodes_dir.exists():
+                for item in engine_nodes_dir.rglob("*"):
+                    if item.is_file() and item.suffix == ".py":
+                        # Calculate relative path from engine nodes dir
+                        relative_path = item.relative_to(engine_nodes_dir)
 
-                for node_file in node_files:
-                    source_file = engine_nodes_dir / node_file
-                    if source_file.exists():
-                        # Extract just the filename for the destination
-                        dest_file = category_dir / Path(node_file).name
-                        shutil.copy2(source_file, dest_file)
-                        print(f"Copied {Path(node_file).name} to {category}/")
-                    else:
-                        print(f"Warning: Node file {node_file} not found in engine")
+                        # Create destination path maintaining directory structure
+                        dest_file = self.project_path / "nodes" / relative_path
+                        dest_file.parent.mkdir(parents=True, exist_ok=True)
 
-            # Copy any remaining .lsc files to prefabs
+                        # Copy the file
+                        shutil.copy2(item, dest_file)
+                        print(f"Copied {relative_path} to nodes/")
+
+            # Also copy any loose .py files to prefabs category
             prefabs_dir = self.project_path / "nodes" / "prefabs"
-            for lsc_file in engine_nodes_dir.glob("*.lsc"):
-                # Check if already copied to another category
-                already_copied = False
-                for category_files in node_categories.values():
-                    if lsc_file.name in category_files:
-                        already_copied = True
-                        break
-
-                if not already_copied:
-                    dest_file = prefabs_dir / lsc_file.name
-                    shutil.copy2(lsc_file, dest_file)
-                    print(f"Copied {lsc_file.name} to prefabs/")
+            for py_file in engine_nodes_dir.glob("*.py"):
+                dest_file = prefabs_dir / py_file.name
+                if not dest_file.exists():  # Don't overwrite if already copied
+                    shutil.copy2(py_file, dest_file)
+                    print(f"Copied {py_file.name} to prefabs/")
 
         except Exception as e:
             print(f"Error copying node definitions: {e}")
@@ -233,8 +225,8 @@ class LupineProject:
 
             for prefab_file in engine_prefabs_dir.glob("*"):
                 if prefab_file.is_file():
-                    # Copy LSC files to nodes/prefabs for node registry
-                    if prefab_file.suffix == ".lsc":
+                    # Copy Python files to nodes/prefabs for node registry
+                    if prefab_file.suffix == ".py":
                         nodes_dest_file = nodes_prefabs_dir / prefab_file.name
                         shutil.copy2(prefab_file, nodes_dest_file)
                         print(f"Copied prefab script: {prefab_file.name} to nodes/prefabs/")
@@ -298,7 +290,8 @@ class ProjectManager:
                 "recent_projects": self.recent_projects
             }
             with open(self.config_file, 'w') as f:
-                json.dump(config, f, indent=2)
+                from .json_utils import safe_json_dump
+                safe_json_dump(config, f, indent=2)
         except Exception as e:
             print(f"Error saving config: {e}")
     

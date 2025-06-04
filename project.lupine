@@ -1,0 +1,15 @@
+{
+  "name": "Test Project",
+  "description": "Test project for sprite rendering",
+  "version": "1.0.0",
+  "engine_version": "1.0.0",
+  "main_scene": "scenes/TestScene.scene",
+  "settings": {
+    "display": {
+      "width": 800,
+      "height": 600,
+      "fullscreen": false,
+      "resizable": true
+    }
+  }
+}

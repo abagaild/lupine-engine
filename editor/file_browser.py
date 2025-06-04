@@ -155,8 +155,8 @@ class FileBrowserWidget(QWidget):
             file_path = Path(parent_dir) / name
             try:
                 # Create file with appropriate template
-                if name.endswith('.lsc'):
-                    template = self.get_lsc_template()
+                if name.endswith('.py'):
+                    template = self.get_python_template()
                 elif name.endswith('.scene'):
                     template = self.get_scene_template()
                 else:
@@ -175,18 +175,18 @@ class FileBrowserWidget(QWidget):
                 QMessageBox.critical(self, "Error", f"Failed to create file: {e}")
 
     def new_script(self, parent_dir: str):
-        """Create a new LSC script"""
+        """Create a new Python script"""
         name, ok = QInputDialog.getText(
-            self, "New Script", "Enter script name:", QLineEdit.EchoMode.Normal, "new_script.lsc"
+            self, "New Script", "Enter script name:", QLineEdit.EchoMode.Normal, "new_script.py"
         )
 
         if ok and name:
-            if not name.endswith('.lsc'):
-                name += '.lsc'
+            if not name.endswith('.py'):
+                name += '.py'
 
             file_path = Path(parent_dir) / name
             try:
-                template = self.get_lsc_template()
+                template = self.get_python_template()
                 with open(file_path, 'w', encoding='utf-8') as f:
                     f.write(template)
 
@@ -334,20 +334,19 @@ class FileBrowserWidget(QWidget):
         self.model.setRootPath("")  # Reset
         self.model.setRootPath(str(self.project.project_path))  # Reload
     
-    def get_lsc_template(self) -> str:
-        """Get LSC script template"""
-        return '''# LSC Script
-extends Node2D
+    def get_python_template(self) -> str:
+        """Get Python script template"""
+        return '''# Python Script for Lupine Engine
 
-# Export variables
-export var example_property: float = 1.0
+# Export variables (shown in inspector)
+!speed = 100.0
 
 # Called when the node enters the scene tree
-func _ready():
-    print("Node ready!")
+def _ready():
+    print("Script ready!")
 
 # Called every frame
-func _process(delta: float):
+def _process(delta):
     pass
 '''
     

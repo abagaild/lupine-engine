@@ -1,0 +1,142 @@
+{
+  "name": "TopDownPlayerTestScene",
+  "nodes": [
+    {
+      "type": "TopDown4DirPlayerController",
+      "name": "Player",
+      "position": [400, 300],
+      "rotation": 0.0,
+      "scale": [1.0, 1.0],
+      "z_index": 0,
+      "z_as_relative": true,
+      "visible": true,
+      "collision_layer": 1,
+      "collision_mask": 1,
+      "speed": 200.0,
+      "acceleration": 800.0,
+      "friction": 800.0,
+      "input_enabled": true,
+      "children": [
+        {
+          "type": "Sprite2D",
+          "name": "PlayerSprite",
+          "position": [0, 0],
+          "rotation": 0.0,
+          "scale": [1.0, 1.0],
+          "z_index": 0,
+          "z_as_relative": true,
+          "visible": true,
+          "texture": "assets/sprites/player.png",
+          "centered": true,
+          "offset": [0, 0],
+          "flip_h": false,
+          "flip_v": false,
+          "modulate": [1.0, 1.0, 1.0, 1.0],
+          "children": []
+        },
+        {
+          "type": "CollisionShape2D",
+          "name": "PlayerCollision",
+          "position": [0, 0],
+          "rotation": 0.0,
+          "scale": [1.0, 1.0],
+          "z_index": 0,
+          "z_as_relative": true,
+          "visible": true,
+          "shape": "rectangle",
+          "size": [32, 48],
+          "disabled": false,
+          "one_way_collision": false,
+          "children": []
+        },
+        {
+          "type": "Area2D",
+          "name": "InteractionArea",
+          "position": [0, 0],
+          "rotation": 0.0,
+          "scale": [1.0, 1.0],
+          "z_index": 0,
+          "z_as_relative": true,
+          "visible": true,
+          "collision_layer": 2,
+          "collision_mask": 2,
+          "children": [
+            {
+              "type": "CollisionShape2D",
+              "name": "InteractionCollision",
+              "position": [0, 0],
+              "rotation": 0.0,
+              "scale": [1.0, 1.0],
+              "z_index": 0,
+              "z_as_relative": true,
+              "visible": true,
+              "shape": "rectangle",
+              "size": [40, 56],
+              "disabled": false,
+              "one_way_collision": false,
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "StaticBody2D",
+      "name": "Wall1",
+      "position": [100, 300],
+      "rotation": 0.0,
+      "scale": [1.0, 1.0],
+      "z_index": 0,
+      "z_as_relative": true,
+      "visible": true,
+      "collision_layer": 1,
+      "collision_mask": 1,
+      "children": [
+        {
+          "type": "CollisionShape2D",
+          "name": "WallCollision",
+          "position": [0, 0],
+          "rotation": 0.0,
+          "scale": [1.0, 1.0],
+          "z_index": 0,
+          "z_as_relative": true,
+          "visible": true,
+          "shape": "rectangle",
+          "size": [50, 200],
+          "disabled": false,
+          "one_way_collision": false,
+          "children": []
+        }
+      ]
+    },
+    {
+      "type": "StaticBody2D",
+      "name": "Wall2",
+      "position": [700, 300],
+      "rotation": 0.0,
+      "scale": [1.0, 1.0],
+      "z_index": 0,
+      "z_as_relative": true,
+      "visible": true,
+      "collision_layer": 1,
+      "collision_mask": 1,
+      "children": [
+        {
+          "type": "CollisionShape2D",
+          "name": "WallCollision",
+          "position": [0, 0],
+          "rotation": 0.0,
+          "scale": [1.0, 1.0],
+          "z_index": 0,
+          "z_as_relative": true,
+          "visible": true,
+          "shape": "rectangle",
+          "size": [50, 200],
+          "disabled": false,
+          "one_way_collision": false,
+          "children": []
+        }
+      ]
+    }
+  ]
+}
