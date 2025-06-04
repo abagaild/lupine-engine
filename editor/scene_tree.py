@@ -222,6 +222,9 @@ class SceneTreeWidget(QWidget):
             registry = get_node_registry()
             new_node_instance = registry.create_node_instance(node_type, node_name)
 
+            if new_node_instance is None:
+                raise Exception(f"Failed to create node instance for {node_type}")
+
             # Convert to dict format
             new_node = new_node_instance.to_dict()
 

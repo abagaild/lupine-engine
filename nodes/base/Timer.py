@@ -190,6 +190,8 @@ class Timer(Node):
                     self.script_instance.call_method('on_timeout')
             except Exception as e:
                 print(f"Error calling timeout method in {self.script_path}: {e}")
+                import traceback
+                traceback.print_exc()
         
         # Handle one-shot vs repeating
         if self.one_shot:

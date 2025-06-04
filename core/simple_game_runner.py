@@ -7,6 +7,10 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+# Set up global exception handling early
+from .exception_handler import setup_global_exception_handling
+setup_global_exception_handling()
+
 # Add the project root to Python path
 def setup_paths(project_path: str, lupine_engine_path: str):
     """Setup Python paths for the game runner"""

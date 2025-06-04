@@ -48,7 +48,9 @@ class GameProcess(QThread):
             self.process.waitForFinished(-1)
             
         except Exception as e:
-            self.error_received.emit(f"Failed to start game: {e}")
+            import traceback
+            error_msg = f"Failed to start game: {e}\n{traceback.format_exc()}"
+            self.error_received.emit(error_msg)
             self.finished.emit(1)
     
     def create_runner_script(self) -> str:

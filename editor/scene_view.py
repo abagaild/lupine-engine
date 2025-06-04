@@ -628,72 +628,74 @@ class SceneViewport(QOpenGLWidget):
             position = self._ui_to_world_coords(position)
 
         glPushMatrix()
-        glTranslatef(position[0], position[1], 0)
+        try:
+            glTranslatef(position[0], position[1], 0)
 
-        # Store the original position in the node data for hit detection
-        node_data["_original_position"] = original_position
+            # Store the original position in the node data for hit detection
+            node_data["_original_position"] = original_position
 
-        # Draw based on node type - use dynamic dispatch
-        draw_method_name = f"draw_{node_type.lower()}"
-        if hasattr(self, draw_method_name):
-            getattr(self, draw_method_name)(node_data)
-        else:
-            # Try common patterns
-            if node_type == "Node2D":
-                self.draw_node2d(node_data)
-            elif node_type in ["Sprite", "AnimatedSprite"]:
-                self.draw_sprite(node_data)
-            elif node_type == "Timer":
-                self.draw_timer(node_data)
-            elif node_type == "Camera2D":
-                self.draw_camera(node_data)
-            elif node_type in ["Control", "Panel", "Label", "Button", "ColorRect", "TextureRect"]:
-                # All UI nodes can use generic UI drawing
-                self.draw_ui_node(node_data)
-            elif node_type == "CanvasLayer":
-                self.draw_canvas_layer(node_data)
-            elif node_type in ["ProgressBar", "AudioStreamPlayer", "AudioStreamPlayer2D",
-                              "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer",
-                              "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
-                # Use generic UI drawing for these types
-                self.draw_ui_node(node_data)
-            elif node_type in ["CollisionShape2D", "CollisionPolygon2D"]:
-                # Physics collision shapes
-                if node_type == "CollisionShape2D":
-                    self.draw_collision_shape(node_data)
-                else:
-                    self.draw_collision_polygon(node_data)
-            elif node_type in ["Area2D", "RigidBody2D", "StaticBody2D", "KinematicBody2D"]:
-                # Physics bodies
-                if node_type == "Area2D":
-                    self.draw_area2d(node_data)
-                elif node_type == "RigidBody2D":
-                    self.draw_rigid_body(node_data)
-                elif node_type == "StaticBody2D":
-                    self.draw_static_body(node_data)
-                else:
-                    self.draw_kinematic_body(node_data)
-            elif node_type == "Light2D":
-                self.draw_light2d(node_data)
-            elif node_type == "TileMap":
-                self.draw_tilemap(node_data)
-            elif node_type == "RayCast2D":
-                self.draw_raycast2d(node_data)
-            elif node_type in ["Path2D", "PathFollow2D"]:
-                if node_type == "Path2D":
-                    self.draw_path2d(node_data)
-                else:
-                    self.draw_pathfollow2d(node_data)
+            # Draw based on node type - use dynamic dispatch
+            draw_method_name = f"draw_{node_type.lower()}"
+            if hasattr(self, draw_method_name):
+                getattr(self, draw_method_name)(node_data)
             else:
-                # Default node representation
-                self.draw_default_node(node_data)
+                # Try common patterns
+                if node_type == "Node2D":
+                    self.draw_node2d(node_data)
+                elif node_type in ["Sprite", "AnimatedSprite"]:
+                    self.draw_sprite(node_data)
+                elif node_type == "Timer":
+                    self.draw_timer(node_data)
+                elif node_type == "Camera2D":
+                    self.draw_camera(node_data)
+                elif node_type in ["Control", "Panel", "Label", "Button", "ColorRect", "TextureRect"]:
+                    # All UI nodes can use generic UI drawing
+                    self.draw_ui_node(node_data)
+                elif node_type == "CanvasLayer":
+                    self.draw_canvas_layer(node_data)
+                elif node_type in ["ProgressBar", "AudioStreamPlayer", "AudioStreamPlayer2D",
+                                  "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer",
+                                  "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
+                    # Use generic UI drawing for these types
+                    self.draw_ui_node(node_data)
+                elif node_type in ["CollisionShape2D", "CollisionPolygon2D"]:
+                    # Physics collision shapes
+                    if node_type == "CollisionShape2D":
+                        self.draw_collision_shape(node_data)
+                    else:
+                        self.draw_collision_polygon(node_data)
+                elif node_type in ["Area2D", "RigidBody2D", "StaticBody2D", "KinematicBody2D"]:
+                    # Physics bodies
+                    if node_type == "Area2D":
+                        self.draw_area2d(node_data)
+                    elif node_type == "RigidBody2D":
+                        self.draw_rigid_body(node_data)
+                    elif node_type == "StaticBody2D":
+                        self.draw_static_body(node_data)
+                    else:
+                        self.draw_kinematic_body(node_data)
+                elif node_type == "Light2D":
+                    self.draw_light2d(node_data)
+                elif node_type == "TileMap":
+                    self.draw_tilemap(node_data)
+                elif node_type == "RayCast2D":
+                    self.draw_raycast2d(node_data)
+                elif node_type in ["Path2D", "PathFollow2D"]:
+                    if node_type == "Path2D":
+                        self.draw_path2d(node_data)
+                    else:
+                        self.draw_pathfollow2d(node_data)
+                else:
+                    # Default node representation
+                    self.draw_default_node(node_data)
 
-        # Draw children
-        children = node_data.get("children", [])
-        for child in children:
-            self.draw_node(child)
+            # Draw children
+            children = node_data.get("children", [])
+            for child in children:
+                self.draw_node(child)
 
-        glPopMatrix()
+        finally:
+            glPopMatrix()
     
     def draw_node2d(self, node_data: Dict[str, Any]):
         """Draw Node2D"""
@@ -3846,75 +3848,77 @@ class SceneViewport(QOpenGLWidget):
             position = self._ui_to_world_coords(position)
 
         glPushMatrix()
-        glTranslatef(position[0], position[1], 0)
+        try:
+            glTranslatef(position[0], position[1], 0)
 
-        # Draw selection outline
-        glColor3f(1.0, 1.0, 0.0)  # Yellow selection
-        glLineWidth(2.0)
+            # Draw selection outline
+            glColor3f(1.0, 1.0, 0.0)  # Yellow selection
+            glLineWidth(2.0)
 
-        # Draw selection box around node
-        node_type = self.selected_node.get("type", "Node")
-        if node_type == "Sprite":
-            # Draw around sprite bounds
-            centered = self.selected_node.get("centered", True)
-            offset = self.selected_node.get("offset", [0.0, 0.0])
+            # Draw selection box around node
+            node_type = self.selected_node.get("type", "Node")
+            if node_type == "Sprite":
+                # Draw around sprite bounds
+                centered = self.selected_node.get("centered", True)
+                offset = self.selected_node.get("offset", [0.0, 0.0])
 
-            frame_width = 64
-            frame_height = 64
+                frame_width = 64
+                frame_height = 64
 
-            if centered:
-                left = offset[0] - frame_width / 2
-                right = offset[0] + frame_width / 2
-                bottom = offset[1] - frame_height / 2
-                top = offset[1] + frame_height / 2
+                if centered:
+                    left = offset[0] - frame_width / 2
+                    right = offset[0] + frame_width / 2
+                    bottom = offset[1] - frame_height / 2
+                    top = offset[1] + frame_height / 2
+                else:
+                    left = offset[0]
+                    right = offset[0] + frame_width
+                    bottom = offset[1]
+                    top = offset[1] + frame_height
+
+                glBegin(GL_LINE_LOOP)
+                glVertex2f(left, bottom)
+                glVertex2f(right, bottom)
+                glVertex2f(right, top)
+                glVertex2f(left, top)
+                glEnd()
+            elif node_type in ["Button", "Panel", "Label", "ColorRect", "TextureRect", "ProgressBar", "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
+                # Draw around UI node bounds
+                size = self.selected_node.get("size", [100.0, 30.0])
+
+                # Convert UI size to world scale for proper gizmo sizing
+                world_scale_x = size[0] / self.game_width * self.view_width
+                world_scale_y = size[1] / self.game_height * self.view_height
+
+                # UI nodes are centered on their position in the new coordinate system
+                left = -world_scale_x / 2
+                right = world_scale_x / 2
+                bottom = -world_scale_y / 2
+                top = world_scale_y / 2
+
+                glBegin(GL_LINE_LOOP)
+                glVertex2f(left, bottom)
+                glVertex2f(right, bottom)
+                glVertex2f(right, top)
+                glVertex2f(left, top)
+                glEnd()
             else:
-                left = offset[0]
-                right = offset[0] + frame_width
-                bottom = offset[1]
-                top = offset[1] + frame_height
+                # Draw around node center
+                glBegin(GL_LINE_LOOP)
+                glVertex2f(-15, -15)
+                glVertex2f(15, -15)
+                glVertex2f(15, 15)
+                glVertex2f(-15, 15)
+                glEnd()
 
-            glBegin(GL_LINE_LOOP)
-            glVertex2f(left, bottom)
-            glVertex2f(right, bottom)
-            glVertex2f(right, top)
-            glVertex2f(left, top)
-            glEnd()
-        elif node_type in ["Button", "Panel", "Label", "ColorRect", "TextureRect", "ProgressBar", "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
-            # Draw around UI node bounds
-            size = self.selected_node.get("size", [100.0, 30.0])
+            # Draw transformation handles
+            self.draw_move_gizmo()
+            self.draw_scale_gizmos()
+            self.draw_rotation_gizmo()
 
-            # Convert UI size to world scale for proper gizmo sizing
-            world_scale_x = size[0] / self.game_width * self.view_width
-            world_scale_y = size[1] / self.game_height * self.view_height
-
-            # UI nodes are centered on their position in the new coordinate system
-            left = -world_scale_x / 2
-            right = world_scale_x / 2
-            bottom = -world_scale_y / 2
-            top = world_scale_y / 2
-
-            glBegin(GL_LINE_LOOP)
-            glVertex2f(left, bottom)
-            glVertex2f(right, bottom)
-            glVertex2f(right, top)
-            glVertex2f(left, top)
-            glEnd()
-        else:
-            # Draw around node center
-            glBegin(GL_LINE_LOOP)
-            glVertex2f(-15, -15)
-            glVertex2f(15, -15)
-            glVertex2f(15, 15)
-            glVertex2f(-15, 15)
-            glEnd()
-
-        # Draw transformation handles
-        self.draw_move_gizmo()
-        self.draw_scale_gizmos()
-        self.draw_rotation_gizmo()
-
-        glLineWidth(1.0)
-        glPopMatrix()
+            glLineWidth(1.0)
+        finally:
+            glPopMatrix()
 
     def draw_move_gizmo(self):
         """Draw move gizmo (center cross)"""

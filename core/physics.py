@@ -465,6 +465,8 @@ class PhysicsWorld:
                 callback(other_body, contact)
             except Exception as e:
                 print(f"Error in collision callback: {e}")
+                import traceback
+                traceback.print_exc()
     
     def add_node(self, node: Node2D) -> Optional[PhysicsBody]:
         """Add a physics node to the world - dynamically detect physics node types"""

@@ -515,19 +515,26 @@ class MainEditor(QMainWindow):
 
     def on_scene_node_changed(self, node_data):
         """Handle scene node changes"""
-        # Mark current scene as modified
-        if self.current_scene:
-            for i in range(self.scene_tabs.count() - 1):
-                widget = self.scene_tabs.widget(i)
-                if hasattr(widget, 'scene_path') and widget.scene_path == self.current_scene:
-                    tab_text = self.scene_tabs.tabText(i)
-                    if not tab_text.endswith('*'):
-                        self.scene_tabs.setTabText(i, tab_text + '*')
-                    break
+        try:
+            # Mark current scene as modified
+            if self.current_scene:
+                for i in range(self.scene_tabs.count() - 1):
+                    widget = self.scene_tabs.widget(i)
+                    if hasattr(widget, 'scene_path') and widget.scene_path == self.current_scene:
+                        tab_text = self.scene_tabs.tabText(i)
+                        if not tab_text.endswith('*'):
+                            self.scene_tabs.setTabText(i, tab_text + '*')
+                        break
 
-        # Update inspector if node is selected
-        if node_data:
-            self.inspector.set_node(node_data)
+            # Update inspector if node is selected
+            if node_data:
+                self.inspector.set_node(node_data)
+
+        except Exception as e:
+            print(f"Error in on_scene_node_changed: {e}")
+            import traceback
+            traceback.print_exc()
+            # Don't re-raise to prevent crash
 
     def on_scene_tree_node_selected(self, node_data):
         """Handle node selection from scene tree"""

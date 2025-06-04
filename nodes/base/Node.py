@@ -71,6 +71,8 @@ class Node(BaseNode):
                                 script_instance.call_method('on_ready')
                         except Exception as e:
                             print(f"Error calling _ready in {script_instance.script_path}: {e}")
+                            import traceback
+                            traceback.print_exc()
 
             # Backward compatibility: handle single script_instance
             elif self.script_instance and hasattr(self.script_instance, 'call_method'):
@@ -81,6 +83,8 @@ class Node(BaseNode):
                         self.script_instance.call_method('on_ready')
                 except Exception as e:
                     print(f"Error calling _ready in {self.script_path}: {e}")
+                    import traceback
+                    traceback.print_exc()
     
     def _enter_tree(self):
         """Called when the node enters the scene tree"""
@@ -97,6 +101,8 @@ class Node(BaseNode):
                             script_instance.call_method('_enter_tree')
                     except Exception as e:
                         print(f"Error calling _enter_tree in {script_instance.script_path}: {e}")
+                        import traceback
+                        traceback.print_exc()
 
         # Backward compatibility: handle single script_instance
         elif self.script_instance and hasattr(self.script_instance, 'call_method'):
@@ -105,6 +111,8 @@ class Node(BaseNode):
                     self.script_instance.call_method('_enter_tree')
             except Exception as e:
                 print(f"Error calling _enter_tree in {self.script_path}: {e}")
+                import traceback
+                traceback.print_exc()
     
     def _exit_tree(self):
         """Called when the node exits the scene tree"""
@@ -117,6 +125,8 @@ class Node(BaseNode):
                     self.script_instance.call_method('_exit_tree')
             except Exception as e:
                 print(f"Error calling _exit_tree in {self.script_path}: {e}")
+                import traceback
+                traceback.print_exc()
         
         super()._exit_tree()
     

@@ -269,20 +269,31 @@ class InspectorWidget(QWidget):
     
     def set_node(self, node_data: Dict[str, Any]):
         """Set the node to inspect"""
-        self.current_node = node_data
+        try:
+            self.current_node = node_data
 
-        # For nodes with built-in scripts, ensure script path is properly set using dynamic registry
-        if node_data and node_data.get("type"):
-            node_type = node_data.get("type")
-            if node_type and not node_data.get("script"):
-                # Get script path from node registry dynamically
-                from core.node_registry import get_node_registry
-                registry = get_node_registry()
-                node_def = registry.get_node_definition(node_type)
-                if node_def and node_def.script_path:
-                    node_data["script"] = node_def.script_path
+            # For nodes with built-in scripts, ensure script path is properly set using dynamic registry
+            if node_data and node_data.get("type"):
+                node_type = node_data.get("type")
+                if node_type and not node_data.get("script"):
+                    try:
+                        # Get script path from node registry dynamically
+                        from core.node_registry import get_node_registry
+                        registry = get_node_registry()
+                        node_def = registry.get_node_definition(node_type)
+                        if node_def and node_def.script_path:
+                            node_data["script"] = node_def.script_path
+                    except Exception as script_error:
+                        print(f"Error setting script path for {node_type}: {script_error}")
+                        # Don't re-raise, just continue without script path
 
-        self.refresh_properties()
+            self.refresh_properties()
+
+        except Exception as e:
+            print(f"Error in Inspector.set_node: {e}")
+            import traceback
+            traceback.print_exc()
+            # Don't re-raise to prevent crash
 
     def update_node_reference(self, updated_node_data: dict):
         """Update the current node reference while preserving the UI state"""
@@ -380,20 +391,27 @@ class InspectorWidget(QWidget):
     
     def refresh_properties(self):
         """Refresh the properties display"""
-        self.clear_properties()
+        try:
+            self.clear_properties()
 
-        if not self.current_node:
-            self.show_empty_state()
-            return
+            if not self.current_node:
+                self.show_empty_state()
+                return
 
-        # Node info group
-        self.create_node_info_group()
+            # Node info group
+            self.create_node_info_group()
 
-        # Create export variables from built-in node definitions
-        self.create_builtin_node_properties()
+            # Create export variables from built-in node definitions
+            self.create_builtin_node_properties()
 
-        # Script management section
-        self.create_script_management_section()
+            # Script management section
+            self.create_script_management_section()
+
+        except Exception as e:
+            print(f"Error in Inspector.refresh_properties: {e}")
+            import traceback
+            traceback.print_exc()
+            # Don't re-raise to prevent crash
     
     def create_node_info_group(self):
         """Create node information group"""

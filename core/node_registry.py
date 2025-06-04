@@ -231,23 +231,48 @@ class DynamicNodeRegistry(BaseNodeRegistry):
         # Try to load the actual Python class
         if node_def.script_path and node_def.script_path.endswith('.py'):
             try:
-                # Import the module dynamically
+                # Import the module dynamically with proper path resolution
                 import importlib.util
                 import sys
+                import os
 
-                spec = importlib.util.spec_from_file_location(node_type, node_def.script_path)
+                # Convert relative script path to absolute path
+                if self._project_path:
+                    absolute_script_path = self._project_path / node_def.script_path
+                else:
+                    absolute_script_path = Path(node_def.script_path)
+
+                # Ensure the project root is in sys.path for relative imports
+                project_root = str(self._project_path) if self._project_path else os.getcwd()
+                if project_root not in sys.path:
+                    sys.path.insert(0, project_root)
+
+                # Create module spec with absolute path
+                spec = importlib.util.spec_from_file_location(node_type, str(absolute_script_path))
                 if spec and spec.loader:
                     module = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(module)
 
-                    # Get the class from the module
-                    if hasattr(module, node_type):
-                        node_class = getattr(module, node_type)
-                        # Create instance of the actual class
-                        return node_class(node_name)
+                    # Add the module to sys.modules temporarily to support relative imports
+                    module_name = f"dynamic_node_{node_type}"
+                    sys.modules[module_name] = module
+
+                    try:
+                        spec.loader.exec_module(module)
+
+                        # Get the class from the module
+                        if hasattr(module, node_type):
+                            node_class = getattr(module, node_type)
+                            # Create instance of the actual class
+                            return node_class(node_name)
+                    finally:
+                        # Clean up the temporary module
+                        if module_name in sys.modules:
+                            del sys.modules[module_name]
 
             except Exception as e:
                 print(f"Error loading node class {node_type} from {node_def.script_path}: {e}")
+                import traceback
+                traceback.print_exc()
 
         # Fallback: Create base node instance
         from core.scene.base_node import Node

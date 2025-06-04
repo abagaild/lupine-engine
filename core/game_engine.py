@@ -816,6 +816,8 @@ class LupineGameEngine:
 
         except Exception as e:
             print(f"Error in game loop: {e}")
+            import traceback
+            traceback.print_exc()
 
         finally:
             self._cleanup()
