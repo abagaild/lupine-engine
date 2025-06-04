@@ -2532,12 +2532,18 @@ class SceneViewport(QOpenGLWidget):
     def draw_ui_node(self, node_data: Dict[str, Any]):
         """Generic UI node drawing - handles all UI node types dynamically"""
         node_type = node_data.get("type", "Control")
-        rect_size = node_data.get("rect_size", [100.0, 30.0])
+
+        # UI nodes now use 'size' property instead of 'rect_size'
+        rect_size = node_data.get("size", node_data.get("rect_size", [100.0, 30.0]))
 
         # Get UI-specific properties
         background_color = node_data.get("background_color", [0.2, 0.2, 0.2, 0.8])
         border_color = node_data.get("border_color", [0.5, 0.5, 0.5, 1.0])
         border_width = node_data.get("border_width", 1.0)
+
+        # Ensure rect_size is a valid list
+        if not isinstance(rect_size, list) or len(rect_size) < 2:
+            rect_size = [100.0, 30.0]
 
         # Draw background if visible
         if background_color[3] > 0:  # Alpha > 0
@@ -3245,31 +3251,44 @@ class SceneViewport(QOpenGLWidget):
                     isinstance(self.drag_start_pos, (list, tuple)) and len(self.drag_start_pos) >= 2 and
                     isinstance(self.drag_start_node_pos, list) and len(self.drag_start_node_pos) >= 2):
 
+                    # Calculate delta movement in world space
                     delta_x = world_pos[0] - self.drag_start_pos[0]
                     delta_y = world_pos[1] - self.drag_start_pos[1]
 
-                    # Calculate new position
-                    new_pos = [
-                        self.drag_start_node_pos[0] + delta_x,
-                        self.drag_start_node_pos[1] + delta_y
-                    ]
-
-                    # Update position for all nodes using unified system
+                    # Calculate new position based on node type
                     follow_viewport = self.selected_node.get("follow_viewport", False)
 
                     if follow_viewport:
-                        # Nodes with follow_viewport=True use viewport coordinates
-                        ui_pos = self._world_to_ui_coords(new_pos)
-                        self.selected_node["position"] = ui_pos
-                    else:
-                        # All other nodes use world coordinates
+                        # For UI nodes, convert world delta to UI delta
+                        # UI coordinates have different scaling than world coordinates
+                        ui_delta_x = delta_x * self.game_width / self.view_width * self.zoom
+                        ui_delta_y = -delta_y * self.game_height / self.view_height * self.zoom  # Flip Y
+
+                        new_pos = [
+                            self.drag_start_node_pos[0] + ui_delta_x,
+                            self.drag_start_node_pos[1] + ui_delta_y
+                        ]
+
+                        # Clamp to game bounds for UI nodes
+                        new_pos[0] = max(0, min(new_pos[0], self.game_width))
+                        new_pos[1] = max(0, min(new_pos[1], self.game_height))
+
                         self.selected_node["position"] = new_pos
+                        delta_for_children = [ui_delta_x, ui_delta_y]
+                    else:
+                        # For regular nodes, use world coordinates directly
+                        new_pos = [
+                            self.drag_start_node_pos[0] + delta_x,
+                            self.drag_start_node_pos[1] + delta_y
+                        ]
+                        self.selected_node["position"] = new_pos
+                        delta_for_children = [delta_x, delta_y]
 
                     position_property = "position"
 
                     # Apply recursive transformation to children with safety checks
                     try:
-                        self.apply_recursive_transform(self.selected_node, position_property, [delta_x, delta_y])
+                        self.apply_recursive_transform(self.selected_node, position_property, delta_for_children)
                     except Exception as e:
                         print(f"Error in recursive transform during drag: {e}")
                         # Continue without crashing - just skip child updates
@@ -3751,24 +3770,36 @@ class SceneViewport(QOpenGLWidget):
         local_x = world_x - position[0]
         local_y = world_y - position[1]
 
-        # Check scale handles (corners)
-        gizmo_size = self.gizmo_size
-        if abs(local_x - 30) <= gizmo_size and abs(local_y - 30) <= gizmo_size:
-            return "scale"
-        if abs(local_x + 30) <= gizmo_size and abs(local_y - 30) <= gizmo_size:
-            return "scale"
-        if abs(local_x - 30) <= gizmo_size and abs(local_y + 30) <= gizmo_size:
-            return "scale"
-        if abs(local_x + 30) <= gizmo_size and abs(local_y + 30) <= gizmo_size:
-            return "scale"
+        # Scale gizmo size based on zoom for better responsiveness
+        base_gizmo_size = 8.0  # Increased base size
+        zoom_adjusted_gizmo_size = base_gizmo_size / self.zoom
 
-        # Check rotation handle
+        # Scale handle distance based on zoom
+        base_handle_distance = 40.0  # Increased distance
+        zoom_adjusted_handle_distance = base_handle_distance / self.zoom
+
+        # Check scale handles (corners) - larger hit areas
+        corner_positions = [
+            (zoom_adjusted_handle_distance, zoom_adjusted_handle_distance),
+            (-zoom_adjusted_handle_distance, zoom_adjusted_handle_distance),
+            (zoom_adjusted_handle_distance, -zoom_adjusted_handle_distance),
+            (-zoom_adjusted_handle_distance, -zoom_adjusted_handle_distance)
+        ]
+
+        for corner_x, corner_y in corner_positions:
+            if (abs(local_x - corner_x) <= zoom_adjusted_gizmo_size and
+                abs(local_y - corner_y) <= zoom_adjusted_gizmo_size):
+                return "scale"
+
+        # Check rotation handle - larger tolerance
         rotation_distance = math.sqrt(local_x**2 + local_y**2)
-        if abs(rotation_distance - self.rotation_handle_distance) <= gizmo_size:
+        rotation_tolerance = zoom_adjusted_gizmo_size * 1.5  # Increased tolerance
+        if abs(rotation_distance - self.rotation_handle_distance) <= rotation_tolerance:
             return "rotate"
 
-        # Check move handle (center area)
-        if abs(local_x) <= 15 and abs(local_y) <= 15:
+        # Check move handle (center area) - larger area
+        move_area_size = 20.0 / self.zoom  # Scale with zoom
+        if abs(local_x) <= move_area_size and abs(local_y) <= move_area_size:
             return "move"
 
         return None
@@ -3871,19 +3902,29 @@ class SceneViewport(QOpenGLWidget):
     def draw_scale_gizmos(self):
         """Draw scale gizmos (corner squares)"""
         glColor3f(0.0, 0.0, 1.0)  # Blue for scale
-        size = self.gizmo_size
+
+        # Scale gizmo size based on zoom for better visibility
+        base_gizmo_size = 6.0  # Increased base size
+        zoom_adjusted_gizmo_size = base_gizmo_size / self.zoom
+
+        # Scale handle distance based on zoom
+        base_handle_distance = 40.0  # Increased distance
+        zoom_adjusted_handle_distance = base_handle_distance / self.zoom
 
         # Corner positions
         corners = [
-            (30, 30), (-30, 30), (30, -30), (-30, -30)
+            (zoom_adjusted_handle_distance, zoom_adjusted_handle_distance),
+            (-zoom_adjusted_handle_distance, zoom_adjusted_handle_distance),
+            (zoom_adjusted_handle_distance, -zoom_adjusted_handle_distance),
+            (-zoom_adjusted_handle_distance, -zoom_adjusted_handle_distance)
         ]
 
         for x, y in corners:
             glBegin(GL_LINE_LOOP)
-            glVertex2f(x - size, y - size)
-            glVertex2f(x + size, y - size)
-            glVertex2f(x + size, y + size)
-            glVertex2f(x - size, y + size)
+            glVertex2f(x - zoom_adjusted_gizmo_size, y - zoom_adjusted_gizmo_size)
+            glVertex2f(x + zoom_adjusted_gizmo_size, y - zoom_adjusted_gizmo_size)
+            glVertex2f(x + zoom_adjusted_gizmo_size, y + zoom_adjusted_gizmo_size)
+            glVertex2f(x - zoom_adjusted_gizmo_size, y + zoom_adjusted_gizmo_size)
             glEnd()
 
     def draw_rotation_gizmo(self):

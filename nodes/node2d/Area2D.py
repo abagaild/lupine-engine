@@ -165,6 +165,14 @@ class Area2D(Node2D):
         area = cls(data.get("name", "Area2D"))
         cls._apply_node_properties(area, data)
 
+        # Apply Node2D specific properties (position, rotation, scale)
+        area.position = data.get("position", [0.0, 0.0])
+        area.rotation = data.get("rotation", 0.0)
+        area.scale = data.get("scale", [1.0, 1.0])
+        area.z_index = data.get("z_index", 0)
+        area.z_as_relative = data.get("z_as_relative", True)
+        area.visible = data.get("visible", True)
+
         area.collision_layer = data.get("collision_layer", 1)
         area.collision_mask = data.get("collision_mask", 1)
         area.monitoring = data.get("monitoring", True)

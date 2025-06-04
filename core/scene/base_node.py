@@ -21,6 +21,9 @@ class Node:
         self.script_path: Optional[str] = None
         self.script_instance = None
 
+        # Export variables for editor (initialized as empty dict)
+        self.export_variables: Dict[str, Dict[str, Any]] = {}
+
         # Common properties
         self.visible: bool = True
         self.process_mode: str = "inherit"

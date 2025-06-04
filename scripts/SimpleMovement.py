@@ -26,31 +26,18 @@ def _process(delta):
 
     # Check WASD input using pygame key constants
     try:
-        # Try to use the input system if available
-        if hasattr(self, 'get_input_manager'):
-            input_mgr = self.get_input_manager()
-            if input_mgr:
-                if input_mgr.is_key_pressed(KEY_A):
-                    movement_x -= speed * delta
-                if input_mgr.is_key_pressed(KEY_D):
-                    movement_x += speed * delta
-                if input_mgr.is_key_pressed(KEY_W):
-                    movement_y -= speed * delta
-                if input_mgr.is_key_pressed(KEY_S):
-                    movement_y += speed * delta
-        else:
-            # Fallback: try to access global input state
-            # This will work if the game engine exposes input globally
-            import pygame
-            keys = pygame.key.get_pressed()
-            if keys[pygame.K_a]:
-                movement_x -= speed * delta
-            if keys[pygame.K_d]:
-                movement_x += speed * delta
-            if keys[pygame.K_w]:
-                movement_y -= speed * delta
-            if keys[pygame.K_s]:
-                movement_y += speed * delta
+        # Fallback: try to access global input state
+        # This will work if the game engine exposes input globally
+        import pygame
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_a]:
+            movement_x -= speed * delta
+        if keys[pygame.K_d]:
+            movement_x += speed * delta
+        if keys[pygame.K_w]:
+            movement_y -= speed * delta
+        if keys[pygame.K_s]:
+            movement_y += speed * delta
 
     except Exception as e:
         # If input system fails, print error but don't crash

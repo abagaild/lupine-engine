@@ -81,10 +81,42 @@ class Scene:
         node_type = data.get("type", "Node")
         node_name = data.get("name", "Node")
 
+        # Check if this node has a script that should replace the node type
+        script_path = data.get('script_path', '')
+        if script_path:
+            # Check if the script is one of our player controllers
+            if 'TopDown4DirPlayerController.py' in script_path:
+                try:
+                    from nodes.prefabs.TopDown4DirPlayerController import TopDown4DirPlayerController
+                    print(f"[DEBUG] Creating TopDown4DirPlayerController instance for {node_name}")
+                    return TopDown4DirPlayerController.from_dict(data)
+                except ImportError as e:
+                    print(f"[WARNING] Failed to import TopDown4DirPlayerController: {e}")
+                    pass
+            elif 'TopDown8DirPlayerController.py' in script_path:
+                try:
+                    from nodes.prefabs.TopDown8DirPlayerController import TopDown8DirPlayerController
+                    print(f"[DEBUG] Creating TopDown8DirPlayerController instance for {node_name}")
+                    return TopDown8DirPlayerController.from_dict(data)
+                except ImportError as e:
+                    print(f"[WARNING] Failed to import TopDown8DirPlayerController: {e}")
+                    pass
+            elif 'PlatformerPlayerController.py' in script_path:
+                try:
+                    from nodes.prefabs.PlatformerPlayerController import PlatformerPlayerController
+                    print(f"[DEBUG] Creating PlatformerPlayerController instance for {node_name}")
+                    return PlatformerPlayerController.from_dict(data)
+                except ImportError as e:
+                    print(f"[WARNING] Failed to import PlatformerPlayerController: {e}")
+                    pass
+
         # Try to use the proper node class from the nodes directory
         try:
             # Import the specific node class based on type
             if node_type == "Sprite":
+                from nodes.node2d.Sprite import Sprite
+                return Sprite.from_dict(data)
+            elif node_type == "Sprite2D":
                 from nodes.node2d.Sprite import Sprite
                 return Sprite.from_dict(data)
             elif node_type == "Node2D":
@@ -99,6 +131,27 @@ class Scene:
             elif node_type == "KinematicBody2D":
                 from nodes.node2d.KinematicBody2D import KinematicBody2D
                 return KinematicBody2D.from_dict(data)
+            elif node_type == "TopDown4DirPlayerController":
+                from nodes.prefabs.TopDown4DirPlayerController import TopDown4DirPlayerController
+                return TopDown4DirPlayerController.from_dict(data)
+            elif node_type == "TopDown8DirPlayerController":
+                from nodes.prefabs.TopDown8DirPlayerController import TopDown8DirPlayerController
+                return TopDown8DirPlayerController.from_dict(data)
+            elif node_type == "PlatformerPlayerController":
+                from nodes.prefabs.PlatformerPlayerController import PlatformerPlayerController
+                return PlatformerPlayerController.from_dict(data)
+            elif node_type == "StaticBody2D":
+                from nodes.node2d.StaticBody2D import StaticBody2D
+                return StaticBody2D.from_dict(data)
+            elif node_type == "RigidBody2D":
+                from nodes.node2d.Rigidbody2D import RigidBody2D
+                return RigidBody2D.from_dict(data)
+            elif node_type == "Area2D":
+                from nodes.node2d.Area2D import Area2D
+                return Area2D.from_dict(data)
+            elif node_type == "CollisionShape2D":
+                from nodes.node2d.CollisionShape2D import CollisionShape2D
+                return CollisionShape2D.from_dict(data)
             elif node_type == "CollisionPolygon2D":
                 from nodes.node2d.CollisionPolygon2D import CollisionPolygon2D
                 return CollisionPolygon2D.from_dict(data)
@@ -157,7 +210,26 @@ class Scene:
 
         except ImportError as e:
             print(f"Could not import node class {node_type}: {e}")
-            # Fallback to base Node class
+
+            # Try to use the node registry for dynamic node creation
+            try:
+                from core.node_registry import get_node_registry
+                registry = get_node_registry()
+                node = registry.create_node_instance(node_type, node_name)
+                if node:
+                    # Apply properties from the data
+                    Node._apply_node_properties(node, data)
+
+                    # Handle children recursively
+                    for child_data in data.get("children", []):
+                        child = cls._create_node_from_dict(child_data)
+                        node.add_child(child)
+
+                    return node
+            except Exception as registry_error:
+                print(f"Node registry failed for {node_type}: {registry_error}")
+
+            # Final fallback to base Node class
             node = Node(node_name, node_type)
             Node._apply_node_properties(node, data)
 

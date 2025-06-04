@@ -19,6 +19,7 @@ from PyQt6.QtGui import QFont, QAction, QPainter, QPen, QBrush, QColor
 from core.project import LupineProject
 from core.python_runtime import PythonScriptRuntime
 from .script_dialog import ScriptAttachmentDialog
+from .polygon_builder import PolygonBuilderDialog
 
 
 class AnchorSelectorWidget(QWidget):
@@ -528,10 +529,23 @@ class InspectorWidget(QWidget):
     def _create_export_variable_widget(self, layout: QFormLayout, var_name: str, var_info: Dict[str, Any]):
         """Create widget for an export variable from built-in nodes"""
         var_type = var_info.get('type', 'string')
-        var_value = self.current_node.get(var_name, var_info.get('value')) if self.current_node else var_info.get('value')
+
+        # Get current value from node, with proper fallback to default
+        var_value = var_info.get('value')  # Start with default
+        if self.current_node:
+            # Check if the property exists in the current node data
+            if var_name in self.current_node:
+                var_value = self.current_node[var_name]
+            # For some properties, check alternative names
+            elif var_name == 'rect_size' and 'size' in self.current_node:
+                var_value = self.current_node['size']
+            elif var_name == 'size' and 'rect_size' in self.current_node:
+                var_value = self.current_node['rect_size']
+
         description = var_info.get('description', '')
 
         # Create appropriate widget based on type
+        widget = None
         if var_type == 'path':
             widget = self._create_path_widget(var_name, var_value, var_info)
         elif var_type == 'color':
@@ -542,6 +556,8 @@ class InspectorWidget(QWidget):
             widget = self._create_vector2_widget(var_name, var_value, var_info)
         elif var_type == 'rect2':
             widget = self._create_rect2_widget(var_name, var_value, var_info)
+        elif var_type == 'array':
+            widget = self._create_array_widget(var_name, var_value, var_info)
         elif var_type == 'enum':
             widget = self._create_enum_widget(var_name, var_value, var_info)
         elif var_type == 'int':
@@ -556,20 +572,22 @@ class InspectorWidget(QWidget):
             # Default to string for unknown types
             widget = self._create_string_widget(var_name, var_value, var_info)
 
-        # Set tooltip if description is available
-        if description and widget:
-            widget.setToolTip(description)
+        # Only add widget if it was successfully created
+        if widget is not None:
+            # Set tooltip if description is available
+            if description:
+                widget.setToolTip(description)
 
-        # Create label
-        label_text = var_name.replace('_', ' ').title()
-        if var_type != 'string':
-            label_text += f" ({var_type})"
+            # Create label
+            label_text = var_name.replace('_', ' ').title()
+            if var_type != 'string':
+                label_text += f" ({var_type})"
 
-        layout.addRow(label_text, widget)
+            layout.addRow(label_text, widget)
 
-        # Store widget reference
-        if var_name not in self.property_widgets:
-            self.property_widgets[var_name] = widget
+            # Store widget reference
+            if var_name not in self.property_widgets:
+                self.property_widgets[var_name] = widget
 
     def _create_path_widget(self, var_name: str, var_value: Any, var_info: Dict[str, Any]) -> QWidget:
         """Create path widget with browse button"""
@@ -626,6 +644,65 @@ class InspectorWidget(QWidget):
         self.property_widgets[f"{var_name}_preview"] = color_btn
 
         return container
+
+    def _create_array_widget(self, var_name: str, var_value: Any, var_info: Dict[str, Any]) -> QWidget:
+        """Create array widget - special handling for polygon arrays"""
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Check if this is a polygon array (for CollisionPolygon2D)
+        if var_name == "polygon" and self.current_node and self.current_node.get("type") == "CollisionPolygon2D":
+            # Create polygon editor button
+            polygon_btn = QPushButton("Edit Polygon")
+            polygon_btn.clicked.connect(lambda: self._open_polygon_editor(var_name))
+            layout.addWidget(polygon_btn)
+
+            # Show point count
+            point_count = len(var_value) if isinstance(var_value, list) else 0
+            count_label = QLabel(f"({point_count} points)")
+            count_label.setStyleSheet("color: gray; font-size: 10px;")
+            layout.addWidget(count_label)
+
+            self.property_widgets[f"{var_name}_count"] = count_label
+        else:
+            # Generic array display
+            array_str = str(var_value) if var_value else "[]"
+            if len(array_str) > 50:
+                array_str = array_str[:47] + "..."
+
+            array_label = QLabel(array_str)
+            array_label.setStyleSheet("color: gray; font-size: 10px;")
+            layout.addWidget(array_label)
+
+            edit_btn = QPushButton("Edit")
+            edit_btn.clicked.connect(lambda: self._edit_array_generic(var_name, var_value))
+            layout.addWidget(edit_btn)
+
+        return container
+
+    def _open_polygon_editor(self, var_name: str):
+        """Open polygon builder dialog"""
+        if not self.current_node:
+            return
+
+        current_polygon = self.current_node.get(var_name, [])
+
+        dialog = PolygonBuilderDialog(current_polygon, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            new_polygon = dialog.get_polygon()
+            self.update_property(var_name, new_polygon)
+
+            # Update point count display
+            count_widget = self.property_widgets.get(f"{var_name}_count")
+            if count_widget:
+                count_widget.setText(f"({len(new_polygon)} points)")
+
+    def _edit_array_generic(self, var_name: str, var_value: Any):
+        """Generic array editor (placeholder)"""
+        QMessageBox.information(self, "Array Editor",
+                              f"Generic array editor for '{var_name}' not implemented yet.\n"
+                              f"Current value: {var_value}")
 
     def _create_nodepath_widget(self, var_name: str, var_value: Any, var_info: Dict[str, Any]) -> QWidget:
         """Create nodepath widget with node picker"""
@@ -1780,9 +1857,21 @@ def take_damage(amount):
         """Update a node property"""
         if self.current_node:
             self.current_node[property_name] = value
+
+            # For UI nodes, also update alternative property names for compatibility
+            if property_name == "size" and "rect_size" in self.current_node:
+                self.current_node["rect_size"] = value
+            elif property_name == "rect_size" and "size" in self.current_node:
+                self.current_node["size"] = value
+
             # Emit signal for external listeners
             node_id = self.current_node.get("name", "")
             self.property_changed.emit(node_id, property_name, value)
+
+            # Only refresh widgets for specific properties that need it
+            # Avoid automatic refresh to prevent recursion and crashes
+            # Widget updates are handled by the individual widget signal handlers
+            pass  # No automatic widget refresh needed
     
     def update_position(self, index: int, value: float):
         """Update position component"""

@@ -69,6 +69,14 @@ class StaticBody2D(Node2D):
         body = cls(data.get("name", "StaticBody2D"))
         cls._apply_node_properties(body, data)
 
+        # Apply Node2D specific properties (position, rotation, scale)
+        body.position = data.get("position", [0.0, 0.0])
+        body.rotation = data.get("rotation", 0.0)
+        body.scale = data.get("scale", [1.0, 1.0])
+        body.z_index = data.get("z_index", 0)
+        body.z_as_relative = data.get("z_as_relative", True)
+        body.visible = data.get("visible", True)
+
         body.collision_layer = data.get("collision_layer", 1)
         body.collision_mask = data.get("collision_mask", 1)
         body.one_way_collision_enabled = data.get("one_way_collision_enabled", False)

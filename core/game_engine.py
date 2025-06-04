@@ -22,11 +22,24 @@ try:
 except ImportError:
     INPUT_MANAGER_AVAILABLE = False
 
+# Global game engine instance registry
+_global_game_engine = None
+
+def get_global_game_engine():
+    """Get the global game engine instance"""
+    return _global_game_engine
+
+def set_global_game_engine(engine):
+    """Set the global game engine instance"""
+    global _global_game_engine
+    _global_game_engine = engine
+
 try:
     from .physics import PhysicsWorld
     PHYSICS_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     PHYSICS_AVAILABLE = False
+    print(f"[DEBUG] Physics system import failed: {e}")
 
 try:
     from .python_runtime import PythonScriptRuntime, PythonScriptInstance
@@ -159,34 +172,37 @@ class LupineGameEngine:
     def __init__(self, project_path: str, scene_path: str):
         self.project_path = Path(project_path)
         self.scene_path = scene_path
-        
+
+        # Set this as the global game engine instance
+        set_global_game_engine(self)
+
         # Initialize Pygame and OpenGL
         self._initialize_pygame()
-        
+
         # Initialize game systems
         self.systems = GameSystemManager(str(self.project_path), self.width, self.height)
-        
+
         # Game state
         self.scene: Optional[Scene] = None
         self.camera: Optional[Any] = None
         self.clock = pygame.time.Clock()
         self.running = True
-        
+
         # Rendering data
         self.sprites: List[Dict[str, Any]] = []
         self.ui_elements: List[Dict[str, Any]] = []
-        
+
         # Input state
         self.pressed_keys: Set[int] = set()
         self.mouse_buttons: Set[int] = set()
         self.mouse_position: Tuple[float, float] = (0.0, 0.0)
         self.current_modifiers: Set[str] = set()
-        
+
         # Setup Python runtime integration
         if self.systems.python_runtime:
             self.systems.python_runtime.game_runtime = self
             self._setup_python_builtins()
-        
+
         # Load the scene
         self._load_scene()
     
@@ -335,14 +351,21 @@ class LupineGameEngine:
 
             if (has_legacy_script or has_new_scripts) and self.systems.python_runtime:
                 self._load_node_script(node)
-            
+
             # Setup node-specific functionality
             self._setup_node_type(node)
-            
+
+            # Call the node's _ready method if it exists (for custom node classes)
+            if hasattr(node, '_ready') and callable(getattr(node, '_ready')):
+                try:
+                    node._ready()
+                except Exception as e:
+                    print(f"Error calling _ready on {node.name}: {e}")
+
             # Setup children
             for child in node.children:
                 self._setup_node_recursive(child)
-                
+
         except Exception as e:
             print(f"Error setting up node {getattr(node, 'name', 'Unknown')}: {e}")
 
@@ -450,8 +473,11 @@ class LupineGameEngine:
         elif node_type == "Camera2D":
             self._setup_camera_node(node)
 
-        # Physics nodes
-        elif self.systems.physics_world and node_type in ["RigidBody2D", "StaticBody2D", "KinematicBody2D", "Area2D"]:
+        # Physics nodes - check both explicit types and physics_body_type property
+        elif self.systems.physics_world and (
+            node_type in ["RigidBody2D", "StaticBody2D", "KinematicBody2D", "Area2D"] or
+            hasattr(node, 'physics_body_type')
+        ):
             self._setup_physics_node(node)
 
         # Light nodes
@@ -668,10 +694,23 @@ class LupineGameEngine:
         """Setup a physics node"""
         try:
             if self.systems.physics_world:
-                self.systems.physics_world.add_node(node)
-                print(f"[OK] Physics node setup: {node.name}")
+                # Debug output for custom physics nodes
+                node_type = getattr(node, 'type', 'Unknown')
+                physics_body_type = getattr(node, 'physics_body_type', None)
+                if physics_body_type:
+                    print(f"[DEBUG] Setting up custom physics node: {node.name} (type: {node_type}, physics_body_type: {physics_body_type})")
+
+                physics_body = self.systems.physics_world.add_node(node)
+                # Ensure the physics body position is synced with the node position
+                if physics_body:
+                    physics_body.update_from_node()
+                    print(f"[OK] Physics node setup: {node.name} (type: {node_type}) at position {getattr(node, 'position', [0, 0])}")
+                else:
+                    print(f"[WARNING] Failed to create physics body for {node.name} (type: {node_type})")
         except Exception as e:
             print(f"Error setting up physics node {node.name}: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _setup_light_node(self, node: Node):
         """Setup a Light2D node"""
@@ -856,7 +895,17 @@ class LupineGameEngine:
     def _update_node_scripts_recursive(self, node: Node, delta_time: float):
         """Update scripts for a node and its children"""
         try:
-            # Update all script instances for this node
+            # First, call the node's own lifecycle methods if they exist
+            # This handles custom node classes like player controllers
+            try:
+                if hasattr(node, '_process') and callable(getattr(node, '_process')):
+                    node._process(delta_time)
+                if hasattr(node, '_physics_process') and callable(getattr(node, '_physics_process')):
+                    node._physics_process(delta_time)
+            except Exception as e:
+                print(f"Error calling node methods on {node.name}: {e}")
+
+            # Then update all script instances for this node
             script_instances = getattr(node, 'script_instances', [])
             if script_instances:
                 for script_instance in script_instances:

@@ -79,51 +79,178 @@ class KinematicBody2D(Node2D):
         """
         self._velocity = velocity.copy()
 
-        # In a full implementation, this would:
-        # 1. Cast the body along the velocity vector
-        # 2. Find the first collision
-        # 3. Move to the collision point
-        # 4. Calculate slide vector along the collision surface
-        # 5. Repeat with remaining velocity
+        # Get physics world from scene
+        physics_world = self._get_physics_world()
+        if not physics_world:
+            # Fallback to simple movement
+            delta_x = velocity[0] * (1.0/60.0)
+            delta_y = velocity[1] * (1.0/60.0)
+            self.translate(delta_x, delta_y)
+            return velocity.copy()
 
-        # For now: simplified movement with basic collision response
-        remaining_velocity = velocity.copy()
+        # Get our physics body by node reference
+        physics_body = physics_world.get_body_by_node(self)
+        if not physics_body:
+            # Fallback to simple movement if no physics body
+            delta_x = velocity[0] * (1.0/60.0)
+            delta_y = velocity[1] * (1.0/60.0)
+            self.translate(delta_x, delta_y)
+            return velocity.copy()
 
-        # Apply movement (simplified)
-        delta_x = velocity[0] * (1.0/60.0)  # Assume 60 FPS
-        delta_y = velocity[1] * (1.0/60.0)
+        # Update physics body position to match node position
+        physics_body.update_physics_from_node()
 
-        # Move and check for collisions (stub)
-        old_pos = self.position.copy()
-        self.translate(delta_x, delta_y)
+        # Calculate movement delta
+        delta_time = 1.0 / 60.0
+        move_delta = [velocity[0] * delta_time, velocity[1] * delta_time]
 
-        # In a real implementation, check for collisions here
-        # and adjust position/velocity accordingly
+        # Try to move and check for collisions using shape casting
+        collision_result = self._test_move(physics_body, move_delta, physics_world)
 
-        return remaining_velocity
+        if collision_result:
+            # Collision detected, slide along surface
+            normal = collision_result['normal']
+
+            # Calculate slide direction (remove component along normal)
+            dot_product = move_delta[0] * normal[0] + move_delta[1] * normal[1]
+            slide_delta = [
+                move_delta[0] - dot_product * normal[0],
+                move_delta[1] - dot_product * normal[1]
+            ]
+
+            # Move to collision point
+            safe_distance = collision_result['distance'] * 0.99
+            safe_move = [move_delta[0] * safe_distance, move_delta[1] * safe_distance]
+            self.translate(safe_move[0], safe_move[1])
+
+            # Try to slide along surface
+            if abs(slide_delta[0]) > 0.1 or abs(slide_delta[1]) > 0.1:
+                slide_result = self._test_move(physics_body, slide_delta, physics_world)
+                if not slide_result:
+                    self.translate(slide_delta[0], slide_delta[1])
+
+            # Update physics body position after movement
+            physics_body.update_physics_from_node()
+
+            # Calculate remaining velocity
+            remaining_velocity = [
+                velocity[0] - dot_product * normal[0] * 60.0,
+                velocity[1] - dot_product * normal[1] * 60.0
+            ]
+            return remaining_velocity
+        else:
+            # No collision, move freely
+            self.translate(move_delta[0], move_delta[1])
+            # Update physics body position after movement
+            physics_body.update_physics_from_node()
+            return velocity.copy()
+
+    def _test_move(self, physics_body, move_delta, physics_world):
+        """Test movement and return collision info if collision would occur"""
+        # Get current position
+        current_pos = physics_body.pymunk_body.position
+        target_pos = (current_pos[0] + move_delta[0], current_pos[1] + move_delta[1])
+
+        # Use raycast to detect collisions along the movement path
+        hit = physics_world.raycast(
+            (current_pos[0], current_pos[1]),
+            target_pos,
+            exclude_sensors=True
+        )
+
+        if hit:
+            return {
+                'distance': hit['distance'],
+                'normal': hit['normal'],
+                'point': hit['point'],
+                'body': hit['body']
+            }
+
+        return None
+
+    def _get_physics_world(self):
+        """Get the physics world from the scene"""
+        try:
+            # Try to get physics world from scene
+            scene = self.get_scene()
+            if scene and hasattr(scene, 'physics_world'):
+                return scene.physics_world
+        except:
+            pass
+        return None
+
+    def _check_collision_along_path(self, move_delta: List[float], physics_world) -> Optional[Dict[str, Any]]:
+        """Check for collisions along movement path using raycast"""
+        if not physics_world:
+            return None
+
+        # Calculate start and end points for raycast
+        start_pos = self.position.copy()
+        end_pos = [start_pos[0] + move_delta[0], start_pos[1] + move_delta[1]]
+
+        # Perform raycast
+        hit_info = physics_world.raycast((start_pos[0], start_pos[1]), (end_pos[0], end_pos[1]))
+
+        if hit_info and hit_info['body'] and hit_info['body'].node != self:
+            return {
+                'distance': hit_info['distance'],
+                'point': hit_info['point'],
+                'normal': hit_info['normal'],
+                'body': hit_info['body']
+            }
+
+        return None
 
     def move_and_collide(self, velocity: List[float]) -> Optional[Dict[str, Any]]:
         """
         Move the body and return collision info if collision occurred.
         Returns None if no collision, or collision dict with details.
         """
-        # Store old position
-        old_pos = self.position.copy()
+        # Get physics world
+        physics_world = self._get_physics_world()
+        if not physics_world:
+            # Fallback to simple movement
+            delta_x = velocity[0] * (1.0/60.0)
+            delta_y = velocity[1] * (1.0/60.0)
+            self.translate(delta_x, delta_y)
+            return None
 
-        # Calculate movement
-        delta_x = velocity[0] * (1.0/60.0)  # Assume 60 FPS
-        delta_y = velocity[1] * (1.0/60.0)
+        # Calculate movement delta
+        delta_time = 1.0 / 60.0
+        move_delta = [velocity[0] * delta_time, velocity[1] * delta_time]
 
-        # Apply movement
-        self.translate(delta_x, delta_y)
+        # Check for collision along path
+        collision_info = self._check_collision_along_path(move_delta, physics_world)
 
-        # In a full implementation, this would:
-        # 1. Cast the body along the velocity vector
-        # 2. Check for collisions with other physics bodies
-        # 3. Return collision information if collision occurred
+        # Get our physics body
+        physics_body = physics_world.get_body_by_node(self)
 
-        # For now: return None (no collision detected)
-        return None
+        if collision_info:
+            # Move to collision point
+            safe_distance = collision_info['distance'] * 0.99  # Leave small gap
+            safe_delta = [move_delta[0] * safe_distance, move_delta[1] * safe_distance]
+            self.translate(safe_delta[0], safe_delta[1])
+
+            # Update physics body position after movement
+            if physics_body:
+                physics_body.update_physics_from_node()
+
+            # Return collision information
+            return {
+                'collider': collision_info['body'].node,
+                'position': collision_info['point'],
+                'normal': collision_info['normal'],
+                'travel': safe_delta,
+                'remainder': [move_delta[0] - safe_delta[0], move_delta[1] - safe_delta[1]]
+            }
+        else:
+            # No collision, move freely
+            self.translate(move_delta[0], move_delta[1])
+
+            # Update physics body position after movement
+            if physics_body:
+                physics_body.update_physics_from_node()
+            return None
 
     def is_on_floor(self) -> bool:
         """Check if the body is on the floor"""

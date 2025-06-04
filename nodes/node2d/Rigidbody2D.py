@@ -214,6 +214,14 @@ class RigidBody2D(Node2D):
         body = cls(data.get("name", "RigidBody2D"))
         cls._apply_node_properties(body, data)
 
+        # Apply Node2D specific properties (position, rotation, scale)
+        body.position = data.get("position", [0.0, 0.0])
+        body.rotation = data.get("rotation", 0.0)
+        body.scale = data.get("scale", [1.0, 1.0])
+        body.z_index = data.get("z_index", 0)
+        body.z_as_relative = data.get("z_as_relative", True)
+        body.visible = data.get("visible", True)
+
         body.mode = data.get("mode", "Rigid")
         body.mass = data.get("mass", 1.0)
         body.friction = data.get("friction", 0.5)
