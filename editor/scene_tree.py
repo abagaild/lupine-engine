@@ -13,7 +13,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction
 
 from core.project import LupineProject
-from core.node_registry import get_node_registry, create_node
+from core.node_registry import get_node_registry
 from .add_node_dialog import AddNodeDialog
 
 

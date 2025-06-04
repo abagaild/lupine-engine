@@ -75,7 +75,7 @@ class ScriptAttachmentDialog(QDialog):
         # Script name
         self.script_name_edit = QLineEdit()
         node_name = self.node_data.get('name', 'Node').replace(' ', '')
-        self.script_name_edit.setText(f"{node_name}.lsc")
+        self.script_name_edit.setText(f"{node_name}.py")
         new_script_layout.addRow("Script Name:", self.script_name_edit)
         
         # Script template
@@ -207,112 +207,112 @@ class ScriptAttachmentDialog(QDialog):
         node_type = self.node_data.get('type', 'Node')
         node_name = self.node_data.get('name', 'Node')
         
-        base_template = f'''# LSC Script for {node_name}
-extends {node_type}
+        base_template = f'''# Python Script for {node_name}
+# Node type: {node_type}
 
 # Export variables (shown in inspector)
-export var example_property: float = 1.0
+!example_property = 1.0
 
 # Called when the node enters the scene tree
-func _ready():
+def _ready():
     print("{node_name} ready!")
 
 # Called every frame
-func _process(delta: float):
+def _process(delta):
     pass
 '''
         
         if template_name == "Control Script":
-            return f'''# LSC UI Script for {node_name}
-extends Control
+            return f'''# Python UI Script for {node_name}
+# Node type: Control
 
 # Export variables
-export var auto_focus: bool = false
+!auto_focus = False
 
 # Called when the node enters the scene tree
-func _ready():
+def _ready():
     if auto_focus:
         grab_focus()
 
 # Called every frame
-func _process(delta: float):
+def _process(delta):
     pass
 
 # UI event handlers
-func _on_button_pressed():
+def _on_button_pressed():
     pass
 
-func _on_focus_entered():
+def _on_focus_entered():
     pass
 
-func _on_focus_exited():
+def _on_focus_exited():
     pass
 '''
         
         elif template_name == "Area2D Script":
-            return f'''# LSC Area2D Script for {node_name}
-extends Area2D
+            return f'''# Python Area2D Script for {node_name}
+# Node type: Area2D
 
 # Export variables
-export var detection_enabled: bool = true
+!detection_enabled = True
 
 # Called when the node enters the scene tree
-func _ready():
+def _ready():
     connect("body_entered", self, "_on_body_entered")
     connect("body_exited", self, "_on_body_exited")
 
 # Called every frame
-func _process(delta: float):
+def _process(delta):
     pass
 
 # Area2D signals
-func _on_body_entered(body):
+def _on_body_entered(body):
     if detection_enabled:
         print("Body entered:", body.name)
 
-func _on_body_exited(body):
+def _on_body_exited(body):
     if detection_enabled:
         print("Body exited:", body.name)
 '''
         
         elif template_name == "RigidBody2D Script":
-            return f'''# LSC RigidBody2D Script for {node_name}
-extends RigidBody2D
+            return f'''# Python RigidBody2D Script for {node_name}
+# Node type: RigidBody2D
 
 # Export variables
-export var movement_force: float = 500.0
-export var max_speed: float = 300.0
+!movement_force = 500.0
+!max_speed = 300.0
 
 # Called when the node enters the scene tree
-func _ready():
+def _ready():
     pass
 
 # Called every physics frame
-func _physics_process(delta: float):
+def _physics_process(delta):
     # Handle physics-based movement
     pass
 
 # Handle input
-func _input(event):
-    if event is InputEventKey:
+def _input(event):
+    if event.type == "key":
         handle_movement_input(event)
 
-func handle_movement_input(event):
-    var force = Vector2.ZERO
-    
-    if Input.is_action_pressed("move_left"):
-        force.x -= movement_force
-    if Input.is_action_pressed("move_right"):
-        force.x += movement_force
-    
+def handle_movement_input(event):
+    force = [0.0, 0.0]
+
+    if is_action_pressed("move_left"):
+        force[0] -= movement_force
+    if is_action_pressed("move_right"):
+        force[0] += movement_force
+
     apply_central_force(force)
 '''
         
         elif template_name == "Empty Script":
-            return f'''# LSC Script for {node_name}
-extends {node_type}
+            return f'''# Python Script for {node_name}
+# Node type: {node_type}
 
-func _ready():
+def _ready():
     pass
 '''
         
@@ -328,8 +328,8 @@ func _ready():
                     QMessageBox.warning(self, "Invalid Input", "Please enter a script name!")
                     return
                 
-                if not script_name.endswith('.lsc'):
-                    script_name += '.lsc'
+                if not script_name.endswith('.py'):
+                    script_name += '.py'
                 
                 # Create script file
                 scripts_dir = self.project.get_absolute_path("scripts")

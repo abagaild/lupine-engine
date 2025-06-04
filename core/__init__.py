@@ -8,8 +8,7 @@ __author__ = "Lupine Engine Team"
 
 # Core systems
 from .project import LupineProject, ProjectManager
-from .scene import (Scene, Node, Node2D, Sprite, Camera2D, Area2D, Control, Panel, Label, CanvasLayer, SceneManager,
-                   CollisionShape2D, CollisionPolygon2D, RigidBody2D, StaticBody2D, KinematicBody2D)
+from .scene import (Scene, Node,     SceneManager)
 from .audio import AudioManager, audio_manager
 from .python_runtime import PythonScriptRuntime, PythonScriptInstance
 
@@ -18,20 +17,6 @@ __all__ = [
     'ProjectManager',
     'Scene',
     'Node',
-    'Node2D',
-    'Sprite',
-    'Camera2D',
-    'Area2D',
-    'CollisionShape2D',
-    'CollisionPolygon2D',
-    'RigidBody2D',
-    'StaticBody2D',
-    'KinematicBody2D',
-    'Control',
-    'Panel',
-    'Label',
-    'CanvasLayer',
-    'SceneManager',
     'AudioManager',
     'audio_manager',
     'PythonScriptRuntime',

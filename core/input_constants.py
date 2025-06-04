@@ -3,12 +3,12 @@ Input Constants for Lupine Engine
 Provides Godot-like constants for keys and mouse buttons
 """
 
-import arcade
+import pygame
 
-# Mouse button constants (Godot-like)
+# Mouse button constants (Godot-like, mapped to pygame)
 MOUSE_BUTTON_LEFT = 1
-MOUSE_BUTTON_RIGHT = 2
-MOUSE_BUTTON_MIDDLE = 3
+MOUSE_BUTTON_RIGHT = 3
+MOUSE_BUTTON_MIDDLE = 2
 MOUSE_BUTTON_WHEEL_UP = 4
 MOUSE_BUTTON_WHEEL_DOWN = 5
 MOUSE_BUTTON_WHEEL_LEFT = 6
@@ -16,151 +16,152 @@ MOUSE_BUTTON_WHEEL_RIGHT = 7
 MOUSE_BUTTON_XBUTTON1 = 8
 MOUSE_BUTTON_XBUTTON2 = 9
 
-# Key constants (Godot-like names mapped to arcade keys)
-KEY_ESCAPE = arcade.key.ESCAPE
-KEY_TAB = arcade.key.TAB
-KEY_BACKTAB = arcade.key.TAB  # Shift+Tab
-KEY_BACKSPACE = arcade.key.BACKSPACE
-KEY_ENTER = arcade.key.ENTER
-KEY_INSERT = arcade.key.INSERT
-KEY_DELETE = arcade.key.DELETE
-KEY_PAUSE = arcade.key.PAUSE
-KEY_PRINT = arcade.key.PRINT
-KEY_HOME = arcade.key.HOME
-KEY_END = arcade.key.END
-KEY_LEFT = arcade.key.LEFT
-KEY_UP = arcade.key.UP
-KEY_RIGHT = arcade.key.RIGHT
-KEY_DOWN = arcade.key.DOWN
-KEY_PAGEUP = arcade.key.PAGEUP
-KEY_PAGEDOWN = arcade.key.PAGEDOWN
+# Key constants (Godot-like names mapped to pygame keys)
+KEY_ESCAPE = pygame.K_ESCAPE
+KEY_TAB = pygame.K_TAB
+KEY_BACKTAB = pygame.K_TAB  # Shift+Tab
+KEY_BACKSPACE = pygame.K_BACKSPACE
+KEY_ENTER = pygame.K_RETURN
+KEY_INSERT = pygame.K_INSERT
+KEY_DELETE = pygame.K_DELETE
+KEY_PAUSE = pygame.K_PAUSE
+KEY_PRINT = pygame.K_PRINT
+KEY_HOME = pygame.K_HOME
+KEY_END = pygame.K_END
+KEY_LEFT = pygame.K_LEFT
+KEY_UP = pygame.K_UP
+KEY_RIGHT = pygame.K_RIGHT
+KEY_DOWN = pygame.K_DOWN
+KEY_PAGEUP = pygame.K_PAGEUP
+KEY_PAGEDOWN = pygame.K_PAGEDOWN
 
 # Shift keys
-KEY_SHIFT = arcade.key.LSHIFT
-KEY_LSHIFT = arcade.key.LSHIFT
-KEY_RSHIFT = arcade.key.RSHIFT
+KEY_SHIFT = pygame.K_LSHIFT
+KEY_LSHIFT = pygame.K_LSHIFT
+KEY_RSHIFT = pygame.K_RSHIFT
 
 # Control keys
-KEY_CTRL = arcade.key.LCTRL
-KEY_LCTRL = arcade.key.LCTRL
-KEY_RCTRL = arcade.key.RCTRL
+KEY_CTRL = pygame.K_LCTRL
+KEY_LCTRL = pygame.K_LCTRL
+KEY_RCTRL = pygame.K_RCTRL
 
 # Alt keys
-KEY_ALT = arcade.key.LALT
-KEY_LALT = arcade.key.LALT
-KEY_RALT = arcade.key.RALT
+KEY_ALT = pygame.K_LALT
+KEY_LALT = pygame.K_LALT
+KEY_RALT = pygame.K_RALT
 
 # Meta/Windows keys
-KEY_META = arcade.key.LMETA
-KEY_LMETA = arcade.key.LMETA
-KEY_RMETA = arcade.key.RMETA
+KEY_META = pygame.K_LMETA
+KEY_LMETA = pygame.K_LMETA
+KEY_RMETA = pygame.K_RMETA
 
 # Function keys
-KEY_F1 = arcade.key.F1
-KEY_F2 = arcade.key.F2
-KEY_F3 = arcade.key.F3
-KEY_F4 = arcade.key.F4
-KEY_F5 = arcade.key.F5
-KEY_F6 = arcade.key.F6
-KEY_F7 = arcade.key.F7
-KEY_F8 = arcade.key.F8
-KEY_F9 = arcade.key.F9
-KEY_F10 = arcade.key.F10
-KEY_F11 = arcade.key.F11
-KEY_F12 = arcade.key.F12
+KEY_F1 = pygame.K_F1
+KEY_F2 = pygame.K_F2
+KEY_F3 = pygame.K_F3
+KEY_F4 = pygame.K_F4
+KEY_F5 = pygame.K_F5
+KEY_F6 = pygame.K_F6
+KEY_F7 = pygame.K_F7
+KEY_F8 = pygame.K_F8
+KEY_F9 = pygame.K_F9
+KEY_F10 = pygame.K_F10
+KEY_F11 = pygame.K_F11
+KEY_F12 = pygame.K_F12
 
 # Number keys
-KEY_0 = arcade.key.KEY_0
-KEY_1 = arcade.key.KEY_1
-KEY_2 = arcade.key.KEY_2
-KEY_3 = arcade.key.KEY_3
-KEY_4 = arcade.key.KEY_4
-KEY_5 = arcade.key.KEY_5
-KEY_6 = arcade.key.KEY_6
-KEY_7 = arcade.key.KEY_7
-KEY_8 = arcade.key.KEY_8
-KEY_9 = arcade.key.KEY_9
+KEY_0 = pygame.K_0
+KEY_1 = pygame.K_1
+KEY_2 = pygame.K_2
+KEY_3 = pygame.K_3
+KEY_4 = pygame.K_4
+KEY_5 = pygame.K_5
+KEY_6 = pygame.K_6
+KEY_7 = pygame.K_7
+KEY_8 = pygame.K_8
+KEY_9 = pygame.K_9
 
 # Letter keys
-KEY_A = arcade.key.A
-KEY_B = arcade.key.B
-KEY_C = arcade.key.C
-KEY_D = arcade.key.D
-KEY_E = arcade.key.E
-KEY_F = arcade.key.F
-KEY_G = arcade.key.G
-KEY_H = arcade.key.H
-KEY_I = arcade.key.I
-KEY_J = arcade.key.J
-KEY_K = arcade.key.K
-KEY_L = arcade.key.L
-KEY_M = arcade.key.M
-KEY_N = arcade.key.N
-KEY_O = arcade.key.O
-KEY_P = arcade.key.P
-KEY_Q = arcade.key.Q
-KEY_R = arcade.key.R
-KEY_S = arcade.key.S
-KEY_T = arcade.key.T
-KEY_U = arcade.key.U
-KEY_V = arcade.key.V
-KEY_W = arcade.key.W
-KEY_X = arcade.key.X
-KEY_Y = arcade.key.Y
-KEY_Z = arcade.key.Z
+KEY_A = pygame.K_a
+KEY_B = pygame.K_b
+KEY_C = pygame.K_c
+KEY_D = pygame.K_d
+KEY_E = pygame.K_e
+KEY_F = pygame.K_f
+KEY_G = pygame.K_g
+KEY_H = pygame.K_h
+KEY_I = pygame.K_i
+KEY_J = pygame.K_j
+KEY_K = pygame.K_k
+KEY_L = pygame.K_l
+KEY_M = pygame.K_m
+KEY_N = pygame.K_n
+KEY_O = pygame.K_o
+KEY_P = pygame.K_p
+KEY_Q = pygame.K_q
+KEY_R = pygame.K_r
+KEY_S = pygame.K_s
+KEY_T = pygame.K_t
+KEY_U = pygame.K_u
+KEY_V = pygame.K_v
+KEY_W = pygame.K_w
+KEY_X = pygame.K_x
+KEY_Y = pygame.K_y
+KEY_Z = pygame.K_z
 
 # Special characters
-KEY_SPACE = arcade.key.SPACE
-KEY_EXCLAM = arcade.key.EXCLAMATION
-KEY_QUOTEDBL = arcade.key.DOUBLEQUOTE
-KEY_NUMBERSIGN = arcade.key.HASH
-KEY_DOLLAR = arcade.key.DOLLAR
-KEY_PERCENT = arcade.key.PERCENT
-KEY_AMPERSAND = arcade.key.AMPERSAND
-KEY_APOSTROPHE = arcade.key.APOSTROPHE
-KEY_PARENLEFT = arcade.key.PARENLEFT
-KEY_PARENRIGHT = arcade.key.PARENRIGHT
-KEY_ASTERISK = arcade.key.ASTERISK
-KEY_PLUS = arcade.key.PLUS
-KEY_COMMA = arcade.key.COMMA
-KEY_MINUS = arcade.key.MINUS
-KEY_PERIOD = arcade.key.PERIOD
-KEY_SLASH = arcade.key.SLASH
+KEY_SPACE = pygame.K_SPACE
+KEY_EXCLAM = pygame.K_EXCLAIM
+KEY_QUOTEDBL = pygame.K_QUOTEDBL
+KEY_NUMBERSIGN = pygame.K_HASH
+KEY_DOLLAR = pygame.K_DOLLAR
+KEY_PERCENT = pygame.K_PERCENT
+KEY_AMPERSAND = pygame.K_AMPERSAND
+KEY_APOSTROPHE = pygame.K_QUOTE
+KEY_PARENLEFT = pygame.K_LEFTPAREN
+KEY_PARENRIGHT = pygame.K_RIGHTPAREN
+KEY_ASTERISK = pygame.K_ASTERISK
+KEY_PLUS = pygame.K_PLUS
+KEY_COMMA = pygame.K_COMMA
+KEY_MINUS = pygame.K_MINUS
+KEY_PERIOD = pygame.K_PERIOD
+KEY_SLASH = pygame.K_SLASH
 
 # Brackets and braces
-KEY_BRACKETLEFT = arcade.key.BRACKETLEFT
-KEY_BACKSLASH = arcade.key.BACKSLASH
-KEY_BRACKETRIGHT = arcade.key.BRACKETRIGHT
-KEY_ASCIICIRCUM = arcade.key.ASCIICIRCUM
-KEY_UNDERSCORE = arcade.key.UNDERSCORE
-KEY_GRAVE = arcade.key.GRAVE
-KEY_BRACELEFT = arcade.key.BRACELEFT
-KEY_BAR = arcade.key.BAR
-KEY_BRACERIGHT = arcade.key.BRACERIGHT
-KEY_ASCIITILDE = arcade.key.ASCIITILDE
+KEY_BRACKETLEFT = pygame.K_LEFTBRACKET
+KEY_BACKSLASH = pygame.K_BACKSLASH
+KEY_BRACKETRIGHT = pygame.K_RIGHTBRACKET
+KEY_ASCIICIRCUM = pygame.K_CARET
+KEY_UNDERSCORE = pygame.K_UNDERSCORE
+KEY_GRAVE = pygame.K_BACKQUOTE
+# Note: pygame doesn't have separate constants for braces, they're shift+bracket
+KEY_BRACELEFT = pygame.K_LEFTBRACKET  # {
+KEY_BAR = pygame.K_BACKSLASH  # |
+KEY_BRACERIGHT = pygame.K_RIGHTBRACKET  # }
+KEY_ASCIITILDE = pygame.K_BACKQUOTE  # ~
 
 # Numpad keys
-KEY_KP_0 = arcade.key.NUM_0
-KEY_KP_1 = arcade.key.NUM_1
-KEY_KP_2 = arcade.key.NUM_2
-KEY_KP_3 = arcade.key.NUM_3
-KEY_KP_4 = arcade.key.NUM_4
-KEY_KP_5 = arcade.key.NUM_5
-KEY_KP_6 = arcade.key.NUM_6
-KEY_KP_7 = arcade.key.NUM_7
-KEY_KP_8 = arcade.key.NUM_8
-KEY_KP_9 = arcade.key.NUM_9
-KEY_KP_PERIOD = arcade.key.NUM_DECIMAL
-KEY_KP_DIVIDE = arcade.key.NUM_DIVIDE
-KEY_KP_MULTIPLY = arcade.key.NUM_MULTIPLY
-KEY_KP_MINUS = arcade.key.NUM_SUBTRACT
-KEY_KP_PLUS = arcade.key.NUM_ADD
-KEY_KP_ENTER = arcade.key.NUM_ENTER
+KEY_KP_0 = pygame.K_KP0
+KEY_KP_1 = pygame.K_KP1
+KEY_KP_2 = pygame.K_KP2
+KEY_KP_3 = pygame.K_KP3
+KEY_KP_4 = pygame.K_KP4
+KEY_KP_5 = pygame.K_KP5
+KEY_KP_6 = pygame.K_KP6
+KEY_KP_7 = pygame.K_KP7
+KEY_KP_8 = pygame.K_KP8
+KEY_KP_9 = pygame.K_KP9
+KEY_KP_PERIOD = pygame.K_KP_PERIOD
+KEY_KP_DIVIDE = pygame.K_KP_DIVIDE
+KEY_KP_MULTIPLY = pygame.K_KP_MULTIPLY
+KEY_KP_MINUS = pygame.K_KP_MINUS
+KEY_KP_PLUS = pygame.K_KP_PLUS
+KEY_KP_ENTER = pygame.K_KP_ENTER
 
 # Lock keys
-KEY_CAPSLOCK = arcade.key.CAPSLOCK
-KEY_NUMLOCK = arcade.key.NUMLOCK
-KEY_SCROLLLOCK = arcade.key.SCROLLLOCK
+KEY_CAPSLOCK = pygame.K_CAPSLOCK
+KEY_NUMLOCK = pygame.K_NUMLOCK
+KEY_SCROLLLOCK = pygame.K_SCROLLOCK
 
 # Key name mappings for display and configuration
 KEY_NAMES = {

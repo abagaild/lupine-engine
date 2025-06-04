@@ -60,10 +60,12 @@ class LupineProject:
                 "main_scene": "",
                 "settings": {
                     "display": {
-                        "width": 1024,
-                        "height": 768,
+                        "width": 1920,
+                        "height": 1080,
                         "fullscreen": False,
-                        "resizable": True
+                        "resizable": True,
+                        "scaling_mode": "stretch",
+                        "scaling_filter": "linear"
                     },
                     "audio": {
                         "master_volume": 1.0,
@@ -178,48 +180,29 @@ class LupineProject:
                 print(f"Warning: Engine nodes directory not found at {engine_nodes_dir}")
                 return
 
-            # Define node categorization based on new directory structure
-            node_categories = {
-                "base": ["base/Node.py", "base/Node2D.py", "base/Timer.py"],
-                "node2d": ["node2d/Sprite.py", "node2d/AnimatedSprite.py", "node2d/Camera2D.py",
-                          "node2d/Area2D.py", "node2d/CollisionShape2D.py", "node2d/CollisionPolygon2D.py",
-                          "node2d/RigidBody2D.py", "node2d/StaticBody2D.py", "node2d/KinematicBody2D.py"],
-                "ui": ["ui/Control.py", "ui/Panel.py", "ui/Label.py", "ui/Button.py", "ui/CanvasLayer.py",
-                       "ui/ColorRect.py", "ui/TextureRect.py", "ui/ProgressBar.py",
-                       "ui/VBoxContainer.py", "ui/HBoxContainer.py", "ui/CenterContainer.py", "ui/GridContainer.py",
-                       "ui/RichTextLabel.py", "ui/PanelContainer.py", "ui/NinePatchRect.py", "ui/ItemList.py",
-                       "ui/LineEdit.py", "ui/CheckBox.py", "ui/Slider.py", "ui/ScrollContainer.py",
-                       "ui/HSeparator.py", "ui/VSeparator.py"],
-                "audio": ["audio/AudioStreamPlayer.py", "audio/AudioStreamPlayer2D.py"],
-                "prefabs": []  # Will be populated with any remaining files
-            }
+            # Dynamically copy nodes based on engine directory structure
+            # This preserves the engine's organization without hardcoding
 
-            # Copy categorized nodes
-            for category, node_files in node_categories.items():
-                category_dir = self.project_path / "nodes" / category
+            # First, copy the entire nodes directory structure
+            if engine_nodes_dir.exists():
+                for item in engine_nodes_dir.rglob("*"):
+                    if item.is_file() and item.suffix == ".py":
+                        # Calculate relative path from engine nodes dir
+                        relative_path = item.relative_to(engine_nodes_dir)
 
-                for node_file in node_files:
-                    source_file = engine_nodes_dir / node_file
-                    if source_file.exists():
-                        # Extract just the filename for the destination
-                        dest_file = category_dir / Path(node_file).name
-                        shutil.copy2(source_file, dest_file)
-                        print(f"Copied {Path(node_file).name} to {category}/")
-                    else:
-                        print(f"Warning: Node file {node_file} not found in engine")
+                        # Create destination path maintaining directory structure
+                        dest_file = self.project_path / "nodes" / relative_path
+                        dest_file.parent.mkdir(parents=True, exist_ok=True)
 
-            # Copy any remaining .py files to prefabs
+                        # Copy the file
+                        shutil.copy2(item, dest_file)
+                        print(f"Copied {relative_path} to nodes/")
+
+            # Also copy any loose .py files to prefabs category
             prefabs_dir = self.project_path / "nodes" / "prefabs"
             for py_file in engine_nodes_dir.glob("*.py"):
-                # Check if already copied to another category
-                already_copied = False
-                for category_files in node_categories.values():
-                    if py_file.name in category_files:
-                        already_copied = True
-                        break
-
-                if not already_copied:
-                    dest_file = prefabs_dir / py_file.name
+                dest_file = prefabs_dir / py_file.name
+                if not dest_file.exists():  # Don't overwrite if already copied
                     shutil.copy2(py_file, dest_file)
                     print(f"Copied {py_file.name} to prefabs/")
 

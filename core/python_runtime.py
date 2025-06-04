@@ -1,6 +1,6 @@
 """
 Python Script Runtime System for Lupine Engine
-Replaces the LSC system with native Python script execution
+Optimized native Python script execution for game development
 """
 
 import ast
@@ -13,22 +13,25 @@ from pathlib import Path
 
 
 class PythonScriptRuntime:
-    """Runtime system for executing Python scripts in the game engine"""
-    
+    """Optimized runtime system for executing Python scripts in the game engine"""
+
     def __init__(self, game_runtime=None):
         self.game_runtime = game_runtime
         self.delta_time = 0.0
         self.runtime_time = 0.0
         self.global_scope = {}
         self.current_scope = None
-        
+
+        # Performance optimization: cache compiled scripts
+        self.compiled_scripts = {}
+
         # Setup built-in functions
         self.setup_builtins()
     
     def setup_builtins(self):
         """Setup built-in functions available to all scripts"""
         self.global_scope.update({
-            # Core engine functions
+            # Core Python functions
             'print': print,
             'len': len,
             'range': range,
@@ -41,14 +44,24 @@ class PythonScriptRuntime:
             'abs': abs,
             'min': min,
             'max': max,
-            
+            'round': round,
+            'sum': sum,
+            'any': any,
+            'all': all,
+
             # Game engine specific functions (will be added by game_runtime)
             'get_node': None,
             'find_node': None,
             'change_scene': None,
             'emit_signal': None,
+            'connect': None,
+            'disconnect': None,
+            'is_action_pressed': None,
+            'is_action_just_pressed': None,
+            'is_action_just_released': None,
             'get_delta_time': lambda: self.delta_time,
             'get_runtime_time': lambda: self.runtime_time,
+            'get_fps': lambda: 1.0 / self.delta_time if self.delta_time > 0 else 0.0,
         })
     
     def update_time(self, delta_time: float):

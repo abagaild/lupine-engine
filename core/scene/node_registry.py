@@ -11,35 +11,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Type, Any
 
 from .base_node import Node
-from .node2d import Node2D
-from .sprite import Sprite, AnimatedSprite
-from .timer import Timer
-from .camera import Camera2D
-from .physics_nodes import (
-    CollisionShape2D, CollisionPolygon2D,
-    Area2D, RigidBody2D, StaticBody2D, KinematicBody2D
-)
-from .audio_nodes import AudioStreamPlayer, AudioStreamPlayer2D
-from .ui_nodes.control import Control
-from .ui_nodes.panel import Panel
-from .ui_nodes.label import Label
-from .ui_nodes.button import Button
-from .ui_nodes.color_rect import ColorRect
-from .ui_nodes.texture_rect import TextureRect
-from .ui_nodes.progress_bar import ProgressBar
-from .ui_nodes.containers import (
-    VBoxContainer, HBoxContainer, CenterContainer, GridContainer
-)
-from .ui_nodes.rich_text_label import RichTextLabel
-from .ui_nodes.panel_container import PanelContainer
-from .ui_nodes.nine_patch_rect import NinePatchRect
-from .ui_nodes.item_list import ItemList
-from .ui_nodes.line_edit import LineEdit
-from .ui_nodes.check_box import CheckBox
-from .ui_nodes.slider import Slider
-from .ui_nodes.scroll_container import ScrollContainer
-from .ui_nodes.separators import HSeparator, VSeparator
-from .ui_nodes.canvas_layer import CanvasLayer
 
 
 class NodeRegistry:
@@ -50,63 +21,6 @@ class NodeRegistry:
 
     def __init__(self):
         self._registry: Dict[str, Type[Node]] = {}
-        self._register_builtin_nodes()
-
-    def _register_builtin_nodes(self) -> None:
-        """Register all built-in node types with their class."""
-        base_nodes = {
-            "Node": Node,
-            "Node2D": Node2D,
-            "Timer": Timer
-        }
-        sprite_nodes = {
-            "Sprite": Sprite,
-            "AnimatedSprite": AnimatedSprite
-        }
-        camera_nodes = {
-            "Camera2D": Camera2D
-        }
-        physics_nodes = {
-            "CollisionShape2D": CollisionShape2D,
-            "CollisionPolygon2D": CollisionPolygon2D,
-            "Area2D": Area2D,
-            "RigidBody2D": RigidBody2D,
-            "StaticBody2D": StaticBody2D,
-            "KinematicBody2D": KinematicBody2D
-        }
-        audio_nodes = {
-            "AudioStreamPlayer": AudioStreamPlayer,
-            "AudioStreamPlayer2D": AudioStreamPlayer2D
-        }
-        ui_nodes = {
-            "Control": Control,
-            "Panel": Panel,
-            "Label": Label,
-            "Button": Button,
-            "ColorRect": ColorRect,
-            "TextureRect": TextureRect,
-            "ProgressBar": ProgressBar,
-            "VBoxContainer": VBoxContainer,
-            "HBoxContainer": HBoxContainer,
-            "CenterContainer": CenterContainer,
-            "GridContainer": GridContainer,
-            "RichTextLabel": RichTextLabel,
-            "PanelContainer": PanelContainer,
-            "NinePatchRect": NinePatchRect,
-            "ItemList": ItemList,
-            "LineEdit": LineEdit,
-            "CheckBox": CheckBox,
-            "Slider": Slider,
-            "ScrollContainer": ScrollContainer,
-            "HSeparator": HSeparator,
-            "VSeparator": VSeparator,
-            "CanvasLayer": CanvasLayer
-        }
-
-        for mapping in (base_nodes, sprite_nodes, camera_nodes,
-                        physics_nodes, audio_nodes, ui_nodes):
-            for type_name, cls in mapping.items():
-                self.register_node(type_name, cls)
 
     def register_node(self, type_name: str, cls: Type[Node]) -> None:
         """

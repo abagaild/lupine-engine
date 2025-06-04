@@ -14,6 +14,7 @@ import numpy as np
 from pathlib import Path
 
 from core.project import LupineProject
+from core.shared_renderer import SharedRenderer
 
 # Import pygame for font rendering
 try:
@@ -115,9 +116,8 @@ class SceneViewport(QOpenGLWidget):
         self.show_grid = True
         self.show_bounds = True
 
-        # Game bounds (16:9 aspect ratio)
-        self.game_width = 1920  # 16:9 aspect ratio
-        self.game_height = 1080
+        # Load game bounds from project settings
+        self.game_width, self.game_height = self._load_game_bounds_from_project()
 
         # View area should be square for proper grid display
         # Use the larger dimension to make it square
@@ -139,16 +139,19 @@ class SceneViewport(QOpenGLWidget):
         self.gizmo_size = 8
         self.rotation_handle_distance = 50
 
-        # Texture cache
+        # Shared renderer for consistent rendering with game runner
+        self.renderer = None  # Will be initialized in initializeGL
+
+        # Texture cache (legacy - will be replaced by shared renderer)
         self.texture_cache = {}  # path -> texture_id
 
-        # Font cache for text rendering
+        # Font cache for text rendering (legacy - will be replaced by shared renderer)
         self.font_cache = {}  # (font_name, size) -> pygame.font.Font
         self.text_texture_cache = {}  # (text, font_name, size, color) -> texture_id
 
         # Enable mouse tracking
         self.setMouseTracking(True)
-        
+
         # Update timer for animations
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update)
@@ -162,6 +165,30 @@ class SceneViewport(QOpenGLWidget):
         glEnable(GL_LINE_SMOOTH)
         glHint(GL_LINE_SMOOTH_HINT, GL_NICEST)
         glEnable(GL_TEXTURE_2D)
+
+        # Initialize shared renderer for consistent rendering with game runner
+        self.renderer = SharedRenderer(self.width(), self.height(), str(self.project.project_path), auto_setup_gl=False)
+
+    def _load_game_bounds_from_project(self) -> tuple[int, int]:
+        """Load game bounds from project settings"""
+        try:
+            project_file = self.project.project_path / "project.lupine"
+            if project_file.exists():
+                import json
+                with open(project_file, 'r') as f:
+                    project_data = json.load(f)
+
+                display_settings = project_data.get("settings", {}).get("display", {})
+                width = display_settings.get("width", 1920)  # Default to 1920x1080 if not set
+                height = display_settings.get("height", 1080)
+
+                print(f"[Scene View] Loaded game bounds from project: {width}x{height}")
+                return width, height
+        except Exception as e:
+            print(f"Warning: Could not load game bounds from project settings: {e}")
+
+        # Fallback to default 1920x1080
+        return 1920, 1080
     
     def resizeGL(self, width: int, height: int):
         """Handle viewport resize"""
@@ -201,18 +228,22 @@ class SceneViewport(QOpenGLWidget):
     
     def paintGL(self):
         """Render the scene"""
-        glClear(GL_COLOR_BUFFER_BIT)
-        
+        # Clear the screen using shared renderer if available
+        if self.renderer:
+            self.renderer.clear((0.2, 0.2, 0.2, 1.0))
+        else:
+            glClear(GL_COLOR_BUFFER_BIT)
+
         self.setup_projection()
-        
+
         # Draw grid
         if self.show_grid:
             self.draw_grid()
-        
+
         # Draw game bounds
         if self.show_bounds:
             self.draw_game_bounds()
-        
+
         # Draw scene nodes
         self.draw_scene_nodes()
 
@@ -583,74 +614,73 @@ class SceneViewport(QOpenGLWidget):
     def draw_node(self, node_data: Dict[str, Any]):
         """Draw a single node"""
         node_type = node_data.get("type", "Node")
+
+        # All nodes now use the same position property
         position = node_data.get("position", [0, 0])
 
-        # All nodes now use position transform - UI nodes are viewport-relative in game runner only
+        # Handle coordinate conversion based on follow_viewport setting
+        follow_viewport = node_data.get("follow_viewport", False)  # Default false for non-UI nodes
+        if follow_viewport:
+            # Convert viewport coordinates to editor world coordinates
+            position = self._ui_to_world_coords(position)
+
         glPushMatrix()
         glTranslatef(position[0], position[1], 0)
 
-        # Draw based on node type
-        if node_type == "Node2D":
-            self.draw_node2d(node_data)
-        elif node_type == "Sprite":
-            self.draw_sprite(node_data)
-        elif node_type == "AnimatedSprite":
-            self.draw_animated_sprite(node_data)
-        elif node_type == "Timer":
-            self.draw_timer(node_data)
-        elif node_type == "Camera2D":
-            self.draw_camera(node_data)
-        elif node_type == "Control":
-            self.draw_control(node_data)
-        elif node_type == "Panel":
-            self.draw_panel(node_data)
-        elif node_type == "Label":
-            self.draw_label(node_data)
-        elif node_type == "Button":
-            self.draw_button(node_data)
-        elif node_type == "CanvasLayer":
-            self.draw_canvas_layer(node_data)
-        elif node_type == "ColorRect":
-            self.draw_color_rect(node_data)
-        elif node_type == "TextureRect":
-            self.draw_texture_rect(node_data)
-        elif node_type == "ProgressBar":
-            self.draw_progress_bar(node_data)
-        elif node_type == "AudioStreamPlayer":
-            self.draw_audio_stream_player(node_data)
-        elif node_type == "AudioStreamPlayer2D":
-            self.draw_audio_stream_player_2d(node_data)
-        elif node_type == "VBoxContainer":
-            self.draw_vbox_container(node_data)
-        elif node_type == "HBoxContainer":
-            self.draw_hbox_container(node_data)
-        elif node_type == "CenterContainer":
-            self.draw_center_container(node_data)
-        elif node_type == "GridContainer":
-            self.draw_grid_container(node_data)
-        elif node_type == "RichTextLabel":
-            self.draw_rich_text_label(node_data)
-        elif node_type == "PanelContainer":
-            self.draw_panel_container(node_data)
-        elif node_type == "NinePatchRect":
-            self.draw_nine_patch_rect(node_data)
-        elif node_type == "ItemList":
-            self.draw_item_list(node_data)
-        elif node_type == "CollisionShape2D":
-            self.draw_collision_shape(node_data)
-        elif node_type == "CollisionPolygon2D":
-            self.draw_collision_polygon(node_data)
-        elif node_type == "Area2D":
-            self.draw_area2d(node_data)
-        elif node_type == "RigidBody2D":
-            self.draw_rigid_body(node_data)
-        elif node_type == "StaticBody2D":
-            self.draw_static_body(node_data)
-        elif node_type == "KinematicBody2D":
-            self.draw_kinematic_body(node_data)
+        # Draw based on node type - use dynamic dispatch
+        draw_method_name = f"draw_{node_type.lower()}"
+        if hasattr(self, draw_method_name):
+            getattr(self, draw_method_name)(node_data)
         else:
-            # Default node representation
-            self.draw_default_node(node_data)
+            # Try common patterns
+            if node_type == "Node2D":
+                self.draw_node2d(node_data)
+            elif node_type in ["Sprite", "AnimatedSprite"]:
+                self.draw_sprite(node_data)
+            elif node_type == "Timer":
+                self.draw_timer(node_data)
+            elif node_type == "Camera2D":
+                self.draw_camera(node_data)
+            elif node_type in ["Control", "Panel", "Label", "Button", "ColorRect", "TextureRect"]:
+                # All UI nodes can use generic UI drawing
+                self.draw_ui_node(node_data)
+            elif node_type == "CanvasLayer":
+                self.draw_canvas_layer(node_data)
+            elif node_type in ["ProgressBar", "AudioStreamPlayer", "AudioStreamPlayer2D",
+                              "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer",
+                              "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
+                # Use generic UI drawing for these types
+                self.draw_ui_node(node_data)
+            elif node_type in ["CollisionShape2D", "CollisionPolygon2D"]:
+                # Physics collision shapes
+                if node_type == "CollisionShape2D":
+                    self.draw_collision_shape(node_data)
+                else:
+                    self.draw_collision_polygon(node_data)
+            elif node_type in ["Area2D", "RigidBody2D", "StaticBody2D", "KinematicBody2D"]:
+                # Physics bodies
+                if node_type == "Area2D":
+                    self.draw_area2d(node_data)
+                elif node_type == "RigidBody2D":
+                    self.draw_rigid_body(node_data)
+                elif node_type == "StaticBody2D":
+                    self.draw_static_body(node_data)
+                else:
+                    self.draw_kinematic_body(node_data)
+            elif node_type == "Light2D":
+                self.draw_light2d(node_data)
+            elif node_type == "TileMap":
+                self.draw_tilemap(node_data)
+            elif node_type == "RayCast2D":
+                self.draw_raycast2d(node_data)
+            elif node_type in ["Path2D", "PathFollow2D"]:
+                if node_type == "Path2D":
+                    self.draw_path2d(node_data)
+                else:
+                    self.draw_pathfollow2d(node_data)
+            else:
+                # Default node representation
+                self.draw_default_node(node_data)
 
         # Draw children
         children = node_data.get("children", [])
@@ -926,11 +956,9 @@ class SceneViewport(QOpenGLWidget):
         offset = node_data.get("offset", [0.0, 0.0])
         follow_target = node_data.get("follow_target", None)
 
-        # Calculate viewport size (16:9 aspect ratio, scaled by zoom)
-        base_width = 640  # Half of 1280 (game width)
-        base_height = 360  # Half of 720 (game height)
-        viewport_width = base_width / zoom[0]
-        viewport_height = base_height / zoom[1]
+        # Calculate viewport size based on actual game bounds and zoom
+        viewport_width = (self.game_width / 2) / zoom[0]
+        viewport_height = (self.game_height / 2) / zoom[1]
 
         # Apply camera offset
         offset_x, offset_y = offset[0], offset[1]
@@ -1142,8 +1170,8 @@ class SceneViewport(QOpenGLWidget):
             text_y = -rect_size[1]/2 + 15
 
         # Draw text using OpenGL rendering with pygame fonts
-        font_name = node_data.get("font", None)  # Get font from node data
-        self.draw_text_opengl(text, text_x, text_y, font_name, font_size,
+        font_path = node_data.get("font_path", None)  # Get font path from node data
+        self.draw_text_opengl(text, text_x, text_y, font_path, font_size,
                              (font_color[0], font_color[1], font_color[2], 1.0))
 
     def draw_button(self, node_data: Dict[str, Any]):
@@ -1213,8 +1241,8 @@ class SceneViewport(QOpenGLWidget):
         text_y = -6  # Center vertically
 
         # Draw text using OpenGL rendering with pygame fonts
-        font_name = node_data.get("font", None)  # Get font from node data
-        self.draw_text_opengl(text, text_x, text_y, font_name, font_size,
+        font_path = node_data.get("font_path", None)  # Get font path from node data
+        self.draw_text_opengl(text, text_x, text_y, font_path, font_size,
                              (font_color[0], font_color[1], font_color[2], 1.0))
 
         # Draw button indicator (B in corner)
@@ -2501,6 +2529,91 @@ class SceneViewport(QOpenGLWidget):
         glVertex2f(8, -8)
         glEnd()
 
+    def draw_ui_node(self, node_data: Dict[str, Any]):
+        """Generic UI node drawing - handles all UI node types dynamically"""
+        node_type = node_data.get("type", "Control")
+        rect_size = node_data.get("rect_size", [100.0, 30.0])
+
+        # Get UI-specific properties
+        background_color = node_data.get("background_color", [0.2, 0.2, 0.2, 0.8])
+        border_color = node_data.get("border_color", [0.5, 0.5, 0.5, 1.0])
+        border_width = node_data.get("border_width", 1.0)
+
+        # Draw background if visible
+        if background_color[3] > 0:  # Alpha > 0
+            glColor4f(background_color[0], background_color[1], background_color[2], background_color[3])
+            glBegin(GL_QUADS)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+
+        # Draw border
+        if border_width > 0:
+            glColor3f(border_color[0], border_color[1], border_color[2])
+            glLineWidth(border_width)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
+            glVertex2f(rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glEnd()
+            glLineWidth(1.0)
+
+        # Draw type-specific indicators
+        self.draw_ui_type_indicator(node_type, rect_size)
+
+    def draw_ui_type_indicator(self, node_type: str, rect_size: list):
+        """Draw type-specific indicator for UI nodes"""
+        # Draw a small icon or text to indicate the node type
+        glColor3f(1.0, 1.0, 1.0)
+
+        # Simple text indicators for different UI types
+        if node_type == "Button":
+            self.draw_simple_text("BTN", 0, 0, 8)
+        elif node_type == "Label":
+            self.draw_simple_text("LBL", 0, 0, 8)
+        elif node_type == "Panel":
+            self.draw_simple_text("PNL", 0, 0, 8)
+        elif node_type == "ProgressBar":
+            self.draw_simple_text("PGB", 0, 0, 8)
+        elif node_type == "ColorRect":
+            self.draw_simple_text("CLR", 0, 0, 8)
+        elif node_type == "TextureRect":
+            self.draw_simple_text("TEX", 0, 0, 8)
+        elif node_type == "NinePatchRect":
+            self.draw_simple_text("9PT", 0, 0, 8)
+        elif node_type == "VBoxContainer":
+            self.draw_simple_text("VBX", 0, 0, 8)
+        elif node_type == "HBoxContainer":
+            self.draw_simple_text("HBX", 0, 0, 8)
+        elif node_type == "CenterContainer":
+            self.draw_simple_text("CTR", 0, 0, 8)
+        elif node_type == "GridContainer":
+            self.draw_simple_text("GRD", 0, 0, 8)
+        elif node_type == "PanelContainer":
+            self.draw_simple_text("PC", 0, 0, 8)
+        elif node_type == "LineEdit":
+            self.draw_simple_text("EDT", 0, 0, 8)
+        elif node_type == "CheckBox":
+            self.draw_simple_text("CHK", 0, 0, 8)
+        elif node_type == "Slider":
+            self.draw_simple_text("SLD", 0, 0, 8)
+        elif node_type == "ScrollContainer":
+            self.draw_simple_text("SCR", 0, 0, 8)
+        elif node_type == "ItemList":
+            self.draw_simple_text("LST", 0, 0, 8)
+        elif node_type == "HSeparator":
+            self.draw_simple_text("H-", 0, 0, 8)
+        elif node_type == "VSeparator":
+            self.draw_simple_text("V|", 0, 0, 8)
+        elif node_type == "RichTextLabel":
+            self.draw_simple_text("RTL", 0, 0, 8)
+        else:
+            # Generic UI indicator
+            self.draw_simple_text("UI", 0, 0, 8)
+
     def draw_canvas_layer(self, node_data: Dict[str, Any]):
         """Draw CanvasLayer node"""
         # Get canvas layer properties
@@ -2819,6 +2932,215 @@ class SceneViewport(QOpenGLWidget):
         glVertex2f(6, -8)
         glEnd()
 
+    def draw_light2d(self, node_data: Dict[str, Any]):
+        """Draw Light2D node"""
+        color = node_data.get("color", [1.0, 1.0, 1.0, 1.0])
+        energy = node_data.get("energy", 1.0)
+        range_value = node_data.get("range", 200.0)
+        mode = node_data.get("mode", "Additive")
+
+        # Set color based on light properties
+        glColor3f(color[0] * energy, color[1] * energy, color[2] * energy)
+
+        # Draw light range circle
+        glBegin(GL_LINE_LOOP)
+        segments = 32
+        for i in range(segments):
+            angle = 2 * math.pi * i / segments
+            x = range_value * math.cos(angle)
+            y = range_value * math.sin(angle)
+            glVertex2f(x, y)
+        glEnd()
+
+        # Draw light center
+        glBegin(GL_LINES)
+        # Cross pattern
+        glVertex2f(-10, 0)
+        glVertex2f(10, 0)
+        glVertex2f(0, -10)
+        glVertex2f(0, 10)
+        glEnd()
+
+        # Draw mode indicator
+        if mode == "Additive":
+            # Draw "+" symbol
+            glBegin(GL_LINES)
+            glVertex2f(-5, -15)
+            glVertex2f(5, -15)
+            glVertex2f(0, -20)
+            glVertex2f(0, -10)
+            glEnd()
+        elif mode == "Subtractive":
+            # Draw "-" symbol
+            glBegin(GL_LINES)
+            glVertex2f(-5, -15)
+            glVertex2f(5, -15)
+            glEnd()
+
+    def draw_tilemap(self, node_data: Dict[str, Any]):
+        """Draw TileMap node"""
+        cell_size = node_data.get("cell_size", [32.0, 32.0])
+        tiles = node_data.get("tiles", {})
+        modulate = node_data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+
+        # Set color
+        glColor3f(modulate[0], modulate[1], modulate[2])
+
+        # Draw grid for tilemap
+        if tiles:
+            # Find bounds of tiles
+            min_x = min_y = float('inf')
+            max_x = max_y = float('-inf')
+
+            for key in tiles.keys():
+                x, y = map(int, key.split(','))
+                min_x = min(min_x, x)
+                max_x = max(max_x, x)
+                min_y = min(min_y, y)
+                max_y = max(max_y, y)
+
+            # Draw grid lines
+            glBegin(GL_LINES)
+            for x in range(min_x, max_x + 2):
+                world_x = x * cell_size[0]
+                glVertex2f(world_x, min_y * cell_size[1])
+                glVertex2f(world_x, (max_y + 1) * cell_size[1])
+
+            for y in range(min_y, max_y + 2):
+                world_y = y * cell_size[1]
+                glVertex2f(min_x * cell_size[0], world_y)
+                glVertex2f((max_x + 1) * cell_size[0], world_y)
+            glEnd()
+
+            # Draw filled tiles
+            glColor3f(0.8, 0.8, 0.8)
+            for key, tile_id in tiles.items():
+                if tile_id >= 0:
+                    x, y = map(int, key.split(','))
+                    world_x = x * cell_size[0]
+                    world_y = y * cell_size[1]
+
+                    glBegin(GL_QUADS)
+                    glVertex2f(world_x, world_y)
+                    glVertex2f(world_x + cell_size[0], world_y)
+                    glVertex2f(world_x + cell_size[0], world_y + cell_size[1])
+                    glVertex2f(world_x, world_y + cell_size[1])
+                    glEnd()
+        else:
+            # Draw placeholder grid
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(0, 0)
+            glVertex2f(cell_size[0] * 3, 0)
+            glVertex2f(cell_size[0] * 3, cell_size[1] * 3)
+            glVertex2f(0, cell_size[1] * 3)
+            glEnd()
+
+    def draw_raycast2d(self, node_data: Dict[str, Any]):
+        """Draw RayCast2D node"""
+        cast_to = node_data.get("cast_to", [100.0, 0.0])
+        enabled = node_data.get("enabled", True)
+
+        # Set color based on enabled state
+        if enabled:
+            glColor3f(0.0, 1.0, 0.0)  # Green when enabled
+        else:
+            glColor3f(0.5, 0.5, 0.5)  # Gray when disabled
+
+        # Draw ray line
+        glBegin(GL_LINES)
+        glVertex2f(0, 0)
+        glVertex2f(cast_to[0], cast_to[1])
+        glEnd()
+
+        # Draw arrowhead at the end
+        import math
+        length = math.sqrt(cast_to[0]**2 + cast_to[1]**2)
+        if length > 0:
+            # Normalize direction
+            dir_x = cast_to[0] / length
+            dir_y = cast_to[1] / length
+
+            # Arrow size
+            arrow_size = 10
+
+            # Calculate arrow points
+            end_x = cast_to[0]
+            end_y = cast_to[1]
+
+            # Arrow wings
+            wing1_x = end_x - arrow_size * (dir_x * 0.8 + dir_y * 0.6)
+            wing1_y = end_y - arrow_size * (dir_y * 0.8 - dir_x * 0.6)
+            wing2_x = end_x - arrow_size * (dir_x * 0.8 - dir_y * 0.6)
+            wing2_y = end_y - arrow_size * (dir_y * 0.8 + dir_x * 0.6)
+
+            glBegin(GL_LINES)
+            glVertex2f(end_x, end_y)
+            glVertex2f(wing1_x, wing1_y)
+            glVertex2f(end_x, end_y)
+            glVertex2f(wing2_x, wing2_y)
+            glEnd()
+
+    def draw_path2d(self, node_data: Dict[str, Any]):
+        """Draw Path2D node"""
+        curve = node_data.get("curve", [])
+        show_curve = node_data.get("show_curve", True)
+
+        if not show_curve or not curve:
+            # Draw placeholder
+            glColor3f(0.8, 0.4, 0.8)  # Purple for path
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-10, -10)
+            glVertex2f(10, -10)
+            glVertex2f(10, 10)
+            glVertex2f(-10, 10)
+            glEnd()
+            return
+
+        # Draw path curve
+        glColor3f(0.8, 0.4, 0.8)  # Purple for path
+
+        if len(curve) >= 2:
+            glBegin(GL_LINE_STRIP)
+            for point in curve:
+                glVertex2f(point[0], point[1])
+            glEnd()
+
+        # Draw control points
+        glColor3f(1.0, 0.8, 1.0)  # Light purple for points
+        for point in curve:
+            glBegin(GL_LINE_LOOP)
+            size = 3
+            glVertex2f(point[0] - size, point[1] - size)
+            glVertex2f(point[0] + size, point[1] - size)
+            glVertex2f(point[0] + size, point[1] + size)
+            glVertex2f(point[0] - size, point[1] + size)
+            glEnd()
+
+    def draw_pathfollow2d(self, node_data: Dict[str, Any]):
+        """Draw PathFollow2D node"""
+        offset = node_data.get("offset", 0.0)
+        unit_offset = node_data.get("unit_offset", 0.0)
+        allow_rotate = node_data.get("allow_rotate", False)
+
+        # Draw follower indicator
+        glColor3f(0.4, 0.8, 0.8)  # Cyan for follower
+
+        # Draw diamond shape
+        size = 8
+        glBegin(GL_LINE_LOOP)
+        glVertex2f(0, size)
+        glVertex2f(size, 0)
+        glVertex2f(0, -size)
+        glVertex2f(-size, 0)
+        glEnd()
+
+        # Draw rotation indicator if enabled
+        if allow_rotate:
+            glBegin(GL_LINES)
+            glVertex2f(0, 0)
+            glVertex2f(size + 5, 0)
+            glEnd()
+
     def wheelEvent(self, event):
         """Handle mouse wheel for zooming"""
         delta = event.angleDelta().y()
@@ -2853,8 +3175,13 @@ class SceneViewport(QOpenGLWidget):
                             self.is_scaling = True
 
                         self.drag_start_pos = world_pos
-                        # Safely get position with validation
-                        node_pos = self.selected_node.get("position", [0, 0])
+                        # Safely get position with validation - check if UI node
+                        node_type = self.selected_node.get("type", "")
+                        if self._is_ui_node(node_type):
+                            node_pos = self.selected_node.get("rect_position", [0, 0])
+                        else:
+                            node_pos = self.selected_node.get("position", [0, 0])
+
                         if isinstance(node_pos, list) and len(node_pos) >= 2:
                             self.drag_start_node_pos = [float(node_pos[0]), float(node_pos[1])]
                         else:
@@ -2873,7 +3200,7 @@ class SceneViewport(QOpenGLWidget):
                     # This allows dragging by clicking anywhere on the node body
                     self.is_dragging = True
                     self.drag_start_pos = world_pos
-                    # Safely get position with validation
+                    # All nodes use the same position property now
                     node_pos = clicked_node.get("position", [0, 0])
                     if isinstance(node_pos, list) and len(node_pos) >= 2:
                         self.drag_start_node_pos = [float(node_pos[0]), float(node_pos[1])]
@@ -2927,19 +3254,29 @@ class SceneViewport(QOpenGLWidget):
                         self.drag_start_node_pos[1] + delta_y
                     ]
 
-                    # Update the node's position safely
-                    self.selected_node["position"] = new_pos
+                    # Update position for all nodes using unified system
+                    follow_viewport = self.selected_node.get("follow_viewport", False)
+
+                    if follow_viewport:
+                        # Nodes with follow_viewport=True use viewport coordinates
+                        ui_pos = self._world_to_ui_coords(new_pos)
+                        self.selected_node["position"] = ui_pos
+                    else:
+                        # All other nodes use world coordinates
+                        self.selected_node["position"] = new_pos
+
+                    position_property = "position"
 
                     # Apply recursive transformation to children with safety checks
                     try:
-                        self.apply_recursive_transform(self.selected_node, "position", [delta_x, delta_y])
+                        self.apply_recursive_transform(self.selected_node, position_property, [delta_x, delta_y])
                     except Exception as e:
                         print(f"Error in recursive transform during drag: {e}")
                         # Continue without crashing - just skip child updates
 
                     # Emit signal for inspector update
                     try:
-                        self.node_modified.emit(self.selected_node, "position", new_pos)
+                        self.node_modified.emit(self.selected_node, position_property, new_pos)
                     except Exception as e:
                         print(f"Error emitting node_modified signal: {e}")
 
@@ -3076,6 +3413,8 @@ class SceneViewport(QOpenGLWidget):
                     self._apply_rotation_transform(parent_node, child, delta)
                 elif transform_type == "scale":
                     self._apply_scale_transform(parent_node, child, delta)
+                else:
+                    print(f"Warning: Invalid transform type: {transform_type}")
 
                 # Recursively apply to grandchildren (with visited tracking)
                 self.apply_recursive_transform(child, transform_type, delta, visited_nodes.copy())
@@ -3088,28 +3427,74 @@ class SceneViewport(QOpenGLWidget):
             # Clean up visited tracking for this branch
             visited_nodes.discard(node_path)
 
+    def _ui_to_world_coords(self, ui_position: list) -> list:
+        """Convert UI coordinates (game bounds space) to editor world coordinates"""
+        # UI coordinates are in game bounds space (0,0 at top-left, Y increases downward)
+        # Editor world coordinates are centered at (0,0), Y increases upward
+
+        # Convert from UI space to world space
+        # UI (0,0) should map to world (-game_width/2, +game_height/2)
+        # UI Y increases downward, world Y increases upward, so we need to flip Y
+        world_x = ui_position[0] - self.game_width / 2
+        world_y = (self.game_height / 2) - ui_position[1]  # Flip Y axis
+
+        return [world_x, world_y]
+
+    def _world_to_ui_coords(self, world_position):
+        """Convert editor world coordinates to UI coordinates (game bounds space)"""
+        # World coordinates are centered at (0,0), Y increases upward
+        # UI coordinates are in game bounds space (0,0 at top-left), Y increases downward
+
+        # Convert from world space to UI space
+        # World (0,0) should map to UI (game_width/2, game_height/2)
+        # World Y increases upward, UI Y increases downward, so we need to flip Y
+        ui_x = world_position[0] + self.game_width / 2
+        ui_y = (self.game_height / 2) - world_position[1]  # Flip Y axis
+
+        return [ui_x, ui_y]
+
+
+
     def _ensure_node_properties(self, node: Dict[str, Any]):
         """Ensure node has all required properties with safe defaults"""
-        if "position" not in node or not isinstance(node["position"], list) or len(node["position"]) < 2:
-            node["position"] = [0.0, 0.0]
+        node_type = node.get("type", "")
 
-        if "rotation" not in node or not isinstance(node["rotation"], (int, float)):
-            node["rotation"] = 0.0
+        if self._is_ui_node(node_type):
+            # UI nodes use rect_position and rect_size
+            if "rect_position" not in node or not isinstance(node["rect_position"], list) or len(node["rect_position"]) < 2:
+                node["rect_position"] = [0.0, 0.0]
+            if "rect_size" not in node or not isinstance(node["rect_size"], list) or len(node["rect_size"]) < 2:
+                node["rect_size"] = [100.0, 100.0]
 
-        if "scale" not in node or not isinstance(node["scale"], list) or len(node["scale"]) < 2:
-            node["scale"] = [1.0, 1.0]
+            try:
+                node["rect_position"] = [float(node["rect_position"][0]), float(node["rect_position"][1])]
+                node["rect_size"] = [float(node["rect_size"][0]), float(node["rect_size"][1])]
+            except (ValueError, TypeError, IndexError) as e:
+                print(f"Warning: Failed to convert UI node properties to float: {e}")
+                node["rect_position"] = [0.0, 0.0]
+                node["rect_size"] = [100.0, 100.0]
+        else:
+            # Regular nodes use position, rotation, scale
+            if "position" not in node or not isinstance(node["position"], list) or len(node["position"]) < 2:
+                node["position"] = [0.0, 0.0]
 
-        # Ensure position and scale are mutable lists with float values
-        try:
-            node["position"] = [float(node["position"][0]), float(node["position"][1])]
-            node["scale"] = [float(node["scale"][0]), float(node["scale"][1])]
-            node["rotation"] = float(node["rotation"])
-        except (ValueError, TypeError, IndexError) as e:
-            print(f"Warning: Failed to convert node properties to float: {e}")
-            # Reset to safe defaults
-            node["position"] = [0.0, 0.0]
-            node["scale"] = [1.0, 1.0]
-            node["rotation"] = 0.0
+            if "rotation" not in node or not isinstance(node["rotation"], (int, float)):
+                node["rotation"] = 0.0
+
+            if "scale" not in node or not isinstance(node["scale"], list) or len(node["scale"]) < 2:
+                node["scale"] = [1.0, 1.0]
+
+            # Ensure position and scale are mutable lists with float values
+            try:
+                node["position"] = [float(node["position"][0]), float(node["position"][1])]
+                node["scale"] = [float(node["scale"][0]), float(node["scale"][1])]
+                node["rotation"] = float(node["rotation"])
+            except (ValueError, TypeError, IndexError) as e:
+                print(f"Warning: Failed to convert node properties to float: {e}")
+                # Reset to safe defaults
+                node["position"] = [0.0, 0.0]
+                node["scale"] = [1.0, 1.0]
+                node["rotation"] = 0.0
 
     def _apply_position_transform(self, child: Dict[str, Any], delta):
         """Apply position transformation to a child node"""
@@ -3128,6 +3513,8 @@ class SceneViewport(QOpenGLWidget):
 
         except Exception as e:
             print(f"Error applying position transform: {e}")
+
+
 
     def _apply_rotation_transform(self, parent_node: Dict[str, Any], child: Dict[str, Any], delta):
         """Apply rotation transformation to a child node"""
@@ -3267,8 +3654,16 @@ class SceneViewport(QOpenGLWidget):
 
     def _is_point_in_node(self, node: Dict[str, Any], world_x: float, world_y: float) -> bool:
         """Check if a point is inside a node's bounds"""
-        position = node.get("position", [0, 0])
         node_type = node.get("type", "Node")
+
+        # All nodes now use the same position property
+        position = node.get("position", [0, 0])
+
+        # Handle coordinate conversion based on follow_viewport setting
+        follow_viewport = node.get("follow_viewport", False)
+        if follow_viewport:
+            # Convert viewport coordinates to world coordinates for comparison
+            position = self._ui_to_world_coords(position)
 
         # Adjust coordinates relative to node position
         local_x = world_x - position[0]
@@ -3297,15 +3692,15 @@ class SceneViewport(QOpenGLWidget):
 
             return left <= local_x <= right and bottom <= local_y <= top
 
-        elif node_type in ["Button", "Panel", "Label"]:
-            # Check UI node bounds (using rect_size)
-            rect_size = node.get("rect_size", [100.0, 30.0])
+        elif hasattr(node, 'size') or 'size' in node:
+            # Check node bounds using size property (for UI nodes and others with size)
+            size = node.get("size", [100.0, 30.0])
 
-            # UI nodes are centered on their position
-            left = -rect_size[0] / 2
-            right = rect_size[0] / 2
-            bottom = -rect_size[1] / 2
-            top = rect_size[1] / 2
+            # Nodes with size are centered on their position
+            left = -size[0] / 2
+            right = size[0] / 2
+            bottom = -size[1] / 2
+            top = size[1] / 2
 
             return left <= local_x <= right and bottom <= local_y <= top
 
@@ -3317,12 +3712,42 @@ class SceneViewport(QOpenGLWidget):
             # Default node hit area
             return abs(local_x) <= 8 and abs(local_y) <= 8
 
+    def _is_ui_node(self, node_type: str) -> bool:
+        """Check if a node type is a UI node - dynamic detection"""
+        # Get node definition from registry
+        from core.node_registry import get_node_registry
+        registry = get_node_registry()
+        node_def = registry.get_node_definition(node_type)
+
+        if node_def:
+            # Check if it's in UI category
+            from core.node_registry import NodeCategory
+            return node_def.category == NodeCategory.UI
+
+        # Fallback to hardcoded list for unknown nodes
+        ui_node_types = [
+            "Control", "Panel", "Label", "Button", "ColorRect", "TextureRect",
+            "ProgressBar", "VBoxContainer", "HBoxContainer", "CenterContainer",
+            "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect",
+            "ItemList", "LineEdit", "CheckBox", "Slider", "ScrollContainer",
+            "HSeparator", "VSeparator"
+        ]
+        return node_type in ui_node_types
+
     def check_gizmo_hit(self, world_x: float, world_y: float) -> Optional[str]:
         """Check if a gizmo handle is hit"""
         if not self.selected_node:
             return None
 
+        # All nodes use the same position property now
         position = self.selected_node.get("position", [0, 0])
+
+        # Handle coordinate conversion based on follow_viewport setting
+        follow_viewport = self.selected_node.get("follow_viewport", False)
+        if follow_viewport:
+            # Convert viewport coordinates to world coordinates for comparison
+            position = self._ui_to_world_coords(position)
+
         local_x = world_x - position[0]
         local_y = world_y - position[1]
 
@@ -3353,7 +3778,14 @@ class SceneViewport(QOpenGLWidget):
         if not self.selected_node:
             return
 
+        # All nodes use the same position property now
         position = self.selected_node.get("position", [0, 0])
+
+        # Handle coordinate conversion based on follow_viewport setting
+        follow_viewport = self.selected_node.get("follow_viewport", False)
+        if follow_viewport:
+            # Convert viewport coordinates to world coordinates for drawing
+            position = self._ui_to_world_coords(position)
 
         glPushMatrix()
         glTranslatef(position[0], position[1], 0)
@@ -3391,13 +3823,17 @@ class SceneViewport(QOpenGLWidget):
             glEnd()
         elif node_type in ["Button", "Panel", "Label", "ColorRect", "TextureRect", "ProgressBar", "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
             # Draw around UI node bounds
-            rect_size = self.selected_node.get("rect_size", [100.0, 30.0])
+            rect_size = self.selected_node.get("size", [100.0, 30.0])
 
-            # UI nodes are centered on their position
-            left = -rect_size[0] / 2
-            right = rect_size[0] / 2
-            bottom = -rect_size[1] / 2
-            top = rect_size[1] / 2
+            # Convert UI size to world scale for proper gizmo sizing
+            world_scale_x = rect_size[0] / self.game_width * self.view_width / self.zoom
+            world_scale_y = rect_size[1] / self.game_height * self.view_height / self.zoom
+
+            # UI nodes use top-left positioning, draw gizmo relative to the transformed position
+            left = 0
+            right = world_scale_x
+            bottom = -world_scale_y  # Negative because Y is flipped in world coords
+            top = 0
 
             glBegin(GL_LINE_LOOP)
             glVertex2f(left, bottom)

@@ -1,0 +1,2399 @@
+{
+  "name": "ButtonTestScene",
+  "root_nodes": [
+    {
+      "name": "Instructions",
+      "type": "Label",
+      "visible": true,
+      "process_mode": "inherit",
+      "properties": {
+        "position": [
+          100,
+          50
+        ],
+        "rotation": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "z_index": 0,
+        "z_as_relative": true,
+        "export_variables": {
+          "position": {
+            "type": "vector2",
+            "value": [
+              0.0,
+              0.0
+            ],
+            "description": "Position in 2D space"
+          },
+          "rotation": {
+            "type": "float",
+            "value": 0.0,
+            "description": "Rotation in radians"
+          },
+          "scale": {
+            "type": "vector2",
+            "value": [
+              1.0,
+              1.0
+            ],
+            "description": "Scale factor"
+          },
+          "z_index": {
+            "type": "int",
+            "value": 0,
+            "description": "Z-index for depth sorting"
+          },
+          "z_as_relative": {
+            "type": "bool",
+            "value": true,
+            "description": "Whether z_index is relative to parent"
+          },
+          "size": {
+            "type": "vector2",
+            "value": [
+              100.0,
+              100.0
+            ],
+            "description": "Size of the control in pixels"
+          },
+          "follow_viewport": {
+            "type": "bool",
+            "value": true,
+            "description": "If true, position is relative to viewport; if false, position is in world space"
+          },
+          "mouse_filter": {
+            "type": "enum",
+            "value": "pass",
+            "options": [
+              "stop",
+              "pass",
+              "ignore"
+            ],
+            "description": "How this control handles mouse events"
+          },
+          "focus_mode": {
+            "type": "enum",
+            "value": "none",
+            "options": [
+              "none",
+              "click",
+              "all"
+            ],
+            "description": "How this control can receive focus"
+          },
+          "text": {
+            "type": "string",
+            "value": "Label",
+            "description": "Text to display"
+          },
+          "align": {
+            "type": "enum",
+            "value": "left",
+            "options": [
+              "left",
+              "center",
+              "right"
+            ],
+            "description": "Horizontal text alignment"
+          },
+          "valign": {
+            "type": "enum",
+            "value": "top",
+            "options": [
+              "top",
+              "center",
+              "bottom"
+            ],
+            "description": "Vertical text alignment"
+          },
+          "autowrap": {
+            "type": "bool",
+            "value": false,
+            "description": "Enable automatic word wrapping"
+          },
+          "clip_contents": {
+            "type": "bool",
+            "value": false,
+            "description": "Clip text that exceeds the label bounds"
+          },
+          "uppercase": {
+            "type": "bool",
+            "value": false,
+            "description": "Convert text to uppercase"
+          },
+          "percent_visible": {
+            "type": "float",
+            "value": 1.0,
+            "min": 0.0,
+            "max": 1.0,
+            "description": "Percentage of text visible (for animations)"
+          },
+          "font_path": {
+            "type": "path",
+            "value": "",
+            "filter": "*.ttf,*.otf",
+            "description": "Custom font file path"
+          },
+          "font_size": {
+            "type": "int",
+            "value": 14,
+            "min": 6,
+            "max": 72,
+            "description": "Font size in pixels"
+          },
+          "font_color": {
+            "type": "color",
+            "value": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "description": "Text color (RGBA)"
+          }
+        },
+        "size": [
+          400,
+          30
+        ],
+        "follow_viewport": true,
+        "mouse_filter": "ignore",
+        "focus_mode": "none",
+        "text": "Test different button states and interactions",
+        "align": "left",
+        "valign": "top",
+        "autowrap": false,
+        "clip_contents": false,
+        "uppercase": false,
+        "percent_visible": 1.0,
+        "font_path": "",
+        "font_size": 16,
+        "font_color": [
+          1.0,
+          1.0,
+          0.0,
+          1.0
+        ],
+        "font_family": "default",
+        "font_bold": false,
+        "font_italic": false,
+        "shadow_enabled": false,
+        "shadow_color": [
+          0.0,
+          0.0,
+          0.0,
+          0.5
+        ],
+        "shadow_offset": [
+          1.0,
+          1.0
+        ],
+        "outline_enabled": false,
+        "outline_color": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "outline_size": 1.0
+      },
+      "children": [],
+      "position": [
+        100,
+        50
+      ],
+      "rotation": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "z_index": 0,
+      "z_as_relative": true,
+      "size": [
+        400,
+        30
+      ],
+      "follow_viewport": true,
+      "mouse_filter": "ignore",
+      "focus_mode": "none",
+      "text": "Test different button states and interactions",
+      "align": "left",
+      "valign": "top",
+      "autowrap": false,
+      "clip_contents": false,
+      "uppercase": false,
+      "percent_visible": 1.0,
+      "font_path": "",
+      "font_size": 16,
+      "font_color": [
+        1.0,
+        1.0,
+        0.0,
+        1.0
+      ],
+      "font_family": "default",
+      "font_bold": false,
+      "font_italic": false,
+      "shadow_enabled": false,
+      "shadow_color": [
+        0.0,
+        0.0,
+        0.0,
+        0.5
+      ],
+      "shadow_offset": [
+        1.0,
+        1.0
+      ],
+      "outline_enabled": false,
+      "outline_color": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "outline_size": 1.0
+    },
+    {
+      "name": "TestButton",
+      "type": "Button",
+      "visible": true,
+      "process_mode": "inherit",
+      "properties": {
+        "position": [
+          100,
+          100
+        ],
+        "rotation": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "z_index": 0,
+        "z_as_relative": true,
+        "export_variables": {
+          "position": {
+            "type": "vector2",
+            "value": [
+              0.0,
+              0.0
+            ],
+            "description": "Position in 2D space"
+          },
+          "rotation": {
+            "type": "float",
+            "value": 0.0,
+            "description": "Rotation in radians"
+          },
+          "scale": {
+            "type": "vector2",
+            "value": [
+              1.0,
+              1.0
+            ],
+            "description": "Scale factor"
+          },
+          "z_index": {
+            "type": "int",
+            "value": 0,
+            "description": "Z-index for depth sorting"
+          },
+          "z_as_relative": {
+            "type": "bool",
+            "value": true,
+            "description": "Whether z_index is relative to parent"
+          },
+          "size": {
+            "type": "vector2",
+            "value": [
+              100.0,
+              100.0
+            ],
+            "description": "Size of the control in pixels"
+          },
+          "follow_viewport": {
+            "type": "bool",
+            "value": true,
+            "description": "If true, position is relative to viewport; if false, position is in world space"
+          },
+          "mouse_filter": {
+            "type": "enum",
+            "value": "pass",
+            "options": [
+              "stop",
+              "pass",
+              "ignore"
+            ],
+            "description": "How this control handles mouse events"
+          },
+          "focus_mode": {
+            "type": "enum",
+            "value": "none",
+            "options": [
+              "none",
+              "click",
+              "all"
+            ],
+            "description": "How this control can receive focus"
+          },
+          "text": {
+            "type": "string",
+            "value": "Button",
+            "description": "Text displayed on the button"
+          },
+          "icon": {
+            "type": "path",
+            "value": "",
+            "filter": "*.png,*.jpg,*.jpeg,*.bmp,*.tga",
+            "description": "Icon texture file"
+          },
+          "flat": {
+            "type": "bool",
+            "value": false,
+            "description": "Flat appearance without background"
+          },
+          "toggle_mode": {
+            "type": "bool",
+            "value": false,
+            "description": "Toggle button mode"
+          },
+          "pressed": {
+            "type": "bool",
+            "value": false,
+            "description": "Whether button is pressed (toggle mode)"
+          },
+          "disabled": {
+            "type": "bool",
+            "value": false,
+            "description": "Whether button is disabled"
+          },
+          "text_align": {
+            "type": "enum",
+            "value": "center",
+            "options": [
+              "left",
+              "center",
+              "right"
+            ],
+            "description": "Text alignment"
+          },
+          "icon_align": {
+            "type": "enum",
+            "value": "left",
+            "options": [
+              "left",
+              "center",
+              "right"
+            ],
+            "description": "Icon alignment"
+          },
+          "font_path": {
+            "type": "path",
+            "value": "",
+            "filter": "*.ttf,*.otf",
+            "description": "Custom font file path"
+          },
+          "font_size": {
+            "type": "int",
+            "value": 14,
+            "min": 6,
+            "max": 72,
+            "description": "Font size in pixels"
+          },
+          "font_color": {
+            "type": "color",
+            "value": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "description": "Text color (RGBA)"
+          },
+          "font_color_hover": {
+            "type": "color",
+            "value": [
+              0.9,
+              0.9,
+              0.9,
+              1.0
+            ],
+            "description": "Hover text color (RGBA)"
+          },
+          "font_color_pressed": {
+            "type": "color",
+            "value": [
+              0.8,
+              0.8,
+              0.8,
+              1.0
+            ],
+            "description": "Pressed text color (RGBA)"
+          },
+          "font_color_disabled": {
+            "type": "color",
+            "value": [
+              0.5,
+              0.5,
+              0.5,
+              1.0
+            ],
+            "description": "Disabled text color (RGBA)"
+          },
+          "bg_color": {
+            "type": "color",
+            "value": [
+              0.3,
+              0.3,
+              0.3,
+              1.0
+            ],
+            "description": "Background color (RGBA)"
+          },
+          "bg_color_hover": {
+            "type": "color",
+            "value": [
+              0.4,
+              0.4,
+              0.4,
+              1.0
+            ],
+            "description": "Hover background color (RGBA)"
+          },
+          "bg_color_pressed": {
+            "type": "color",
+            "value": [
+              0.2,
+              0.2,
+              0.2,
+              1.0
+            ],
+            "description": "Pressed background color (RGBA)"
+          },
+          "bg_color_disabled": {
+            "type": "color",
+            "value": [
+              0.15,
+              0.15,
+              0.15,
+              1.0
+            ],
+            "description": "Disabled background color (RGBA)"
+          },
+          "border_width": {
+            "type": "float",
+            "value": 1.0,
+            "min": 0.0,
+            "max": 10.0,
+            "description": "Border width in pixels"
+          },
+          "border_color": {
+            "type": "color",
+            "value": [
+              0.6,
+              0.6,
+              0.6,
+              1.0
+            ],
+            "description": "Border color (RGBA)"
+          },
+          "border_radius": {
+            "type": "float",
+            "value": 4.0,
+            "min": 0.0,
+            "max": 50.0,
+            "description": "Corner radius in pixels"
+          }
+        },
+        "size": [
+          200,
+          50
+        ],
+        "follow_viewport": true,
+        "mouse_filter": "pass",
+        "focus_mode": "click",
+        "text": "Click Me!",
+        "icon": "",
+        "flat": false,
+        "toggle_mode": false,
+        "pressed": false,
+        "disabled": false,
+        "text_align": "center",
+        "icon_align": "left",
+        "font_path": "",
+        "font_size": 14,
+        "font_color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "font_color_hover": [
+          0.9,
+          0.9,
+          0.9,
+          1.0
+        ],
+        "font_color_pressed": [
+          0.8,
+          0.8,
+          0.8,
+          1.0
+        ],
+        "font_color_disabled": [
+          0.5,
+          0.5,
+          0.5,
+          1.0
+        ],
+        "bg_color": [
+          0.2,
+          0.4,
+          0.8,
+          1.0
+        ],
+        "bg_color_hover": [
+          0.3,
+          0.5,
+          0.9,
+          1.0
+        ],
+        "bg_color_pressed": [
+          0.1,
+          0.3,
+          0.7,
+          1.0
+        ],
+        "bg_color_disabled": [
+          0.15,
+          0.15,
+          0.15,
+          1.0
+        ],
+        "border_width": 2.0,
+        "border_color": [
+          0.8,
+          0.8,
+          0.8,
+          1.0
+        ],
+        "border_radius": 8.0
+      },
+      "children": [],
+      "position": [
+        100,
+        100
+      ],
+      "rotation": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "z_index": 0,
+      "z_as_relative": true,
+      "size": [
+        200,
+        50
+      ],
+      "follow_viewport": true,
+      "mouse_filter": "pass",
+      "focus_mode": "click",
+      "text": "Click Me!",
+      "icon": "",
+      "flat": false,
+      "toggle_mode": false,
+      "pressed": false,
+      "disabled": false,
+      "text_align": "center",
+      "icon_align": "left",
+      "font_path": "",
+      "font_size": 14,
+      "font_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "font_color_hover": [
+        0.9,
+        0.9,
+        0.9,
+        1.0
+      ],
+      "font_color_pressed": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "font_color_disabled": [
+        0.5,
+        0.5,
+        0.5,
+        1.0
+      ],
+      "bg_color": [
+        0.2,
+        0.4,
+        0.8,
+        1.0
+      ],
+      "bg_color_hover": [
+        0.3,
+        0.5,
+        0.9,
+        1.0
+      ],
+      "bg_color_pressed": [
+        0.1,
+        0.3,
+        0.7,
+        1.0
+      ],
+      "bg_color_disabled": [
+        0.15,
+        0.15,
+        0.15,
+        1.0
+      ],
+      "border_width": 2.0,
+      "border_color": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "border_radius": 8.0,
+      "_is_hovered": false,
+      "_is_pressed": false
+    },
+    {
+      "name": "FlatButton",
+      "type": "Button",
+      "visible": true,
+      "process_mode": "inherit",
+      "properties": {
+        "position": [
+          100,
+          200
+        ],
+        "rotation": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "z_index": 0,
+        "z_as_relative": true,
+        "export_variables": {
+          "position": {
+            "type": "vector2",
+            "value": [
+              0.0,
+              0.0
+            ],
+            "description": "Position in 2D space"
+          },
+          "rotation": {
+            "type": "float",
+            "value": 0.0,
+            "description": "Rotation in radians"
+          },
+          "scale": {
+            "type": "vector2",
+            "value": [
+              1.0,
+              1.0
+            ],
+            "description": "Scale factor"
+          },
+          "z_index": {
+            "type": "int",
+            "value": 0,
+            "description": "Z-index for depth sorting"
+          },
+          "z_as_relative": {
+            "type": "bool",
+            "value": true,
+            "description": "Whether z_index is relative to parent"
+          },
+          "size": {
+            "type": "vector2",
+            "value": [
+              100.0,
+              100.0
+            ],
+            "description": "Size of the control in pixels"
+          },
+          "follow_viewport": {
+            "type": "bool",
+            "value": true,
+            "description": "If true, position is relative to viewport; if false, position is in world space"
+          },
+          "mouse_filter": {
+            "type": "enum",
+            "value": "pass",
+            "options": [
+              "stop",
+              "pass",
+              "ignore"
+            ],
+            "description": "How this control handles mouse events"
+          },
+          "focus_mode": {
+            "type": "enum",
+            "value": "none",
+            "options": [
+              "none",
+              "click",
+              "all"
+            ],
+            "description": "How this control can receive focus"
+          },
+          "text": {
+            "type": "string",
+            "value": "Button",
+            "description": "Text displayed on the button"
+          },
+          "icon": {
+            "type": "path",
+            "value": "",
+            "filter": "*.png,*.jpg,*.jpeg,*.bmp,*.tga",
+            "description": "Icon texture file"
+          },
+          "flat": {
+            "type": "bool",
+            "value": false,
+            "description": "Flat appearance without background"
+          },
+          "toggle_mode": {
+            "type": "bool",
+            "value": false,
+            "description": "Toggle button mode"
+          },
+          "pressed": {
+            "type": "bool",
+            "value": false,
+            "description": "Whether button is pressed (toggle mode)"
+          },
+          "disabled": {
+            "type": "bool",
+            "value": false,
+            "description": "Whether button is disabled"
+          },
+          "text_align": {
+            "type": "enum",
+            "value": "center",
+            "options": [
+              "left",
+              "center",
+              "right"
+            ],
+            "description": "Text alignment"
+          },
+          "icon_align": {
+            "type": "enum",
+            "value": "left",
+            "options": [
+              "left",
+              "center",
+              "right"
+            ],
+            "description": "Icon alignment"
+          },
+          "font_path": {
+            "type": "path",
+            "value": "",
+            "filter": "*.ttf,*.otf",
+            "description": "Custom font file path"
+          },
+          "font_size": {
+            "type": "int",
+            "value": 14,
+            "min": 6,
+            "max": 72,
+            "description": "Font size in pixels"
+          },
+          "font_color": {
+            "type": "color",
+            "value": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "description": "Text color (RGBA)"
+          },
+          "font_color_hover": {
+            "type": "color",
+            "value": [
+              0.9,
+              0.9,
+              0.9,
+              1.0
+            ],
+            "description": "Hover text color (RGBA)"
+          },
+          "font_color_pressed": {
+            "type": "color",
+            "value": [
+              0.8,
+              0.8,
+              0.8,
+              1.0
+            ],
+            "description": "Pressed text color (RGBA)"
+          },
+          "font_color_disabled": {
+            "type": "color",
+            "value": [
+              0.5,
+              0.5,
+              0.5,
+              1.0
+            ],
+            "description": "Disabled text color (RGBA)"
+          },
+          "bg_color": {
+            "type": "color",
+            "value": [
+              0.3,
+              0.3,
+              0.3,
+              1.0
+            ],
+            "description": "Background color (RGBA)"
+          },
+          "bg_color_hover": {
+            "type": "color",
+            "value": [
+              0.4,
+              0.4,
+              0.4,
+              1.0
+            ],
+            "description": "Hover background color (RGBA)"
+          },
+          "bg_color_pressed": {
+            "type": "color",
+            "value": [
+              0.2,
+              0.2,
+              0.2,
+              1.0
+            ],
+            "description": "Pressed background color (RGBA)"
+          },
+          "bg_color_disabled": {
+            "type": "color",
+            "value": [
+              0.15,
+              0.15,
+              0.15,
+              1.0
+            ],
+            "description": "Disabled background color (RGBA)"
+          },
+          "border_width": {
+            "type": "float",
+            "value": 1.0,
+            "min": 0.0,
+            "max": 10.0,
+            "description": "Border width in pixels"
+          },
+          "border_color": {
+            "type": "color",
+            "value": [
+              0.6,
+              0.6,
+              0.6,
+              1.0
+            ],
+            "description": "Border color (RGBA)"
+          },
+          "border_radius": {
+            "type": "float",
+            "value": 4.0,
+            "min": 0.0,
+            "max": 50.0,
+            "description": "Corner radius in pixels"
+          }
+        },
+        "size": [
+          200,
+          50
+        ],
+        "follow_viewport": true,
+        "mouse_filter": "pass",
+        "focus_mode": "click",
+        "text": "Flat Button",
+        "icon": "",
+        "flat": true,
+        "toggle_mode": false,
+        "pressed": false,
+        "disabled": false,
+        "text_align": "center",
+        "icon_align": "left",
+        "font_path": "",
+        "font_size": 14,
+        "font_color": [
+          0.2,
+          0.8,
+          0.2,
+          1.0
+        ],
+        "font_color_hover": [
+          0.3,
+          0.9,
+          0.3,
+          1.0
+        ],
+        "font_color_pressed": [
+          0.8,
+          0.8,
+          0.8,
+          1.0
+        ],
+        "font_color_disabled": [
+          0.5,
+          0.5,
+          0.5,
+          1.0
+        ],
+        "bg_color": [
+          0.3,
+          0.3,
+          0.3,
+          1.0
+        ],
+        "bg_color_hover": [
+          0.4,
+          0.4,
+          0.4,
+          1.0
+        ],
+        "bg_color_pressed": [
+          0.2,
+          0.2,
+          0.2,
+          1.0
+        ],
+        "bg_color_disabled": [
+          0.15,
+          0.15,
+          0.15,
+          1.0
+        ],
+        "border_width": 0.0,
+        "border_color": [
+          0.6,
+          0.6,
+          0.6,
+          1.0
+        ],
+        "border_radius": 4.0
+      },
+      "children": [],
+      "position": [
+        100,
+        200
+      ],
+      "rotation": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "z_index": 0,
+      "z_as_relative": true,
+      "size": [
+        200,
+        50
+      ],
+      "follow_viewport": true,
+      "mouse_filter": "pass",
+      "focus_mode": "click",
+      "text": "Flat Button",
+      "icon": "",
+      "flat": true,
+      "toggle_mode": false,
+      "pressed": false,
+      "disabled": false,
+      "text_align": "center",
+      "icon_align": "left",
+      "font_path": "",
+      "font_size": 14,
+      "font_color": [
+        0.2,
+        0.8,
+        0.2,
+        1.0
+      ],
+      "font_color_hover": [
+        0.3,
+        0.9,
+        0.3,
+        1.0
+      ],
+      "font_color_pressed": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "font_color_disabled": [
+        0.5,
+        0.5,
+        0.5,
+        1.0
+      ],
+      "bg_color": [
+        0.3,
+        0.3,
+        0.3,
+        1.0
+      ],
+      "bg_color_hover": [
+        0.4,
+        0.4,
+        0.4,
+        1.0
+      ],
+      "bg_color_pressed": [
+        0.2,
+        0.2,
+        0.2,
+        1.0
+      ],
+      "bg_color_disabled": [
+        0.15,
+        0.15,
+        0.15,
+        1.0
+      ],
+      "border_width": 0.0,
+      "border_color": [
+        0.6,
+        0.6,
+        0.6,
+        1.0
+      ],
+      "border_radius": 4.0,
+      "_is_hovered": false,
+      "_is_pressed": false
+    },
+    {
+      "name": "DisabledButton",
+      "type": "Button",
+      "visible": true,
+      "process_mode": "inherit",
+      "properties": {
+        "position": [
+          100,
+          300
+        ],
+        "rotation": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "z_index": 0,
+        "z_as_relative": true,
+        "export_variables": {
+          "position": {
+            "type": "vector2",
+            "value": [
+              0.0,
+              0.0
+            ],
+            "description": "Position in 2D space"
+          },
+          "rotation": {
+            "type": "float",
+            "value": 0.0,
+            "description": "Rotation in radians"
+          },
+          "scale": {
+            "type": "vector2",
+            "value": [
+              1.0,
+              1.0
+            ],
+            "description": "Scale factor"
+          },
+          "z_index": {
+            "type": "int",
+            "value": 0,
+            "description": "Z-index for depth sorting"
+          },
+          "z_as_relative": {
+            "type": "bool",
+            "value": true,
+            "description": "Whether z_index is relative to parent"
+          },
+          "size": {
+            "type": "vector2",
+            "value": [
+              100.0,
+              100.0
+            ],
+            "description": "Size of the control in pixels"
+          },
+          "follow_viewport": {
+            "type": "bool",
+            "value": true,
+            "description": "If true, position is relative to viewport; if false, position is in world space"
+          },
+          "mouse_filter": {
+            "type": "enum",
+            "value": "pass",
+            "options": [
+              "stop",
+              "pass",
+              "ignore"
+            ],
+            "description": "How this control handles mouse events"
+          },
+          "focus_mode": {
+            "type": "enum",
+            "value": "none",
+            "options": [
+              "none",
+              "click",
+              "all"
+            ],
+            "description": "How this control can receive focus"
+          },
+          "text": {
+            "type": "string",
+            "value": "Button",
+            "description": "Text displayed on the button"
+          },
+          "icon": {
+            "type": "path",
+            "value": "",
+            "filter": "*.png,*.jpg,*.jpeg,*.bmp,*.tga",
+            "description": "Icon texture file"
+          },
+          "flat": {
+            "type": "bool",
+            "value": false,
+            "description": "Flat appearance without background"
+          },
+          "toggle_mode": {
+            "type": "bool",
+            "value": false,
+            "description": "Toggle button mode"
+          },
+          "pressed": {
+            "type": "bool",
+            "value": false,
+            "description": "Whether button is pressed (toggle mode)"
+          },
+          "disabled": {
+            "type": "bool",
+            "value": false,
+            "description": "Whether button is disabled"
+          },
+          "text_align": {
+            "type": "enum",
+            "value": "center",
+            "options": [
+              "left",
+              "center",
+              "right"
+            ],
+            "description": "Text alignment"
+          },
+          "icon_align": {
+            "type": "enum",
+            "value": "left",
+            "options": [
+              "left",
+              "center",
+              "right"
+            ],
+            "description": "Icon alignment"
+          },
+          "font_path": {
+            "type": "path",
+            "value": "",
+            "filter": "*.ttf,*.otf",
+            "description": "Custom font file path"
+          },
+          "font_size": {
+            "type": "int",
+            "value": 14,
+            "min": 6,
+            "max": 72,
+            "description": "Font size in pixels"
+          },
+          "font_color": {
+            "type": "color",
+            "value": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "description": "Text color (RGBA)"
+          },
+          "font_color_hover": {
+            "type": "color",
+            "value": [
+              0.9,
+              0.9,
+              0.9,
+              1.0
+            ],
+            "description": "Hover text color (RGBA)"
+          },
+          "font_color_pressed": {
+            "type": "color",
+            "value": [
+              0.8,
+              0.8,
+              0.8,
+              1.0
+            ],
+            "description": "Pressed text color (RGBA)"
+          },
+          "font_color_disabled": {
+            "type": "color",
+            "value": [
+              0.5,
+              0.5,
+              0.5,
+              1.0
+            ],
+            "description": "Disabled text color (RGBA)"
+          },
+          "bg_color": {
+            "type": "color",
+            "value": [
+              0.3,
+              0.3,
+              0.3,
+              1.0
+            ],
+            "description": "Background color (RGBA)"
+          },
+          "bg_color_hover": {
+            "type": "color",
+            "value": [
+              0.4,
+              0.4,
+              0.4,
+              1.0
+            ],
+            "description": "Hover background color (RGBA)"
+          },
+          "bg_color_pressed": {
+            "type": "color",
+            "value": [
+              0.2,
+              0.2,
+              0.2,
+              1.0
+            ],
+            "description": "Pressed background color (RGBA)"
+          },
+          "bg_color_disabled": {
+            "type": "color",
+            "value": [
+              0.15,
+              0.15,
+              0.15,
+              1.0
+            ],
+            "description": "Disabled background color (RGBA)"
+          },
+          "border_width": {
+            "type": "float",
+            "value": 1.0,
+            "min": 0.0,
+            "max": 10.0,
+            "description": "Border width in pixels"
+          },
+          "border_color": {
+            "type": "color",
+            "value": [
+              0.6,
+              0.6,
+              0.6,
+              1.0
+            ],
+            "description": "Border color (RGBA)"
+          },
+          "border_radius": {
+            "type": "float",
+            "value": 4.0,
+            "min": 0.0,
+            "max": 50.0,
+            "description": "Corner radius in pixels"
+          }
+        },
+        "size": [
+          200,
+          50
+        ],
+        "follow_viewport": true,
+        "mouse_filter": "pass",
+        "focus_mode": "click",
+        "text": "Disabled",
+        "icon": "",
+        "flat": false,
+        "toggle_mode": false,
+        "pressed": false,
+        "disabled": true,
+        "text_align": "center",
+        "icon_align": "left",
+        "font_path": "",
+        "font_size": 14,
+        "font_color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "font_color_hover": [
+          0.9,
+          0.9,
+          0.9,
+          1.0
+        ],
+        "font_color_pressed": [
+          0.8,
+          0.8,
+          0.8,
+          1.0
+        ],
+        "font_color_disabled": [
+          0.4,
+          0.4,
+          0.4,
+          1.0
+        ],
+        "bg_color": [
+          0.3,
+          0.3,
+          0.3,
+          1.0
+        ],
+        "bg_color_hover": [
+          0.4,
+          0.4,
+          0.4,
+          1.0
+        ],
+        "bg_color_pressed": [
+          0.2,
+          0.2,
+          0.2,
+          1.0
+        ],
+        "bg_color_disabled": [
+          0.1,
+          0.1,
+          0.1,
+          1.0
+        ],
+        "border_width": 1.0,
+        "border_color": [
+          0.6,
+          0.6,
+          0.6,
+          1.0
+        ],
+        "border_radius": 4.0
+      },
+      "children": [],
+      "position": [
+        100,
+        300
+      ],
+      "rotation": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "z_index": 0,
+      "z_as_relative": true,
+      "size": [
+        200,
+        50
+      ],
+      "follow_viewport": true,
+      "mouse_filter": "pass",
+      "focus_mode": "click",
+      "text": "Disabled",
+      "icon": "",
+      "flat": false,
+      "toggle_mode": false,
+      "pressed": false,
+      "disabled": true,
+      "text_align": "center",
+      "icon_align": "left",
+      "font_path": "",
+      "font_size": 14,
+      "font_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "font_color_hover": [
+        0.9,
+        0.9,
+        0.9,
+        1.0
+      ],
+      "font_color_pressed": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "font_color_disabled": [
+        0.4,
+        0.4,
+        0.4,
+        1.0
+      ],
+      "bg_color": [
+        0.3,
+        0.3,
+        0.3,
+        1.0
+      ],
+      "bg_color_hover": [
+        0.4,
+        0.4,
+        0.4,
+        1.0
+      ],
+      "bg_color_pressed": [
+        0.2,
+        0.2,
+        0.2,
+        1.0
+      ],
+      "bg_color_disabled": [
+        0.1,
+        0.1,
+        0.1,
+        1.0
+      ],
+      "border_width": 1.0,
+      "border_color": [
+        0.6,
+        0.6,
+        0.6,
+        1.0
+      ],
+      "border_radius": 4.0,
+      "_is_hovered": false,
+      "_is_pressed": false
+    },
+    {
+      "name": "ToggleButton",
+      "type": "Button",
+      "visible": true,
+      "process_mode": "inherit",
+      "properties": {
+        "position": [
+          100,
+          400
+        ],
+        "rotation": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "z_index": 0,
+        "z_as_relative": true,
+        "export_variables": {
+          "position": {
+            "type": "vector2",
+            "value": [
+              0.0,
+              0.0
+            ],
+            "description": "Position in 2D space"
+          },
+          "rotation": {
+            "type": "float",
+            "value": 0.0,
+            "description": "Rotation in radians"
+          },
+          "scale": {
+            "type": "vector2",
+            "value": [
+              1.0,
+              1.0
+            ],
+            "description": "Scale factor"
+          },
+          "z_index": {
+            "type": "int",
+            "value": 0,
+            "description": "Z-index for depth sorting"
+          },
+          "z_as_relative": {
+            "type": "bool",
+            "value": true,
+            "description": "Whether z_index is relative to parent"
+          },
+          "size": {
+            "type": "vector2",
+            "value": [
+              100.0,
+              100.0
+            ],
+            "description": "Size of the control in pixels"
+          },
+          "follow_viewport": {
+            "type": "bool",
+            "value": true,
+            "description": "If true, position is relative to viewport; if false, position is in world space"
+          },
+          "mouse_filter": {
+            "type": "enum",
+            "value": "pass",
+            "options": [
+              "stop",
+              "pass",
+              "ignore"
+            ],
+            "description": "How this control handles mouse events"
+          },
+          "focus_mode": {
+            "type": "enum",
+            "value": "none",
+            "options": [
+              "none",
+              "click",
+              "all"
+            ],
+            "description": "How this control can receive focus"
+          },
+          "text": {
+            "type": "string",
+            "value": "Button",
+            "description": "Text displayed on the button"
+          },
+          "icon": {
+            "type": "path",
+            "value": "",
+            "filter": "*.png,*.jpg,*.jpeg,*.bmp,*.tga",
+            "description": "Icon texture file"
+          },
+          "flat": {
+            "type": "bool",
+            "value": false,
+            "description": "Flat appearance without background"
+          },
+          "toggle_mode": {
+            "type": "bool",
+            "value": false,
+            "description": "Toggle button mode"
+          },
+          "pressed": {
+            "type": "bool",
+            "value": false,
+            "description": "Whether button is pressed (toggle mode)"
+          },
+          "disabled": {
+            "type": "bool",
+            "value": false,
+            "description": "Whether button is disabled"
+          },
+          "text_align": {
+            "type": "enum",
+            "value": "center",
+            "options": [
+              "left",
+              "center",
+              "right"
+            ],
+            "description": "Text alignment"
+          },
+          "icon_align": {
+            "type": "enum",
+            "value": "left",
+            "options": [
+              "left",
+              "center",
+              "right"
+            ],
+            "description": "Icon alignment"
+          },
+          "font_path": {
+            "type": "path",
+            "value": "",
+            "filter": "*.ttf,*.otf",
+            "description": "Custom font file path"
+          },
+          "font_size": {
+            "type": "int",
+            "value": 14,
+            "min": 6,
+            "max": 72,
+            "description": "Font size in pixels"
+          },
+          "font_color": {
+            "type": "color",
+            "value": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "description": "Text color (RGBA)"
+          },
+          "font_color_hover": {
+            "type": "color",
+            "value": [
+              0.9,
+              0.9,
+              0.9,
+              1.0
+            ],
+            "description": "Hover text color (RGBA)"
+          },
+          "font_color_pressed": {
+            "type": "color",
+            "value": [
+              0.8,
+              0.8,
+              0.8,
+              1.0
+            ],
+            "description": "Pressed text color (RGBA)"
+          },
+          "font_color_disabled": {
+            "type": "color",
+            "value": [
+              0.5,
+              0.5,
+              0.5,
+              1.0
+            ],
+            "description": "Disabled text color (RGBA)"
+          },
+          "bg_color": {
+            "type": "color",
+            "value": [
+              0.3,
+              0.3,
+              0.3,
+              1.0
+            ],
+            "description": "Background color (RGBA)"
+          },
+          "bg_color_hover": {
+            "type": "color",
+            "value": [
+              0.4,
+              0.4,
+              0.4,
+              1.0
+            ],
+            "description": "Hover background color (RGBA)"
+          },
+          "bg_color_pressed": {
+            "type": "color",
+            "value": [
+              0.2,
+              0.2,
+              0.2,
+              1.0
+            ],
+            "description": "Pressed background color (RGBA)"
+          },
+          "bg_color_disabled": {
+            "type": "color",
+            "value": [
+              0.15,
+              0.15,
+              0.15,
+              1.0
+            ],
+            "description": "Disabled background color (RGBA)"
+          },
+          "border_width": {
+            "type": "float",
+            "value": 1.0,
+            "min": 0.0,
+            "max": 10.0,
+            "description": "Border width in pixels"
+          },
+          "border_color": {
+            "type": "color",
+            "value": [
+              0.6,
+              0.6,
+              0.6,
+              1.0
+            ],
+            "description": "Border color (RGBA)"
+          },
+          "border_radius": {
+            "type": "float",
+            "value": 4.0,
+            "min": 0.0,
+            "max": 50.0,
+            "description": "Corner radius in pixels"
+          }
+        },
+        "size": [
+          200,
+          50
+        ],
+        "follow_viewport": true,
+        "mouse_filter": "pass",
+        "focus_mode": "click",
+        "text": "Toggle Me",
+        "icon": "",
+        "flat": false,
+        "toggle_mode": true,
+        "pressed": false,
+        "disabled": false,
+        "text_align": "center",
+        "icon_align": "left",
+        "font_path": "",
+        "font_size": 14,
+        "font_color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "font_color_hover": [
+          0.9,
+          0.9,
+          0.9,
+          1.0
+        ],
+        "font_color_pressed": [
+          0.8,
+          0.8,
+          0.8,
+          1.0
+        ],
+        "font_color_disabled": [
+          0.5,
+          0.5,
+          0.5,
+          1.0
+        ],
+        "bg_color": [
+          0.8,
+          0.4,
+          0.2,
+          1.0
+        ],
+        "bg_color_hover": [
+          0.4,
+          0.4,
+          0.4,
+          1.0
+        ],
+        "bg_color_pressed": [
+          0.6,
+          0.3,
+          0.1,
+          1.0
+        ],
+        "bg_color_disabled": [
+          0.15,
+          0.15,
+          0.15,
+          1.0
+        ],
+        "border_width": 1.0,
+        "border_color": [
+          0.6,
+          0.6,
+          0.6,
+          1.0
+        ],
+        "border_radius": 4.0
+      },
+      "children": [],
+      "position": [
+        100,
+        400
+      ],
+      "rotation": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "z_index": 0,
+      "z_as_relative": true,
+      "size": [
+        200,
+        50
+      ],
+      "follow_viewport": true,
+      "mouse_filter": "pass",
+      "focus_mode": "click",
+      "text": "Toggle Me",
+      "icon": "",
+      "flat": false,
+      "toggle_mode": true,
+      "pressed": false,
+      "disabled": false,
+      "text_align": "center",
+      "icon_align": "left",
+      "font_path": "",
+      "font_size": 14,
+      "font_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "font_color_hover": [
+        0.9,
+        0.9,
+        0.9,
+        1.0
+      ],
+      "font_color_pressed": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "font_color_disabled": [
+        0.5,
+        0.5,
+        0.5,
+        1.0
+      ],
+      "bg_color": [
+        0.8,
+        0.4,
+        0.2,
+        1.0
+      ],
+      "bg_color_hover": [
+        0.4,
+        0.4,
+        0.4,
+        1.0
+      ],
+      "bg_color_pressed": [
+        0.6,
+        0.3,
+        0.1,
+        1.0
+      ],
+      "bg_color_disabled": [
+        0.15,
+        0.15,
+        0.15,
+        1.0
+      ],
+      "border_width": 1.0,
+      "border_color": [
+        0.6,
+        0.6,
+        0.6,
+        1.0
+      ],
+      "border_radius": 4.0,
+      "_is_hovered": false,
+      "_is_pressed": false
+    },
+    {
+      "name": "WorldButton",
+      "type": "Button",
+      "visible": true,
+      "process_mode": "inherit",
+      "properties": {
+        "position": [
+          500,
+          300
+        ],
+        "rotation": 0.0,
+        "scale": [
+          1.0,
+          1.0
+        ],
+        "z_index": 0,
+        "z_as_relative": true,
+        "export_variables": {
+          "position": {
+            "type": "vector2",
+            "value": [
+              0.0,
+              0.0
+            ],
+            "description": "Position in 2D space"
+          },
+          "rotation": {
+            "type": "float",
+            "value": 0.0,
+            "description": "Rotation in radians"
+          },
+          "scale": {
+            "type": "vector2",
+            "value": [
+              1.0,
+              1.0
+            ],
+            "description": "Scale factor"
+          },
+          "z_index": {
+            "type": "int",
+            "value": 0,
+            "description": "Z-index for depth sorting"
+          },
+          "z_as_relative": {
+            "type": "bool",
+            "value": true,
+            "description": "Whether z_index is relative to parent"
+          },
+          "size": {
+            "type": "vector2",
+            "value": [
+              100.0,
+              100.0
+            ],
+            "description": "Size of the control in pixels"
+          },
+          "follow_viewport": {
+            "type": "bool",
+            "value": true,
+            "description": "If true, position is relative to viewport; if false, position is in world space"
+          },
+          "mouse_filter": {
+            "type": "enum",
+            "value": "pass",
+            "options": [
+              "stop",
+              "pass",
+              "ignore"
+            ],
+            "description": "How this control handles mouse events"
+          },
+          "focus_mode": {
+            "type": "enum",
+            "value": "none",
+            "options": [
+              "none",
+              "click",
+              "all"
+            ],
+            "description": "How this control can receive focus"
+          },
+          "text": {
+            "type": "string",
+            "value": "Button",
+            "description": "Text displayed on the button"
+          },
+          "icon": {
+            "type": "path",
+            "value": "",
+            "filter": "*.png,*.jpg,*.jpeg,*.bmp,*.tga",
+            "description": "Icon texture file"
+          },
+          "flat": {
+            "type": "bool",
+            "value": false,
+            "description": "Flat appearance without background"
+          },
+          "toggle_mode": {
+            "type": "bool",
+            "value": false,
+            "description": "Toggle button mode"
+          },
+          "pressed": {
+            "type": "bool",
+            "value": false,
+            "description": "Whether button is pressed (toggle mode)"
+          },
+          "disabled": {
+            "type": "bool",
+            "value": false,
+            "description": "Whether button is disabled"
+          },
+          "text_align": {
+            "type": "enum",
+            "value": "center",
+            "options": [
+              "left",
+              "center",
+              "right"
+            ],
+            "description": "Text alignment"
+          },
+          "icon_align": {
+            "type": "enum",
+            "value": "left",
+            "options": [
+              "left",
+              "center",
+              "right"
+            ],
+            "description": "Icon alignment"
+          },
+          "font_path": {
+            "type": "path",
+            "value": "",
+            "filter": "*.ttf,*.otf",
+            "description": "Custom font file path"
+          },
+          "font_size": {
+            "type": "int",
+            "value": 14,
+            "min": 6,
+            "max": 72,
+            "description": "Font size in pixels"
+          },
+          "font_color": {
+            "type": "color",
+            "value": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "description": "Text color (RGBA)"
+          },
+          "font_color_hover": {
+            "type": "color",
+            "value": [
+              0.9,
+              0.9,
+              0.9,
+              1.0
+            ],
+            "description": "Hover text color (RGBA)"
+          },
+          "font_color_pressed": {
+            "type": "color",
+            "value": [
+              0.8,
+              0.8,
+              0.8,
+              1.0
+            ],
+            "description": "Pressed text color (RGBA)"
+          },
+          "font_color_disabled": {
+            "type": "color",
+            "value": [
+              0.5,
+              0.5,
+              0.5,
+              1.0
+            ],
+            "description": "Disabled text color (RGBA)"
+          },
+          "bg_color": {
+            "type": "color",
+            "value": [
+              0.3,
+              0.3,
+              0.3,
+              1.0
+            ],
+            "description": "Background color (RGBA)"
+          },
+          "bg_color_hover": {
+            "type": "color",
+            "value": [
+              0.4,
+              0.4,
+              0.4,
+              1.0
+            ],
+            "description": "Hover background color (RGBA)"
+          },
+          "bg_color_pressed": {
+            "type": "color",
+            "value": [
+              0.2,
+              0.2,
+              0.2,
+              1.0
+            ],
+            "description": "Pressed background color (RGBA)"
+          },
+          "bg_color_disabled": {
+            "type": "color",
+            "value": [
+              0.15,
+              0.15,
+              0.15,
+              1.0
+            ],
+            "description": "Disabled background color (RGBA)"
+          },
+          "border_width": {
+            "type": "float",
+            "value": 1.0,
+            "min": 0.0,
+            "max": 10.0,
+            "description": "Border width in pixels"
+          },
+          "border_color": {
+            "type": "color",
+            "value": [
+              0.6,
+              0.6,
+              0.6,
+              1.0
+            ],
+            "description": "Border color (RGBA)"
+          },
+          "border_radius": {
+            "type": "float",
+            "value": 4.0,
+            "min": 0.0,
+            "max": 50.0,
+            "description": "Corner radius in pixels"
+          }
+        },
+        "size": [
+          150,
+          40
+        ],
+        "follow_viewport": false,
+        "mouse_filter": "pass",
+        "focus_mode": "click",
+        "text": "World Space",
+        "icon": "",
+        "flat": false,
+        "toggle_mode": false,
+        "pressed": false,
+        "disabled": false,
+        "text_align": "center",
+        "icon_align": "left",
+        "font_path": "",
+        "font_size": 14,
+        "font_color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "font_color_hover": [
+          0.9,
+          0.9,
+          0.9,
+          1.0
+        ],
+        "font_color_pressed": [
+          0.8,
+          0.8,
+          0.8,
+          1.0
+        ],
+        "font_color_disabled": [
+          0.5,
+          0.5,
+          0.5,
+          1.0
+        ],
+        "bg_color": [
+          0.6,
+          0.2,
+          0.8,
+          1.0
+        ],
+        "bg_color_hover": [
+          0.4,
+          0.4,
+          0.4,
+          1.0
+        ],
+        "bg_color_pressed": [
+          0.2,
+          0.2,
+          0.2,
+          1.0
+        ],
+        "bg_color_disabled": [
+          0.15,
+          0.15,
+          0.15,
+          1.0
+        ],
+        "border_width": 1.0,
+        "border_color": [
+          0.6,
+          0.6,
+          0.6,
+          1.0
+        ],
+        "border_radius": 4.0
+      },
+      "children": [],
+      "position": [
+        500,
+        300
+      ],
+      "rotation": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "z_index": 0,
+      "z_as_relative": true,
+      "size": [
+        150,
+        40
+      ],
+      "follow_viewport": false,
+      "mouse_filter": "pass",
+      "focus_mode": "click",
+      "text": "World Space",
+      "icon": "",
+      "flat": false,
+      "toggle_mode": false,
+      "pressed": false,
+      "disabled": false,
+      "text_align": "center",
+      "icon_align": "left",
+      "font_path": "",
+      "font_size": 14,
+      "font_color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "font_color_hover": [
+        0.9,
+        0.9,
+        0.9,
+        1.0
+      ],
+      "font_color_pressed": [
+        0.8,
+        0.8,
+        0.8,
+        1.0
+      ],
+      "font_color_disabled": [
+        0.5,
+        0.5,
+        0.5,
+        1.0
+      ],
+      "bg_color": [
+        0.6,
+        0.2,
+        0.8,
+        1.0
+      ],
+      "bg_color_hover": [
+        0.4,
+        0.4,
+        0.4,
+        1.0
+      ],
+      "bg_color_pressed": [
+        0.2,
+        0.2,
+        0.2,
+        1.0
+      ],
+      "bg_color_disabled": [
+        0.15,
+        0.15,
+        0.15,
+        1.0
+      ],
+      "border_width": 1.0,
+      "border_color": [
+        0.6,
+        0.6,
+        0.6,
+        1.0
+      ],
+      "border_radius": 4.0,
+      "_is_hovered": false,
+      "_is_pressed": false
+    },
+    {
+      "name": "ButtonClickSound",
+      "type": "AudioStreamPlayer",
+      "visible": true,
+      "process_mode": "inherit",
+      "properties": {
+        "export_variables": {
+          "stream": {
+            "type": "path",
+            "value": "",
+            "filter": "*.wav,*.ogg,*.mp3,*.flac",
+            "description": "Audio file to play"
+          },
+          "volume_db": {
+            "type": "float",
+            "value": 0.0,
+            "min": -80.0,
+            "max": 24.0,
+            "description": "Volume in decibels"
+          },
+          "pitch_scale": {
+            "type": "float",
+            "value": 1.0,
+            "min": 0.01,
+            "max": 4.0,
+            "description": "Pitch scaling factor"
+          },
+          "playing": {
+            "type": "bool",
+            "value": false,
+            "description": "Whether audio is currently playing"
+          },
+          "autoplay": {
+            "type": "bool",
+            "value": false,
+            "description": "Start playing automatically when entering tree"
+          },
+          "stream_paused": {
+            "type": "bool",
+            "value": false,
+            "description": "Whether the stream is paused"
+          },
+          "mix_target": {
+            "type": "enum",
+            "value": "stereo",
+            "options": [
+              "stereo",
+              "surround",
+              "center"
+            ],
+            "description": "Audio mix target"
+          }
+        },
+        "process_priority": 0,
+        "pause_mode": "inherit",
+        "stream": "",
+        "volume_db": 0.0,
+        "pitch_scale": 1.0,
+        "playing": false,
+        "autoplay": false,
+        "stream_paused": false,
+        "mix_target": "stereo"
+      },
+      "children": [],
+      "process_priority": 0,
+      "pause_mode": "inherit",
+      "stream": "",
+      "volume_db": 0.0,
+      "pitch_scale": 1.0,
+      "playing": false,
+      "autoplay": false,
+      "stream_paused": false,
+      "mix_target": "stereo"
+    }
+  ]
+}

@@ -162,13 +162,7 @@ class ConsoleWidget(QWidget):
         # Emit signal
         self.command_executed.emit(command)
     
-    def execute_lsc(self, code: str):
-        """Execute LSC code"""
-        try:
-            # TODO: Integrate with LSC interpreter
-            self.log_info(f"LSC execution not yet implemented: {code}")
-        except Exception as e:
-            self.log_error(f"LSC Error: {e}")
+
     
     def execute_python(self, expression: str):
         """Execute Python expression"""

@@ -284,16 +284,31 @@ class PhysicsWorld:
                 print(f"Error in collision callback: {e}")
     
     def add_node(self, node: Node2D) -> Optional[PhysicsBody]:
-        """Add a physics node to the world"""
-        if isinstance(node, RigidBody2D):
+        """Add a physics node to the world - dynamically detect physics node types"""
+        # Use node type string for dynamic detection instead of isinstance
+        node_type = getattr(node, 'type', None)
+
+        if node_type == "RigidBody2D":
             return self._add_rigid_body(node)
-        elif isinstance(node, StaticBody2D):
+        elif node_type == "StaticBody2D":
             return self._add_static_body(node)
-        elif isinstance(node, KinematicBody2D):
+        elif node_type == "KinematicBody2D":
             return self._add_kinematic_body(node)
-        elif isinstance(node, Area2D):
+        elif node_type == "Area2D":
             return self._add_area(node)
-        
+
+        # Also check for physics-related properties to detect custom physics nodes
+        if hasattr(node, 'physics_body_type'):
+            body_type = getattr(node, 'physics_body_type', None)
+            if body_type == "rigid":
+                return self._add_rigid_body(node)
+            elif body_type == "static":
+                return self._add_static_body(node)
+            elif body_type == "kinematic":
+                return self._add_kinematic_body(node)
+            elif body_type == "area":
+                return self._add_area(node)
+
         return None
     
     def _add_rigid_body(self, node: RigidBody2D) -> PhysicsBody:

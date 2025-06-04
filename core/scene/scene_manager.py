@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 from .base_node import Node
-from .node2d import Node2D
 
 
 class Scene:
@@ -72,9 +71,102 @@ class Scene:
         scene = cls(data.get("name", "Scene"))
         scene.metadata = data.get("metadata", {})
         for node_data in data.get("nodes", []):
-            node = Node.from_dict(node_data)
+            node = cls._create_node_from_dict(node_data)
             scene.add_root_node(node)
         return scene
+
+    @classmethod
+    def _create_node_from_dict(cls, data: Dict[str, Any]) -> Node:
+        """Create a node from dictionary data using proper node definitions"""
+        node_type = data.get("type", "Node")
+        node_name = data.get("name", "Node")
+
+        # Try to use the proper node class from the nodes directory
+        try:
+            # Import the specific node class based on type
+            if node_type == "Sprite":
+                from nodes.node2d.Sprite import Sprite
+                return Sprite.from_dict(data)
+            elif node_type == "Node2D":
+                from core.scene.node2d import Node2D
+                return Node2D.from_dict(data)
+            elif node_type == "Camera2D":
+                from nodes.node2d.Camera2D import Camera2D
+                return Camera2D.from_dict(data)
+            elif node_type == "AnimatedSprite":
+                from nodes.node2d.AnimatedSprite import AnimatedSprite
+                return AnimatedSprite.from_dict(data)
+            elif node_type == "KinematicBody2D":
+                from nodes.node2d.KinematicBody2D import KinematicBody2D
+                return KinematicBody2D.from_dict(data)
+            elif node_type == "CollisionPolygon2D":
+                from nodes.node2d.CollisionPolygon2D import CollisionPolygon2D
+                return CollisionPolygon2D.from_dict(data)
+            # UI node types
+            elif node_type == "Button":
+                from nodes.ui.Button import Button
+                return Button.from_dict(data)
+            elif node_type == "Label":
+                from nodes.ui.Label import Label
+                return Label.from_dict(data)
+            elif node_type == "Control":
+                from nodes.ui.Control import Control
+                return Control.from_dict(data)
+            elif node_type == "Panel":
+                from nodes.ui.Panel import Panel
+                return Panel.from_dict(data)
+            elif node_type == "ColorRect":
+                from nodes.ui.ColorRect import ColorRect
+                return ColorRect.from_dict(data)
+            elif node_type == "TextureRect":
+                from nodes.ui.TextureRect import TextureRect
+                return TextureRect.from_dict(data)
+            elif node_type == "NinePatchRect":
+                from nodes.ui.NinePatchRect import NinePatchRect
+                return NinePatchRect.from_dict(data)
+            elif node_type == "VBoxContainer":
+                from nodes.ui.VBoxContainer import VBoxContainer
+                return VBoxContainer.from_dict(data)
+            elif node_type == "HBoxContainer":
+                from nodes.ui.HBoxContainer import HBoxContainer
+                return HBoxContainer.from_dict(data)
+            elif node_type == "ProgressBar":
+                from nodes.ui.ProgressBar import ProgressBar
+                return ProgressBar.from_dict(data)
+            elif node_type == "CenterContainer":
+                from nodes.ui.CenterContainer import CenterContainer
+                return CenterContainer.from_dict(data)
+            elif node_type == "LineEdit":
+                from nodes.ui.LineEdit import LineEdit
+                return LineEdit.from_dict(data)
+            elif node_type == "CheckBox":
+                from nodes.ui.CheckBox import CheckBox
+                return CheckBox.from_dict(data)
+            # Add more node types as needed
+            else:
+                # Fallback to base Node class
+                node = Node(node_name, node_type)
+                Node._apply_node_properties(node, data)
+
+                # Handle children recursively
+                for child_data in data.get("children", []):
+                    child = cls._create_node_from_dict(child_data)
+                    node.add_child(child)
+
+                return node
+
+        except ImportError as e:
+            print(f"Could not import node class {node_type}: {e}")
+            # Fallback to base Node class
+            node = Node(node_name, node_type)
+            Node._apply_node_properties(node, data)
+
+            # Handle children recursively
+            for child_data in data.get("children", []):
+                child = cls._create_node_from_dict(child_data)
+                node.add_child(child)
+
+            return node
 
     def save_to_file(self, file_path: str) -> None:
         from ..json_utils import safe_json_dump
@@ -137,6 +229,7 @@ class SceneManager:
 
     def create_new_scene(self, name: str) -> Scene:
         """Create a new, empty scene with a default Node2D root."""
+        from .node2d import Node2D
         scene = Scene(name)
         root = Node2D(name)
         scene.add_root_node(root)

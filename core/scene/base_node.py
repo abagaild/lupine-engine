@@ -78,8 +78,19 @@ class Node:
 
     def _ready(self) -> None:
         """Called when the node is ready. Override in subclasses."""
-        # Call script's _ready method if available
-        if self.script_instance and hasattr(self.script_instance, 'call_method'):
+        # Call _ready method on all script instances
+        script_instances = getattr(self, 'script_instances', [])
+        if script_instances:
+            for script_instance in script_instances:
+                if hasattr(script_instance, 'call_method'):
+                    try:
+                        if script_instance.has_method('_ready'):
+                            script_instance.call_method('_ready')
+                    except Exception as e:
+                        print(f"Error calling _ready in {script_instance.script_path}: {e}")
+
+        # Backward compatibility: handle single script_instance
+        elif self.script_instance and hasattr(self.script_instance, 'call_method'):
             try:
                 if self.script_instance.has_method('_ready'):
                     self.script_instance.call_method('_ready')
@@ -88,8 +99,19 @@ class Node:
 
     def _process(self, delta: float) -> None:
         """Called every frame. Override in subclasses."""
-        # Call script's _process method if available
-        if self.script_instance and hasattr(self.script_instance, 'call_method'):
+        # Call _process method on all script instances
+        script_instances = getattr(self, 'script_instances', [])
+        if script_instances:
+            for script_instance in script_instances:
+                if hasattr(script_instance, 'call_method'):
+                    try:
+                        if script_instance.has_method('_process'):
+                            script_instance.call_method('_process', delta)
+                    except Exception as e:
+                        print(f"Error calling _process in {script_instance.script_path}: {e}")
+
+        # Backward compatibility: handle single script_instance
+        elif self.script_instance and hasattr(self.script_instance, 'call_method'):
             try:
                 if self.script_instance.has_method('_process'):
                     self.script_instance.call_method('_process', delta)
@@ -103,8 +125,19 @@ class Node:
 
     def _physics_process(self, delta: float) -> None:
         """Called for physics updates. Override in subclasses."""
-        # Call script's _physics_process method if available
-        if self.script_instance and hasattr(self.script_instance, 'call_method'):
+        # Call _physics_process method on all script instances
+        script_instances = getattr(self, 'script_instances', [])
+        if script_instances:
+            for script_instance in script_instances:
+                if hasattr(script_instance, 'call_method'):
+                    try:
+                        if script_instance.has_method('_physics_process'):
+                            script_instance.call_method('_physics_process', delta)
+                    except Exception as e:
+                        print(f"Error calling _physics_process in {script_instance.script_path}: {e}")
+
+        # Backward compatibility: handle single script_instance
+        elif self.script_instance and hasattr(self.script_instance, 'call_method'):
             try:
                 if self.script_instance.has_method('_physics_process'):
                     self.script_instance.call_method('_physics_process', delta)
@@ -193,12 +226,32 @@ class Node:
                         getattr(target, method)(*args, **kwargs)
                     except Exception as e:
                         print(f"Error calling {method} on {target.name}: {e}")
-                elif target.script_instance and hasattr(target.script_instance, 'call_method'):
-                    try:
-                        if target.script_instance.has_method(method):
-                            target.script_instance.call_method(method, *args, **kwargs)
-                    except Exception as e:
-                        print(f"Error calling script method {method} on {target.name}: {e}")
+                else:
+                    # Try to call the method on all script instances
+                    script_instances = getattr(target, 'script_instances', [])
+                    method_called = False
+
+                    if script_instances:
+                        for script_instance in script_instances:
+                            if hasattr(script_instance, 'call_method'):
+                                try:
+                                    if script_instance.has_method(method):
+                                        script_instance.call_method(method, *args, **kwargs)
+                                        method_called = True
+                                except Exception as e:
+                                    print(f"Error calling script method {method} on {target.name}: {e}")
+
+                    # Backward compatibility: try single script_instance
+                    elif target.script_instance and hasattr(target.script_instance, 'call_method'):
+                        try:
+                            if target.script_instance.has_method(method):
+                                target.script_instance.call_method(method, *args, **kwargs)
+                                method_called = True
+                        except Exception as e:
+                            print(f"Error calling script method {method} on {target.name}: {e}")
+
+                    if not method_called:
+                        print(f"Warning: Method {method} not found on {target.name} or its scripts")
 
     # Group system
     def add_to_group(self, group_name: str) -> None:
@@ -318,6 +371,14 @@ class Node:
         node.visible = data.get("visible", True)
         node.process_mode = data.get("process_mode", "inherit")
         node.properties = copy.deepcopy(data.get("properties", {}))
+
+        # Handle multiple scripts (new format)
+        scripts = data.get("scripts", [])
+        if scripts:
+            # Store scripts array in properties for the game engine to find
+            node.properties["scripts"] = scripts
+
+        # Handle legacy single script (backward compatibility)
         script = data.get("script") or data.get("script_path")
         if script:
             node.script_path = str(script)
