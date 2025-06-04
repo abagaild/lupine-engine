@@ -1038,14 +1038,20 @@ class LupineGameEngine:
 
             if ui_type == "TextureRect":
                 texture_path = ui_data.get('texture_path', '')
+                # Convert top-left position to center position for SharedRenderer
+                center_x = scaled_pos[0] + scaled_size[0] / 2
+                center_y = scaled_pos[1] + scaled_size[1] / 2
                 self.systems.renderer.draw_sprite(
-                    texture_path, scaled_pos[0], scaled_pos[1],
+                    texture_path, center_x, center_y,
                     scaled_size[0], scaled_size[1], 0, modulate[3]
                 )
             elif ui_type == "ColorRect":
                 color = ui_data.get('color', [1, 1, 1, 1])
+                # Convert top-left position to center position for SharedRenderer
+                center_x = scaled_pos[0] + scaled_size[0] / 2
+                center_y = scaled_pos[1] + scaled_size[1] / 2
                 self.systems.renderer.draw_rectangle(
-                    scaled_pos[0], scaled_pos[1], scaled_size[0], scaled_size[1], color
+                    center_x, center_y, scaled_size[0], scaled_size[1], color
                 )
             elif ui_type == "Label":
                 text = ui_data.get('text', '')
@@ -1087,32 +1093,41 @@ class LupineGameEngine:
 
                 # Render button background (unless flat)
                 if not flat:
+                    # Convert top-left position to center position for SharedRenderer
+                    center_x = scaled_pos[0] + scaled_size[0] / 2
+                    center_y = scaled_pos[1] + scaled_size[1] / 2
                     self.systems.renderer.draw_rectangle(
-                        scaled_pos[0], scaled_pos[1], scaled_size[0], scaled_size[1], bg_color
+                        center_x, center_y, scaled_size[0], scaled_size[1], bg_color
                     )
 
                     # Draw border
                     border_width = ui_data.get('border_width', 1.0)
                     border_color = ui_data.get('border_color', [0.6, 0.6, 0.6, 1])
                     if border_width > 0:
-                        # Draw border as outline (simplified - just draw 4 rectangles)
+                        # Draw border as outline with center-based positioning
                         # Top border
+                        top_center_x = scaled_pos[0] + scaled_size[0] / 2
+                        top_center_y = scaled_pos[1] + border_width / 2
                         self.systems.renderer.draw_rectangle(
-                            scaled_pos[0], scaled_pos[1], scaled_size[0], border_width, border_color
+                            top_center_x, top_center_y, scaled_size[0], border_width, border_color
                         )
                         # Bottom border
+                        bottom_center_x = scaled_pos[0] + scaled_size[0] / 2
+                        bottom_center_y = scaled_pos[1] + scaled_size[1] - border_width / 2
                         self.systems.renderer.draw_rectangle(
-                            scaled_pos[0], scaled_pos[1] + scaled_size[1] - border_width,
-                            scaled_size[0], border_width, border_color
+                            bottom_center_x, bottom_center_y, scaled_size[0], border_width, border_color
                         )
                         # Left border
+                        left_center_x = scaled_pos[0] + border_width / 2
+                        left_center_y = scaled_pos[1] + scaled_size[1] / 2
                         self.systems.renderer.draw_rectangle(
-                            scaled_pos[0], scaled_pos[1], border_width, scaled_size[1], border_color
+                            left_center_x, left_center_y, border_width, scaled_size[1], border_color
                         )
                         # Right border
+                        right_center_x = scaled_pos[0] + scaled_size[0] - border_width / 2
+                        right_center_y = scaled_pos[1] + scaled_size[1] / 2
                         self.systems.renderer.draw_rectangle(
-                            scaled_pos[0] + scaled_size[0] - border_width, scaled_pos[1],
-                            border_width, scaled_size[1], border_color
+                            right_center_x, right_center_y, border_width, scaled_size[1], border_color
                         )
 
                 # Render button text
@@ -1259,7 +1274,7 @@ class LupineGameEngine:
             except:
                 pass  # Use fallback calculation
 
-        # Calculate horizontal position
+        # Calculate horizontal position (pos is top-left corner)
         padding = 5  # Consistent padding
         if align == "center":
             text_x = pos[0] + (size[0] - text_width) / 2
@@ -1268,7 +1283,7 @@ class LupineGameEngine:
         else:  # left
             text_x = pos[0] + padding
 
-        # Calculate vertical position
+        # Calculate vertical position (pos is top-left corner)
         if valign == "center":
             text_y = pos[1] + (size[1] - text_height) / 2
         elif valign == "bottom":

@@ -1889,13 +1889,7 @@ def take_damage(amount):
             self.current_node["scale"] = scale
             self.property_changed.emit(self.current_node.get("name", ""), "scale", scale)
     
-    def update_size(self, index: int, value: int):
-        """Update size component"""
-        if self.current_node:
-            size = self.current_node.get("size", [64, 64])
-            size[index] = value
-            self.current_node["size"] = size
-            self.property_changed.emit(self.current_node.get("name", ""), "size", size)
+
     
     def update_zoom(self, index: int, value: float):
         """Update zoom component"""
@@ -2175,25 +2169,25 @@ def take_damage(amount):
 
         layout.addRow("Position:", pos_layout)
 
-        # Rect Size
-        rect_size = self.current_node.get("rect_size", [100.0, 100.0])
+        # Size (UI nodes use 'size' property)
+        size = self.current_node.get("size", [100.0, 100.0])
         size_layout = QHBoxLayout()
 
         size_x = QDoubleSpinBox()
         size_x.setRange(0, 9999)
-        size_x.setValue(rect_size[0])
-        size_x.valueChanged.connect(lambda v: self.update_rect_size(0, v))
+        size_x.setValue(size[0])
+        size_x.valueChanged.connect(lambda v: self.update_size(0, v))
         size_layout.addWidget(size_x)
-        self.property_widgets["rect_size_x"] = size_x
+        self.property_widgets["size_x"] = size_x
 
         size_y = QDoubleSpinBox()
         size_y.setRange(0, 9999)
-        size_y.setValue(rect_size[1])
-        size_y.valueChanged.connect(lambda v: self.update_rect_size(1, v))
+        size_y.setValue(size[1])
+        size_y.valueChanged.connect(lambda v: self.update_size(1, v))
         size_layout.addWidget(size_y)
-        self.property_widgets["rect_size_y"] = size_y
+        self.property_widgets["size_y"] = size_y
 
-        layout.addRow("Rect Size:", size_layout)
+        layout.addRow("Size:", size_layout)
 
         # Anchors Section
         self.create_anchor_controls(layout)
@@ -2549,28 +2543,21 @@ def take_damage(amount):
         layout.addRow("Offset:", offset_layout)
 
         # Follow Viewport
-        follow_viewport = self.current_node.get("follow_viewport_enable", False)
+        follow_viewport = self.current_node.get("follow_viewport", True)
         follow_check = QCheckBox()
         follow_check.setChecked(follow_viewport)
-        follow_check.toggled.connect(lambda v: self.update_property("follow_viewport_enable", v))
+        follow_check.toggled.connect(lambda v: self.update_property("follow_viewport", v))
         layout.addRow("Follow Viewport:", follow_check)
-        self.property_widgets["follow_viewport_enable"] = follow_check
+        self.property_widgets["follow_viewport"] = follow_check
 
         self.properties_layout.addWidget(group)
 
-    def update_rect_position(self, index: int, value: float):
-        """Update rect position component (legacy method for compatibility)"""
+    def update_size(self, index: int, value: float):
+        """Update size component for UI nodes"""
         if self.current_node:
-            rect_position = self.current_node.get("rect_position", [0.0, 0.0])
-            rect_position[index] = value
-            self.update_property("rect_position", rect_position)
-
-    def update_rect_size(self, index: int, value: float):
-        """Update rect size component"""
-        if self.current_node:
-            rect_size = self.current_node.get("rect_size", [100.0, 100.0])
-            rect_size[index] = value
-            self.update_property("rect_size", rect_size)
+            size = self.current_node.get("size", [100.0, 100.0])
+            size[index] = value
+            self.update_property("size", size)
 
     def update_color_component(self, color_name: str, index: int, value: float):
         """Update color component"""

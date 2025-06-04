@@ -122,7 +122,7 @@ class AudioStreamPlayer(Node):
         if not self.stream or not os.path.exists(self.stream):
             self._audio_loaded = False
             return
-        
+    
         try:
             # In a full implementation, this would load the audio file
             # For now, just mark as loaded
@@ -131,6 +131,9 @@ class AudioStreamPlayer(Node):
         except Exception as e:
             print(f"Error loading audio stream {self.stream}: {e}")
             self._audio_loaded = False
+            # Add error handling to prevent crash
+            self.stream = ""  # Reset stream to prevent further errors
+            self.emit_signal("stream_changed")
 
     def play(self, from_position: float = 0.0):
         """Start or resume playback"""

@@ -242,7 +242,20 @@ class Panel(Control):
         """Create from dictionary"""
         panel = cls(data.get("name", "Panel"))
         cls._apply_node_properties(panel, data)
-        
+
+        # Apply Node2D properties (inherited from Control -> Node2D)
+        panel.position = data.get("position", [0.0, 0.0])
+        panel.rotation = data.get("rotation", 0.0)
+        panel.scale = data.get("scale", [1.0, 1.0])
+        panel.z_index = data.get("z_index", 0)
+        panel.z_as_relative = data.get("z_as_relative", True)
+
+        # Apply Control properties
+        panel.size = data.get("size", [100.0, 100.0])
+        panel.follow_viewport = data.get("follow_viewport", True)
+        panel.mouse_filter = data.get("mouse_filter", "pass")
+        panel.focus_mode = data.get("focus_mode", "none")
+
         # Apply Panel properties
         panel.background_color = data.get("background_color", [0.2, 0.2, 0.2, 0.8])
         panel.background_texture = data.get("background_texture", None)
