@@ -1,0 +1,35 @@
+{
+  "id": "92d7760d-39c2-45fe-af80-8faf4cbb1cca",
+  "name": "Get Variable",
+  "category": "Variables",
+  "block_type": "variable",
+  "description": "Get a variable value",
+  "inputs": [
+    {
+      "name": "variable_name",
+      "type": "string",
+      "default_value": "",
+      "description": "Variable name",
+      "required": true,
+      "options": null
+    },
+    {
+      "name": "default_value",
+      "type": "string",
+      "default_value": "",
+      "description": "Default value if not found",
+      "required": true,
+      "options": null
+    }
+  ],
+  "outputs": [
+    {
+      "name": "value",
+      "type": "string",
+      "description": "Variable value"
+    }
+  ],
+  "code_template": "get_variable(\"{variable_name}\", {default_value})",
+  "icon": "",
+  "color": "#6BCF7F"
+}

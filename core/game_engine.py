@@ -469,6 +469,10 @@ class LupineGameEngine:
         elif node_type == "AudioStreamPlayer":
             self._setup_audio_node(node)
 
+        # Animation nodes
+        elif node_type == "AnimationPlayer":
+            self._setup_animation_player_node(node)
+
         # Camera nodes
         elif node_type == "Camera2D":
             self._setup_camera_node(node)
@@ -680,6 +684,19 @@ class LupineGameEngine:
 
         except Exception as e:
             print(f"Error setting up audio node {node.name}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _setup_animation_player_node(self, node: Node):
+        """Setup an AnimationPlayer node"""
+        try:
+            print(f"[OK] AnimationPlayer node setup: {node.name} (type: {node.type})")
+
+            # The AnimationPlayer will handle its own initialization in _ready()
+            # No special setup required here
+
+        except Exception as e:
+            print(f"Error setting up AnimationPlayer node {node.name}: {e}")
             import traceback
             traceback.print_exc()
 

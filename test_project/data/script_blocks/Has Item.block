@@ -1,0 +1,35 @@
+{
+  "id": "b2ef002f-2f90-4ef9-9d24-02f127511103",
+  "name": "Has Item",
+  "category": "Conditions",
+  "block_type": "condition",
+  "description": "Check if player has item",
+  "inputs": [
+    {
+      "name": "item_id",
+      "type": "string",
+      "default_value": "",
+      "description": "Item ID to check",
+      "required": true,
+      "options": null
+    },
+    {
+      "name": "quantity",
+      "type": "number",
+      "default_value": 1,
+      "description": "Required quantity",
+      "required": true,
+      "options": null
+    }
+  ],
+  "outputs": [
+    {
+      "name": "result",
+      "type": "boolean",
+      "description": "Check result"
+    }
+  ],
+  "code_template": "has_item(\"{item_id}\", {quantity})",
+  "icon": "",
+  "color": "#FFD93D"
+}

@@ -117,7 +117,15 @@ class MainEditor(QMainWindow):
         project_settings_action.setShortcut("Ctrl+Alt+P")
         project_settings_action.triggered.connect(self.open_project_settings)
         file_menu.addAction(project_settings_action)
-        
+
+        file_menu.addSeparator()
+
+        # Build game
+        build_game_action = QAction("Build Game", self)
+        build_game_action.setShortcut("Ctrl+B")
+        build_game_action.triggered.connect(self.build_game)
+        file_menu.addAction(build_game_action)
+
         file_menu.addSeparator()
         
         # Exit
@@ -169,6 +177,11 @@ class MainEditor(QMainWindow):
         script_editor_action.triggered.connect(self.open_script_editor)
         tools_menu.addAction(script_editor_action)
 
+        # Enhanced Visual Script Editor
+        visual_script_editor_action = QAction("Visual Script Editor", self)
+        visual_script_editor_action.triggered.connect(self.open_visual_script_editor)
+        tools_menu.addAction(visual_script_editor_action)
+
         # Input actions
         input_actions_action = QAction("Input Actions", self)
         input_actions_action.triggered.connect(self.open_input_actions)
@@ -202,11 +215,75 @@ class MainEditor(QMainWindow):
 
         tools_menu.addSeparator()
 
+        # Level Builder
+        level_builder_action = QAction("Level Builder", self)
+        level_builder_action.setToolTip("Open Level Builder")
+        level_builder_action.triggered.connect(self.open_level_builder)
+        tools_menu.addAction(level_builder_action)
+
+        # Prefab Builder
+        prefab_builder_action = QAction("Prefab Builder", self)
+        prefab_builder_action.setToolTip("Open Prefab Builder")
+        prefab_builder_action.triggered.connect(self.open_prefab_builder)
+        tools_menu.addAction(prefab_builder_action)
+
+        tools_menu.addSeparator()
+
         # Tileset Editor
         tileset_editor_action = QAction("Tileset Editor", self)
         tileset_editor_action.triggered.connect(self.open_tileset_editor)
         tools_menu.addAction(tileset_editor_action)
-        
+
+        # Animation Editor
+        animation_editor_action = QAction("Animation Editor", self)
+        animation_editor_action.setToolTip("Open Animation Editor")
+        animation_editor_action.triggered.connect(self.open_animation_editor)
+        tools_menu.addAction(animation_editor_action)
+
+        tools_menu.addSeparator()
+
+        # Dialogue Writer
+        dialogue_writer_action = QAction("Dialogue Writer", self)
+        dialogue_writer_action.triggered.connect(self.open_dialogue_writer)
+        tools_menu.addAction(dialogue_writer_action)
+
+        # Production menu
+        production_menu = menubar.addMenu("Production")
+
+        # Git Integration
+        git_integration_action = QAction("Git Integration", self)
+        git_integration_action.triggered.connect(self.open_git_integration)
+        production_menu.addAction(git_integration_action)
+
+        # Timeline Planner
+        timeline_planner_action = QAction("Timeline Planner", self)
+        timeline_planner_action.triggered.connect(self.open_timeline_planner)
+        production_menu.addAction(timeline_planner_action)
+
+        # To-Do Lists
+        todo_manager_action = QAction("To-Do Lists", self)
+        todo_manager_action.triggered.connect(self.open_todo_manager)
+        production_menu.addAction(todo_manager_action)
+
+        production_menu.addSeparator()
+
+        # Asset Tracker
+        asset_tracker_action = QAction("Asset Tracker", self)
+        asset_tracker_action.triggered.connect(self.open_asset_tracker)
+        production_menu.addAction(asset_tracker_action)
+
+        # Feature/Bug Tracker
+        feature_tracker_action = QAction("Feature/Bug Tracker", self)
+        feature_tracker_action.triggered.connect(self.open_feature_tracker)
+        production_menu.addAction(feature_tracker_action)
+
+        production_menu.addSeparator()
+
+        # Notepad
+        notepad_action = QAction("Notepad", self)
+        notepad_action.triggered.connect(self.open_notepad)
+        production_menu.addAction(notepad_action)
+
         # Help menu
         help_menu = menubar.addMenu("Help")
         
@@ -517,6 +594,30 @@ class MainEditor(QMainWindow):
         """Open the script editor"""
         self.script_editor_dock.raise_()
 
+    def open_visual_script_editor(self):
+        """Open the enhanced visual script editor"""
+        try:
+            from editor.ui.enhanced_visual_script_editor import EnhancedVisualScriptEditor
+
+            # Create as separate window
+            if not hasattr(self, 'visual_script_editor'):
+                self.visual_script_editor = EnhancedVisualScriptEditor(self.project, self)
+                self.visual_script_editor.script_saved.connect(self.on_visual_script_saved)
+
+            # Show the editor
+            self.visual_script_editor.show()
+            self.visual_script_editor.raise_()
+            self.visual_script_editor.activateWindow()
+
+        except Exception as e:
+            import traceback
+            error_msg = f"Failed to open visual script editor: {e}\n{traceback.format_exc()}"
+            QMessageBox.critical(self, "Error", error_msg)
+
+    def on_visual_script_saved(self, file_path: str):
+        """Handle visual script saved event"""
+        print(f"Visual script saved: {file_path}")
+
     def open_project_settings(self):
         """Open project settings dialog"""
         from .project_settings_dialog import ProjectSettingsDialog
@@ -525,6 +626,12 @@ class MainEditor(QMainWindow):
             # Reload project to reflect changes
             self.project.load_project()
             self.status_bar.showMessage("Project settings saved", 3000)
+
+    def build_game(self):
+        """Open build game dialog"""
+        from .build_dialog import BuildDialog
+        dialog = BuildDialog(self.project, self)
+        dialog.exec()
 
     def show_about(self):
         """Show about dialog"""
@@ -822,6 +929,185 @@ class MainEditor(QMainWindow):
             QMessageBox.warning(self, "Error", f"Tileset Editor not available: {e}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open Tileset Editor: {e}")
+
+    def open_dialogue_writer(self):
+        """Open the dialogue writer as a popup window"""
+        try:
+            from editor.dialogue_writer import DialogueWriterWindow
+
+            # Create as standalone window
+            if not hasattr(self, 'dialogue_writer_window') or not self.dialogue_writer_window:
+                self.dialogue_writer_window = DialogueWriterWindow(self.project, self)
+
+            # Show the window
+            self.dialogue_writer_window.show()
+            self.dialogue_writer_window.raise_()
+            self.dialogue_writer_window.activateWindow()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Dialogue Writer not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Dialogue Writer: {e}")
+
+    # Production Menu Methods
+    def open_git_integration(self):
+        """Open the Git Integration window"""
+        try:
+            from editor.production.git_integration import GitIntegrationWindow
+
+            if not hasattr(self, 'git_integration_window') or not self.git_integration_window:
+                self.git_integration_window = GitIntegrationWindow(self.project, self)
+
+            self.git_integration_window.show()
+            self.git_integration_window.raise_()
+            self.git_integration_window.activateWindow()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Git Integration not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Git Integration: {e}")
+
+    def open_timeline_planner(self):
+        """Open the Timeline Planner window"""
+        try:
+            from editor.production.timeline_planner import TimelinePlannerWindow
+
+            if not hasattr(self, 'timeline_planner_window') or not self.timeline_planner_window:
+                self.timeline_planner_window = TimelinePlannerWindow(self.project, self)
+
+            self.timeline_planner_window.show()
+            self.timeline_planner_window.raise_()
+            self.timeline_planner_window.activateWindow()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Timeline Planner not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Timeline Planner: {e}")
+
+    def open_todo_manager(self):
+        """Open the To-Do Manager window"""
+        try:
+            from editor.production.todo_manager import TodoManagerWindow
+
+            if not hasattr(self, 'todo_manager_window') or not self.todo_manager_window:
+                self.todo_manager_window = TodoManagerWindow(self.project, self)
+
+            self.todo_manager_window.show()
+            self.todo_manager_window.raise_()
+            self.todo_manager_window.activateWindow()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"To-Do Manager not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open To-Do Manager: {e}")
+
+    def open_asset_tracker(self):
+        """Open the Asset Tracker window"""
+        try:
+            from editor.production.asset_tracker import AssetTrackerWindow
+
+            if not hasattr(self, 'asset_tracker_window') or not self.asset_tracker_window:
+                self.asset_tracker_window = AssetTrackerWindow(self.project, self)
+
+            self.asset_tracker_window.show()
+            self.asset_tracker_window.raise_()
+            self.asset_tracker_window.activateWindow()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Asset Tracker not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Asset Tracker: {e}")
+
+    def open_feature_tracker(self):
+        """Open the Feature/Bug Tracker window"""
+        try:
+            from editor.production.feature_tracker import FeatureTrackerWindow
+
+            if not hasattr(self, 'feature_tracker_window') or not self.feature_tracker_window:
+                self.feature_tracker_window = FeatureTrackerWindow(self.project, self)
+
+            self.feature_tracker_window.show()
+            self.feature_tracker_window.raise_()
+            self.feature_tracker_window.activateWindow()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Feature/Bug Tracker not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Feature/Bug Tracker: {e}")
+
+    def open_notepad(self):
+        """Open the Notepad window"""
+        try:
+            from editor.production.notepad import NotepadWindow
+
+            if not hasattr(self, 'notepad_window') or not self.notepad_window:
+                self.notepad_window = NotepadWindow(self.project, self)
+
+            self.notepad_window.show()
+            self.notepad_window.raise_()
+            self.notepad_window.activateWindow()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Notepad not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Notepad: {e}")
+
+    def open_level_builder(self):
+        """Open the level builder as a popup window"""
+        try:
+            from editor.level_builder import LevelBuilderWindow
+
+            # Create as standalone window
+            if not hasattr(self, 'level_builder_window') or not self.level_builder_window:
+                self.level_builder_window = LevelBuilderWindow(self.project, self)
+
+            # Show the window
+            self.level_builder_window.show()
+            self.level_builder_window.raise_()
+            self.level_builder_window.activateWindow()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Level Builder not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Level Builder: {e}")
+
+    def open_prefab_builder(self):
+        """Open the prefab builder as a popup window"""
+        try:
+            from editor.prefab_builder import PrefabBuilderWindow
+
+            # Create as standalone window
+            if not hasattr(self, 'prefab_builder_window') or not self.prefab_builder_window:
+                self.prefab_builder_window = PrefabBuilderWindow(self.project, self)
+
+            # Show the window
+            self.prefab_builder_window.show()
+            self.prefab_builder_window.raise_()
+            self.prefab_builder_window.activateWindow()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Prefab Builder not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Prefab Builder: {e}")
+
+    def open_animation_editor(self):
+        """Open the animation editor as a popup window"""
+        try:
+            from editor.animation_editor import AnimationEditorWindow
+
+            # Create as standalone window
+            if not hasattr(self, 'animation_editor_window') or not self.animation_editor_window:
+                self.animation_editor_window = AnimationEditorWindow(self.project, self)
+
+            # Show the window
+            self.animation_editor_window.show()
+            self.animation_editor_window.raise_()
+            self.animation_editor_window.activateWindow()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Animation Editor not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Animation Editor: {e}")
 
     def closeEvent(self, event):
         """Handle window close event"""

@@ -21,6 +21,10 @@ class Node:
         self.script_path: Optional[str] = None
         self.script_instance = None
 
+        # Visual script support
+        self.visual_script_path: Optional[str] = None
+        self.visual_script_instance = None
+
         # Export variables for editor (initialized as empty dict)
         self.export_variables: Dict[str, Dict[str, Any]] = {}
 
@@ -99,6 +103,14 @@ class Node:
                     self.script_instance.call_method('_ready')
             except Exception as e:
                 print(f"Error calling _ready in {self.script_path}: {e}")
+
+        # Execute visual script if attached
+        if self.visual_script_instance:
+            try:
+                if hasattr(self.visual_script_instance, 'execute'):
+                    self.visual_script_instance.execute()
+            except Exception as e:
+                print(f"Error executing visual script in {self.visual_script_path}: {e}")
 
     def _process(self, delta: float) -> None:
         """Called every frame. Override in subclasses."""
@@ -388,6 +400,8 @@ class Node:
         }
         if self.script_path:
             data["script"] = self.script_path
+        if self.visual_script_path:
+            data["visual_script"] = self.visual_script_path
         if self._groups:
             data["groups"] = list(self._groups)  # Convert set to list
 
@@ -415,6 +429,11 @@ class Node:
         script = data.get("script") or data.get("script_path")
         if script:
             node.script_path = str(script)
+
+        # Handle visual script
+        visual_script = data.get("visual_script")
+        if visual_script:
+            node.visual_script_path = str(visual_script)
 
         # Load groups
         groups = data.get("groups", [])

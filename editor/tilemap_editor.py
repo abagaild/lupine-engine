@@ -35,20 +35,25 @@ class TilemapCanvas(QWidget):
         self.current_tileset = None
         self.current_tile_id = -1
         self.current_layer = 0
+        self.current_tileset_index = 0
         self.zoom = 1.0
         self.offset = QPoint(0, 0)
         self.grid_visible = True
         self.collision_visible = False
-        
+
+        # Multiple tileset support
+        self.tilesets = []  # List of loaded tilesets
+        self.tileset_textures = {}  # Dict[int, QPixmap] - cached textures
+
         # Painting state
         self.painting = False
         self.paint_mode = "paint"  # "paint", "erase", "fill"
         self.last_paint_pos = None
-        
+
         # Mouse interaction
         self.dragging = False
         self.last_mouse_pos = QPoint()
-        
+
         self.setMinimumSize(600, 400)
         self.setMouseTracking(True)
     
@@ -60,6 +65,44 @@ class TilemapCanvas(QWidget):
     def set_current_tileset(self, tileset: TileSet):
         """Set the current tileset for painting"""
         self.current_tileset = tileset
+        # Add to tilesets list if not already there
+        if tileset and tileset not in self.tilesets:
+            self.tilesets.append(tileset)
+            self.current_tileset_index = len(self.tilesets) - 1
+            self.load_tileset_texture(self.current_tileset_index, tileset)
+        elif tileset:
+            self.current_tileset_index = self.tilesets.index(tileset)
+        self.update()
+
+    def get_tileset_by_index(self, index: int):
+        """Get tileset by index"""
+        if 0 <= index < len(self.tilesets):
+            return self.tilesets[index]
+        return None
+
+    def load_tileset_texture(self, index: int, tileset):
+        """Load texture for a tileset"""
+        if not tileset or not tileset.texture_path:
+            return
+
+        try:
+            from PyQt6.QtGui import QPixmap
+            # Try relative to project first, then absolute
+            if hasattr(self, 'project') and self.project:
+                texture_path = self.project.project_path / tileset.texture_path
+            else:
+                texture_path = Path(tileset.texture_path)
+
+            if texture_path.exists():
+                pixmap = QPixmap(str(texture_path))
+                if not pixmap.isNull():
+                    self.tileset_textures[index] = pixmap
+        except Exception as e:
+            print(f"Error loading tileset texture: {e}")
+
+    def set_project(self, project):
+        """Set the project reference for texture loading"""
+        self.project = project
     
     def set_current_tile(self, tile_id: int):
         """Set the current tile for painting"""
@@ -105,6 +148,7 @@ class TilemapCanvas(QWidget):
 
         cell_size = self.tilemap_node.get("cell_size", [32, 32])
         tile_w, tile_h = cell_size
+        map_size_mode = self.tilemap_node.get("map_size_mode", "infinite")
 
         # Use different colors for different zoom levels
         if self.zoom >= 1.0:
@@ -127,10 +171,22 @@ class TilemapCanvas(QWidget):
         world_end_y = world_start_y + visible_rect.height() / self.zoom
 
         # Calculate grid bounds
-        grid_start_x = int(world_start_x // tile_w) * tile_w
-        grid_start_y = int(world_start_y // tile_h) * tile_h
-        grid_end_x = int(world_end_x // tile_w + 1) * tile_w
-        grid_end_y = int(world_end_y // tile_h + 1) * tile_h
+        if map_size_mode == "fixed":
+            # Limit grid to fixed map size
+            fixed_size = self.tilemap_node.get("fixed_map_size", [100, 100])
+            map_width = fixed_size[0] * tile_w
+            map_height = fixed_size[1] * tile_h
+
+            grid_start_x = max(0, int(world_start_x // tile_w) * tile_w)
+            grid_start_y = max(0, int(world_start_y // tile_h) * tile_h)
+            grid_end_x = min(map_width, int(world_end_x // tile_w + 1) * tile_w)
+            grid_end_y = min(map_height, int(world_end_y // tile_h + 1) * tile_h)
+        else:
+            # Infinite mode - draw grid based on visible area
+            grid_start_x = int(world_start_x // tile_w) * tile_w
+            grid_start_y = int(world_start_y // tile_h) * tile_h
+            grid_end_x = int(world_end_x // tile_w + 1) * tile_w
+            grid_end_y = int(world_end_y // tile_h + 1) * tile_h
 
         # Draw vertical lines
         x = grid_start_x
@@ -143,6 +199,15 @@ class TilemapCanvas(QWidget):
         while y <= grid_end_y:
             painter.drawLine(int(grid_start_x), int(y), int(grid_end_x), int(y))
             y += tile_h
+
+        # Draw map boundary for fixed mode
+        if map_size_mode == "fixed":
+            fixed_size = self.tilemap_node.get("fixed_map_size", [100, 100])
+            map_width = fixed_size[0] * tile_w
+            map_height = fixed_size[1] * tile_h
+
+            painter.setPen(QPen(QColor(255, 255, 0, 200), 3))  # Yellow boundary
+            painter.drawRect(0, 0, int(map_width), int(map_height))
 
         # Draw origin lines (thicker, different color)
         if grid_start_x <= 0 <= grid_end_x:
@@ -192,27 +257,61 @@ class TilemapCanvas(QWidget):
     
     def draw_single_tile(self, painter: QPainter, x: int, y: int, tile_data: Dict[str, Any], tile_w: int, tile_h: int):
         """Draw a single tile"""
-        if not tile_data or not self.current_tileset:
+        if not tile_data:
             return
-        
+
         tile_id = tile_data.get("tile_id", -1)
         if tile_id < 0:
             return
-        
-        tile_def = self.current_tileset.get_tile(tile_id)
-        if not tile_def:
+
+        # Get tileset index (default to 0 for backward compatibility)
+        tileset_index = tile_data.get("tileset", 0)
+        tileset = self.get_tileset_by_index(tileset_index)
+
+        if not tileset:
+            # Draw placeholder if no tileset
+            world_x = x * tile_w
+            world_y = y * tile_h
+            painter.fillRect(world_x, world_y, tile_w, tile_h, QColor(255, 0, 0, 100))
+            painter.setPen(QPen(QColor(255, 255, 255), 1))
+            painter.drawRect(world_x, world_y, tile_w, tile_h)
+            painter.drawText(world_x + 2, world_y + 12, f"?{tile_id}")
             return
-        
+
+        tile_def = tileset.get_tile(tile_id)
+        if not tile_def:
+            # Draw placeholder for missing tile
+            world_x = x * tile_w
+            world_y = y * tile_h
+            painter.fillRect(world_x, world_y, tile_w, tile_h, QColor(255, 255, 0, 100))
+            painter.setPen(QPen(QColor(255, 255, 255), 1))
+            painter.drawRect(world_x, world_y, tile_w, tile_h)
+            painter.drawText(world_x + 2, world_y + 12, f"!{tile_id}")
+            return
+
         # Calculate world position
         world_x = x * tile_w
         world_y = y * tile_h
-        
-        # For now, draw a colored rectangle representing the tile
-        # In a full implementation, this would draw the actual texture
-        painter.fillRect(world_x, world_y, tile_w, tile_h, QColor(100, 150, 200, 180))
+
+        # Try to draw actual texture if available
+        if hasattr(self, 'tileset_textures') and tileset_index in self.tileset_textures:
+            texture = self.tileset_textures[tileset_index]
+            if texture and not texture.isNull():
+                # Draw tile from texture
+                tile_rect = tile_def.texture_rect
+                source_rect = QRect(tile_rect[0], tile_rect[1], tile_rect[2], tile_rect[3])
+                target_rect = QRect(world_x, world_y, tile_w, tile_h)
+                painter.drawPixmap(target_rect, texture, source_rect)
+                return
+
+        # Fallback: draw colored rectangle with tile ID
+        # Use different colors for different tile IDs
+        hue = (tile_id * 137) % 360  # Golden angle for good color distribution
+        color = QColor.fromHsv(hue, 180, 200, 180)
+        painter.fillRect(world_x, world_y, tile_w, tile_h, color)
         painter.setPen(QPen(QColor(255, 255, 255), 1))
         painter.drawRect(world_x, world_y, tile_w, tile_h)
-        
+
         # Draw tile ID for debugging
         painter.setPen(QColor(255, 255, 255))
         painter.drawText(world_x + 2, world_y + 12, str(tile_id))
@@ -282,7 +381,7 @@ class TilemapCanvas(QWidget):
             # Paint tile
             tile_data = {
                 "tile_id": self.current_tile_id,
-                "tileset": 0  # TODO: Support multiple tilesets
+                "tileset": self.current_tileset_index
             }
             self.tile_painted.emit(x, y, self.current_layer, tile_data)
         elif self.paint_mode == "erase":
@@ -312,7 +411,7 @@ class TilemapCanvas(QWidget):
         # New tile data
         new_tile_data = {
             "tile_id": self.current_tile_id,
-            "tileset": 0
+            "tileset": self.current_tileset_index
         }
 
         # Don't fill if we're already the target tile
@@ -466,6 +565,7 @@ class TilemapEditorWindow(QMainWindow):
         
         # Center - Tilemap canvas
         self.canvas = TilemapCanvas()
+        self.canvas.set_project(self.project)
         self.canvas.set_tilemap_node(self.tilemap_node)
         self.canvas.tile_painted.connect(self.on_tile_painted)
         splitter.addWidget(self.canvas)
@@ -558,20 +658,29 @@ class TilemapEditorWindow(QMainWindow):
         layout = QVBoxLayout(panel)
 
         # Tileset selection
-        tileset_group = QGroupBox("Tileset")
+        tileset_group = QGroupBox("Tilesets")
         tileset_layout = QVBoxLayout(tileset_group)
 
-        # Tileset path and browse
-        tileset_path_layout = QHBoxLayout()
-        self.tileset_path_edit = QLineEdit()
-        self.tileset_path_edit.setPlaceholderText("Select a tileset...")
-        tileset_path_layout.addWidget(self.tileset_path_edit)
+        # Current tileset selector
+        tileset_selector_layout = QHBoxLayout()
+        tileset_selector_layout.addWidget(QLabel("Current:"))
+        self.tileset_combo = QComboBox()
+        self.tileset_combo.currentIndexChanged.connect(self.on_tileset_changed)
+        tileset_selector_layout.addWidget(self.tileset_combo)
+        tileset_layout.addLayout(tileset_selector_layout)
 
-        browse_tileset_btn = QPushButton("Browse")
-        browse_tileset_btn.clicked.connect(self.browse_tileset)
-        tileset_path_layout.addWidget(browse_tileset_btn)
+        # Tileset management buttons
+        tileset_buttons_layout = QHBoxLayout()
 
-        tileset_layout.addLayout(tileset_path_layout)
+        add_tileset_btn = QPushButton("Add Tileset")
+        add_tileset_btn.clicked.connect(self.add_tileset)
+        tileset_buttons_layout.addWidget(add_tileset_btn)
+
+        remove_tileset_btn = QPushButton("Remove")
+        remove_tileset_btn.clicked.connect(self.remove_tileset)
+        tileset_buttons_layout.addWidget(remove_tileset_btn)
+
+        tileset_layout.addLayout(tileset_buttons_layout)
 
         # Open tileset editor button
         open_tileset_editor_btn = QPushButton("Open Tileset Editor")
@@ -587,7 +696,8 @@ class TilemapEditorWindow(QMainWindow):
         # Tile grid (simplified for now)
         self.tile_palette = QListWidget()
         self.tile_palette.setViewMode(QListWidget.ViewMode.IconMode)
-        self.tile_palette.setGridSize(QSize(40, 40))
+        self.tile_palette.setGridSize(QSize(56, 56))  # Larger grid for 48x48 icons
+        self.tile_palette.setIconSize(QSize(48, 48))
         self.tile_palette.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.tile_palette.itemSelectionChanged.connect(self.on_tile_selected)
         palette_layout.addWidget(self.tile_palette)
@@ -770,6 +880,79 @@ class TilemapEditorWindow(QMainWindow):
             else:
                 self.status_bar.showMessage(f"Failed to load tileset: {tileset_path}")
 
+    def add_tileset(self):
+        """Add a new tileset to the tilemap"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Select Tileset", "", "Tileset Files (*.tres);;All Files (*)"
+        )
+        if file_path:
+            self.load_tileset_from_path(file_path)
+
+    def load_tileset_from_path(self, file_path: str):
+        """Load a tileset from a file path"""
+        from core.tileset import get_tileset_manager
+
+        tileset_manager = get_tileset_manager()
+        tileset = tileset_manager.load_tileset(file_path)
+
+        if tileset:
+            # Add to canvas
+            self.canvas.set_current_tileset(tileset)
+
+            # Add to tilemap node tilesets list
+            tilesets = self.tilemap_node.setdefault("tilesets", [])
+            if file_path not in tilesets:
+                tilesets.append(file_path)
+
+            # Update UI
+            self.update_tileset_combo()
+            self.update_tile_palette()
+            self.status_bar.showMessage(f"Added tileset: {tileset.name}")
+        else:
+            QMessageBox.warning(self, "Error", f"Failed to load tileset: {file_path}")
+
+    def remove_tileset(self):
+        """Remove the current tileset from the tilemap"""
+        current_index = self.tileset_combo.currentIndex()
+        if current_index >= 0 and len(self.canvas.tilesets) > 1:
+            # Remove from canvas
+            removed_tileset = self.canvas.tilesets.pop(current_index)
+            if current_index in self.canvas.tileset_textures:
+                del self.canvas.tileset_textures[current_index]
+
+            # Update tilemap node
+            tileset_paths = self.tilemap_node.get("tilesets", [])
+            if current_index < len(tileset_paths):
+                tileset_paths.pop(current_index)
+                self.tilemap_node["tilesets"] = tileset_paths
+
+            # Update UI
+            self.update_tileset_combo()
+
+            # Set new current tileset
+            if self.canvas.tilesets:
+                self.canvas.current_tileset = self.canvas.tilesets[0]
+                self.canvas.current_tileset_index = 0
+                self.update_tile_palette()
+
+    def on_tileset_changed(self, index: int):
+        """Handle tileset selection change"""
+        if 0 <= index < len(self.canvas.tilesets):
+            self.canvas.current_tileset = self.canvas.tilesets[index]
+            self.canvas.current_tileset_index = index
+            self.update_tile_palette()
+
+    def update_tileset_combo(self):
+        """Update the tileset combo box"""
+        self.tileset_combo.clear()
+        for i, tileset in enumerate(self.canvas.tilesets):
+            name = tileset.name if tileset.name else f"Tileset {i}"
+            self.tileset_combo.addItem(name)
+
+        # Set current selection
+        if self.canvas.current_tileset_index < self.tileset_combo.count():
+            self.tileset_combo.setCurrentIndex(self.canvas.current_tileset_index)
+
     def update_tile_palette(self):
         """Update the tile palette with tiles from current tileset"""
         self.tile_palette.clear()
@@ -789,9 +972,8 @@ class TilemapEditorWindow(QMainWindow):
         sorted_tiles = sorted(self.current_tileset.tiles.items())
 
         for tile_id, tile_def in sorted_tiles:
-            # Create item with tile name and ID
-            item_text = f"{tile_def.name}\n(ID: {tile_id})"
-            item = QListWidgetItem(item_text)
+            # Create item with no text (image only)
+            item = QListWidgetItem("")
             item.setData(Qt.ItemDataRole.UserRole, tile_id)
 
             # Create tile preview icon
@@ -803,15 +985,23 @@ class TilemapEditorWindow(QMainWindow):
                     tile_rect[2], tile_rect[3]
                 )
 
-                # Scale to fit in palette (32x32)
+                # Scale to fit in palette (48x48 for better visibility)
                 if not tile_pixmap.isNull():
                     scaled_pixmap = tile_pixmap.scaled(
-                        32, 32,
+                        48, 48,
                         Qt.AspectRatioMode.KeepAspectRatio,
                         Qt.TransformationMode.SmoothTransformation
                     )
                     from PyQt6.QtGui import QIcon
                     item.setIcon(QIcon(scaled_pixmap))
+            else:
+                # Fallback: create a colored square icon
+                from PyQt6.QtGui import QIcon, QPixmap
+                fallback_pixmap = QPixmap(48, 48)
+                hue = (tile_id * 137) % 360
+                color = QColor.fromHsv(hue, 180, 200)
+                fallback_pixmap.fill(color)
+                item.setIcon(QIcon(fallback_pixmap))
 
             # Add tooltip with tile info
             tooltip_text = f"Tile ID: {tile_id}\nName: {tile_def.name}"
@@ -859,7 +1049,8 @@ class TilemapEditorWindow(QMainWindow):
             if pos_key in layer_tiles:
                 del layer_tiles[pos_key]
 
-        # Update canvas
+        # Update canvas with new tilemap data
+        self.canvas.set_tilemap_node(self.tilemap_node)
         self.canvas.update()
 
         # Mark as modified

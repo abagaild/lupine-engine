@@ -374,6 +374,11 @@ class TileMap(Node2D):
         tilemap.map_size_mode = data.get("map_size_mode", "infinite")
         tilemap.fixed_map_size = data.get("fixed_map_size", [100, 100])
 
+        # Initialize _tiles for all layers
+        tilemap._tiles = {}
+        for i in range(len(tilemap.layers)):
+            tilemap._tiles[str(i)] = {}
+
         # Load tiles data
         tiles_data = data.get("tiles", {})
         if isinstance(tiles_data, dict) and tiles_data:
@@ -381,12 +386,12 @@ class TileMap(Node2D):
             first_key = next(iter(tiles_data.keys()))
             if first_key.isdigit():
                 # New layered format
-                tilemap._tiles = {layer_key: layer_tiles.copy() for layer_key, layer_tiles in tiles_data.items()}
+                for layer_key, layer_tiles in tiles_data.items():
+                    if layer_key in tilemap._tiles:
+                        tilemap._tiles[layer_key] = layer_tiles.copy()
             else:
                 # Old format - migrate to layer 0
-                tilemap._tiles = {"0": tiles_data.copy()}
-        else:
-            tilemap._tiles = {"0": {}}
+                tilemap._tiles["0"] = tiles_data.copy()
 
         # Re-create children
         for child_data in data.get("children", []):

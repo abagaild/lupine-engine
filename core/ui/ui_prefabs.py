@@ -424,3 +424,200 @@ def get_all_categories() -> List[PrefabCategory]:
 def get_prefab(name: str) -> Optional[UIPrefab]:
     """Get a prefab by name"""
     return BUILTIN_PREFABS.get(name)
+
+
+# Animation presets for UI elements
+UI_ANIMATION_PRESETS = {
+    "bounce": {
+        "name": "Bounce",
+        "description": "Bounce scale animation for feedback",
+        "duration": 0.5,
+        "properties": {
+            "scale": {
+                "keyframes": [
+                    {"time": 0.0, "value": [1.0, 1.0]},
+                    {"time": 0.3, "value": [1.2, 1.2]},
+                    {"time": 0.6, "value": [0.9, 0.9]},
+                    {"time": 1.0, "value": [1.0, 1.0]}
+                ]
+            }
+        }
+    },
+
+    "fade_in": {
+        "name": "Fade In",
+        "description": "Fade in from transparent to opaque",
+        "duration": 1.0,
+        "properties": {
+            "modulate": {
+                "keyframes": [
+                    {"time": 0.0, "value": [1.0, 1.0, 1.0, 0.0]},
+                    {"time": 1.0, "value": [1.0, 1.0, 1.0, 1.0]}
+                ]
+            }
+        }
+    },
+
+    "fade_out": {
+        "name": "Fade Out",
+        "description": "Fade out from opaque to transparent",
+        "duration": 1.0,
+        "properties": {
+            "modulate": {
+                "keyframes": [
+                    {"time": 0.0, "value": [1.0, 1.0, 1.0, 1.0]},
+                    {"time": 1.0, "value": [1.0, 1.0, 1.0, 0.0]}
+                ]
+            }
+        }
+    },
+
+    "pulse": {
+        "name": "Pulse",
+        "description": "Pulsing alpha animation",
+        "duration": 2.0,
+        "loop": True,
+        "properties": {
+            "modulate": {
+                "keyframes": [
+                    {"time": 0.0, "value": [1.0, 1.0, 1.0, 1.0]},
+                    {"time": 1.0, "value": [1.0, 1.0, 1.0, 0.3]},
+                    {"time": 2.0, "value": [1.0, 1.0, 1.0, 1.0]}
+                ]
+            }
+        }
+    },
+
+    "slide_in_left": {
+        "name": "Slide In Left",
+        "description": "Slide in from the left side",
+        "duration": 0.8,
+        "properties": {
+            "position": {
+                "keyframes": [
+                    {"time": 0.0, "value": [-200.0, 0.0]},
+                    {"time": 1.0, "value": [0.0, 0.0]}
+                ]
+            }
+        }
+    },
+
+    "slide_in_right": {
+        "name": "Slide In Right",
+        "description": "Slide in from the right side",
+        "duration": 0.8,
+        "properties": {
+            "position": {
+                "keyframes": [
+                    {"time": 0.0, "value": [200.0, 0.0]},
+                    {"time": 1.0, "value": [0.0, 0.0]}
+                ]
+            }
+        }
+    },
+
+    "slide_in_top": {
+        "name": "Slide In Top",
+        "description": "Slide in from the top",
+        "duration": 0.8,
+        "properties": {
+            "position": {
+                "keyframes": [
+                    {"time": 0.0, "value": [0.0, -200.0]},
+                    {"time": 1.0, "value": [0.0, 0.0]}
+                ]
+            }
+        }
+    },
+
+    "slide_in_bottom": {
+        "name": "Slide In Bottom",
+        "description": "Slide in from the bottom",
+        "duration": 0.8,
+        "properties": {
+            "position": {
+                "keyframes": [
+                    {"time": 0.0, "value": [0.0, 200.0]},
+                    {"time": 1.0, "value": [0.0, 0.0]}
+                ]
+            }
+        }
+    },
+
+    "scale_up": {
+        "name": "Scale Up",
+        "description": "Scale up from small to normal size",
+        "duration": 0.6,
+        "properties": {
+            "scale": {
+                "keyframes": [
+                    {"time": 0.0, "value": [0.0, 0.0]},
+                    {"time": 1.0, "value": [1.0, 1.0]}
+                ]
+            }
+        }
+    },
+
+    "scale_down": {
+        "name": "Scale Down",
+        "description": "Scale down from normal to small size",
+        "duration": 0.6,
+        "properties": {
+            "scale": {
+                "keyframes": [
+                    {"time": 0.0, "value": [1.0, 1.0]},
+                    {"time": 1.0, "value": [0.0, 0.0]}
+                ]
+            }
+        }
+    },
+
+    "shake": {
+        "name": "Shake",
+        "description": "Shake animation for attention",
+        "duration": 0.5,
+        "properties": {
+            "position": {
+                "keyframes": [
+                    {"time": 0.0, "value": [0.0, 0.0]},
+                    {"time": 0.1, "value": [5.0, 0.0]},
+                    {"time": 0.2, "value": [-5.0, 0.0]},
+                    {"time": 0.3, "value": [3.0, 0.0]},
+                    {"time": 0.4, "value": [-3.0, 0.0]},
+                    {"time": 0.5, "value": [0.0, 0.0]}
+                ]
+            }
+        }
+    },
+
+    "glow": {
+        "name": "Glow",
+        "description": "Glowing color animation",
+        "duration": 1.5,
+        "loop": True,
+        "properties": {
+            "modulate": {
+                "keyframes": [
+                    {"time": 0.0, "value": [1.0, 1.0, 1.0, 1.0]},
+                    {"time": 0.75, "value": [1.5, 1.5, 1.0, 1.0]},
+                    {"time": 1.5, "value": [1.0, 1.0, 1.0, 1.0]}
+                ]
+            }
+        }
+    }
+}
+
+
+def get_ui_animation_presets() -> Dict[str, Dict]:
+    """Get all available UI animation presets"""
+    return UI_ANIMATION_PRESETS
+
+
+def get_ui_animation_preset(name: str) -> Optional[Dict]:
+    """Get a specific UI animation preset by name"""
+    return UI_ANIMATION_PRESETS.get(name)
+
+
+def get_ui_animation_preset_names() -> List[str]:
+    """Get list of all UI animation preset names"""
+    return list(UI_ANIMATION_PRESETS.keys())

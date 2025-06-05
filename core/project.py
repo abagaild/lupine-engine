@@ -43,6 +43,7 @@ class LupineProject:
                 "nodes/node2d",
                 "nodes/ui",
                 "nodes/audio",
+                "nodes/dialogue",
                 "nodes/prefabs"
             ]
 

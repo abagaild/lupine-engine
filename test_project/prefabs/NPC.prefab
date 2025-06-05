@@ -1,0 +1,231 @@
+{
+  "id": "be4b4d00-481b-41e2-be94-8eb8fea82111",
+  "name": "NPC",
+  "prefab_type": "entity",
+  "description": "Non-player character with dialogue and interaction",
+  "category": "Characters",
+  "icon": "npc.png",
+  "preview_image": "",
+  "base_node_type": "KinematicBody2D",
+  "node_structure": {
+    "name": "NPC",
+    "type": "KinematicBody2D",
+    "position": [
+      0,
+      0
+    ],
+    "children": [
+      {
+        "name": "Sprite",
+        "type": "Sprite2D",
+        "position": [
+          0,
+          0
+        ],
+        "texture": "",
+        "children": []
+      },
+      {
+        "name": "CollisionShape2D",
+        "type": "CollisionShape2D",
+        "position": [
+          0,
+          0
+        ],
+        "shape": "rectangle",
+        "size": [
+          32,
+          32
+        ],
+        "children": []
+      },
+      {
+        "name": "InteractionArea",
+        "type": "Area2D",
+        "position": [
+          0,
+          0
+        ],
+        "children": [
+          {
+            "name": "InteractionCollision",
+            "type": "CollisionShape2D",
+            "position": [
+              0,
+              0
+            ],
+            "shape": "rectangle",
+            "size": [
+              48,
+              48
+            ],
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  "properties": [
+    {
+      "name": "npc_name",
+      "type": "string",
+      "default_value": "NPC",
+      "description": "Name of the NPC",
+      "group": "Basic",
+      "export": true,
+      "min_value": null,
+      "max_value": null,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "sprite_texture",
+      "type": "path",
+      "default_value": "",
+      "description": "Sprite texture path",
+      "group": "Appearance",
+      "export": true,
+      "min_value": null,
+      "max_value": null,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "dialogue_file",
+      "type": "path",
+      "default_value": "",
+      "description": "Dialogue script file",
+      "group": "Dialogue",
+      "export": true,
+      "min_value": null,
+      "max_value": null,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "movement_speed",
+      "type": "number",
+      "default_value": 50.0,
+      "description": "Movement speed",
+      "group": "Movement",
+      "export": true,
+      "min_value": 0,
+      "max_value": 200,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "can_move",
+      "type": "boolean",
+      "default_value": true,
+      "description": "Whether NPC can move",
+      "group": "Movement",
+      "export": true,
+      "min_value": null,
+      "max_value": null,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "facing_direction",
+      "type": "string",
+      "default_value": "down",
+      "description": "Initial facing direction",
+      "group": "Movement",
+      "export": true,
+      "min_value": null,
+      "max_value": null,
+      "step": null,
+      "options": [
+        "up",
+        "down",
+        "left",
+        "right"
+      ]
+    },
+    {
+      "name": "interaction_distance",
+      "type": "number",
+      "default_value": 48.0,
+      "description": "Interaction distance",
+      "group": "Interaction",
+      "export": true,
+      "min_value": 16,
+      "max_value": 128,
+      "step": null,
+      "options": null
+    }
+  ],
+  "property_groups": {
+    "Basic": "Basic NPC properties",
+    "Appearance": "Visual appearance settings",
+    "Dialogue": "Dialogue and conversation settings",
+    "Movement": "Movement and animation settings",
+    "Interaction": "Player interaction settings"
+  },
+  "events": [
+    {
+      "name": "on_interact",
+      "description": "Called when player interacts with NPC",
+      "parameters": [
+        {
+          "name": "player",
+          "type": "node",
+          "default_value": null,
+          "description": "The player node",
+          "required": true,
+          "options": null
+        }
+      ],
+      "default_script": ""
+    },
+    {
+      "name": "on_dialogue_start",
+      "description": "Called when dialogue starts",
+      "parameters": [],
+      "default_script": ""
+    },
+    {
+      "name": "on_dialogue_end",
+      "description": "Called when dialogue ends",
+      "parameters": [],
+      "default_script": ""
+    },
+    {
+      "name": "on_player_nearby",
+      "description": "Called when player enters interaction area",
+      "parameters": [
+        {
+          "name": "player",
+          "type": "node",
+          "default_value": null,
+          "description": "The player node",
+          "required": true,
+          "options": null
+        }
+      ],
+      "default_script": ""
+    },
+    {
+      "name": "on_player_left",
+      "description": "Called when player leaves interaction area",
+      "parameters": [],
+      "default_script": ""
+    }
+  ],
+  "visual_script_blocks": [],
+  "default_script": "# NPC Script\n!npc_name = \"NPC\"\n!sprite_texture = \"\"\n!dialogue_file = \"\"\n!movement_speed = 50.0\n!can_move = True\n!facing_direction = \"down\"\n!interaction_distance = 48.0\n\ndef _ready():\n    # Set up sprite\n    sprite = find_child(\"Sprite\")\n    if sprite and sprite_texture:\n        sprite.texture = load_texture(sprite_texture)\n    \n    # Set up interaction area\n    interaction_area = find_child(\"InteractionArea\")\n    if interaction_area:\n        interaction_area.body_entered.connect(on_player_nearby)\n        interaction_area.body_exited.connect(on_player_left)\n\ndef on_interact(player):\n    if dialogue_file:\n        start_dialogue(dialogue_file)\n    else:\n        print(f\"{npc_name}: Hello!\")\n\ndef on_dialogue_start():\n    print(f\"Started dialogue with {npc_name}\")\n\ndef on_dialogue_end():\n    print(f\"Ended dialogue with {npc_name}\")\n\ndef on_player_nearby(player):\n    print(f\"Player near {npc_name}\")\n\ndef on_player_left():\n    print(f\"Player left {npc_name}\")\n",
+  "tags": [
+    "npc",
+    "character",
+    "dialogue",
+    "interaction"
+  ],
+  "version": "1.0.0",
+  "author": "",
+  "created_at": "2025-06-04T23:37:52.019583",
+  "modified_at": "2025-06-04T23:37:52.019583",
+  "required_nodes": [],
+  "required_scripts": [],
+  "required_assets": []
+}

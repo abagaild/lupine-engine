@@ -1,0 +1,35 @@
+{
+  "id": "5095f516-749d-4cb6-acf9-8f7b7cecfed9",
+  "name": "Check Variable",
+  "category": "Conditions",
+  "block_type": "condition",
+  "description": "Check if variable exists and has value",
+  "inputs": [
+    {
+      "name": "variable_name",
+      "type": "string",
+      "default_value": "",
+      "description": "Variable name",
+      "required": true,
+      "options": null
+    },
+    {
+      "name": "expected_value",
+      "type": "string",
+      "default_value": "",
+      "description": "Expected value (optional)",
+      "required": true,
+      "options": null
+    }
+  ],
+  "outputs": [
+    {
+      "name": "result",
+      "type": "boolean",
+      "description": "Check result"
+    }
+  ],
+  "code_template": "check_variable(\"{variable_name}\", \"{expected_value}\")",
+  "icon": "",
+  "color": "#FFD93D"
+}

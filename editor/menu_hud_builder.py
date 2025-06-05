@@ -492,6 +492,9 @@ class MenuHudBuilderWindow(QMainWindow):
         self.hud_builder = MenuHudBuilder(self.project)
         self.setCentralWidget(self.hud_builder)
 
+        # Setup menu bar
+        self.setup_menus()
+
         # Connect signals for node handling
         self.hud_builder.prefab_library.node_selected.connect(self.on_generic_node_selected)
 
@@ -514,6 +517,75 @@ class MenuHudBuilderWindow(QMainWindow):
         # Add the node at a default position
         if hasattr(self.hud_builder, 'preview_widget'):
             self.hud_builder.preview_widget.add_generic_node_at_position(node_type, [100, 100])
+
+    def setup_menus(self):
+        """Setup the menu bar"""
+        from PyQt6.QtGui import QAction
+
+        menubar = self.menuBar()
+
+        # File menu
+        file_menu = menubar.addMenu("File")
+
+        new_action = QAction("New HUD", self)
+        new_action.setShortcut("Ctrl+N")
+        new_action.triggered.connect(self.new_hud)
+        file_menu.addAction(new_action)
+
+        open_action = QAction("Open HUD", self)
+        open_action.setShortcut("Ctrl+O")
+        open_action.triggered.connect(self.hud_builder.load_hud)
+        file_menu.addAction(open_action)
+
+        save_action = QAction("Save HUD", self)
+        save_action.setShortcut("Ctrl+S")
+        save_action.triggered.connect(self.hud_builder.save_hud)
+        file_menu.addAction(save_action)
+
+        # Tools menu
+        tools_menu = menubar.addMenu("Tools")
+
+        # Visual Script Editor
+        visual_script_action = QAction("Visual Script Editor", self)
+        visual_script_action.triggered.connect(self.open_visual_script_editor)
+        tools_menu.addAction(visual_script_action)
+
+    def new_hud(self):
+        """Create a new HUD"""
+        self.hud_builder.preview_widget.create_default_scene()
+        self.hud_builder.preview_widget.create_scene_view()
+
+    def open_visual_script_editor(self):
+        """Open the visual script editor popup"""
+        from editor.ui.visual_script_popup import open_visual_script_popup
+
+        # Determine target object
+        target_object = None
+        initial_script_path = None
+
+        if self.hud_builder.current_node:
+            target_object = self.hud_builder.current_node
+            initial_script_path = target_object.get('visual_script_path', None)
+
+        # Open the popup
+        script_path = open_visual_script_popup(
+            parent=self,
+            project=self.project,
+            target_object=target_object,
+            initial_script_path=initial_script_path or ""
+        )
+
+        # If a script was selected and we have a target object, apply it
+        if script_path and target_object:
+            target_object['visual_script_path'] = script_path
+
+            # Refresh the preview
+            if (self.hud_builder.preview_widget and
+                hasattr(self.hud_builder.preview_widget, 'scene_view') and
+                self.hud_builder.preview_widget.scene_view and
+                hasattr(self.hud_builder.preview_widget.scene_view, 'viewport') and
+                self.hud_builder.preview_widget.scene_view.viewport):
+                self.hud_builder.preview_widget.scene_view.viewport.update()
 
     def closeEvent(self, event):
         """Handle window close event"""

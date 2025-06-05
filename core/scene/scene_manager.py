@@ -129,6 +129,9 @@ class Scene:
             elif node_type == "AnimatedSprite":
                 from nodes.node2d.AnimatedSprite import AnimatedSprite
                 return AnimatedSprite.from_dict(data)
+            elif node_type == "AnimationPlayer":
+                from nodes.base.AnimationPlayer import AnimationPlayer
+                return AnimationPlayer.from_dict(data)
             elif node_type == "KinematicBody2D":
                 from nodes.node2d.KinematicBody2D import KinematicBody2D
                 return KinematicBody2D.from_dict(data)
