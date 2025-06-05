@@ -4,7 +4,7 @@ Grid of tiles with tileset, collision layers, and batch rendering
 """
 
 from nodes.base.Node2D import Node2D
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 
 
 class TileMap(Node2D):
@@ -94,59 +94,189 @@ class TileMap(Node2D):
         self.one_way_collision_enabled: bool = False
         self.one_way_collision_margin: float = 0.0
 
-        # Internal tile data: mapping (x, y) → tile index (int)
-        self._tiles: Dict[str, int] = {}  # e.g. {"0,0": 5, "1,0": 2}
+        # Layer system - support up to 20 layers
+        self.layers: List[Dict[str, Any]] = []
+        self.current_layer: int = 0
+        self.max_layers: int = 20
+
+        # Multiple tileset support
+        self.tilesets: List[str] = []  # List of tileset paths
+
+        # Map size configuration
+        self.map_size_mode: str = "infinite"  # "infinite" or "fixed"
+        self.fixed_map_size: List[int] = [100, 100]  # width, height in tiles
+
+        # Internal tile data: mapping (layer, x, y) → tile data
+        self._tiles: Dict[str, Dict[str, Any]] = {}  # e.g. {"0": {"0,0": {"tileset": 0, "tile_id": 5}}}
+
+        # Initialize with one default layer (after _tiles is created)
+        self.add_layer("Layer 0")
 
         # Built-in signals
         self.add_signal("tiles_changed")
+        self.add_signal("layer_changed")
 
-    # Tile editing API
-    def set_tile(self, x: int, y: int, tile_index: int):
-        """Assign a tile index at grid cell (x, y)."""
-        key = f"{x},{y}"
-        old = self._tiles.get(key, -1)
-        if tile_index < 0:
-            if key in self._tiles:
-                del self._tiles[key]
+    # Layer management
+    def add_layer(self, name: Optional[str] = None) -> int:
+        """Add a new layer and return its index"""
+        if len(self.layers) >= self.max_layers:
+            return -1
+
+        layer_index = len(self.layers)
+        if name is None:
+            name = f"Layer {layer_index}"
+
+        layer_data = {
+            "name": name,
+            "visible": True,
+            "opacity": 1.0,
+            "z_index": layer_index
+        }
+
+        self.layers.append(layer_data)
+        self._tiles[str(layer_index)] = {}
+
+        self.emit_signal("layer_changed", layer_index, "added")
+        return layer_index
+
+    def remove_layer(self, layer_index: int) -> bool:
+        """Remove a layer"""
+        if not (0 <= layer_index < len(self.layers)):
+            return False
+
+        # Don't allow removing the last layer
+        if len(self.layers) <= 1:
+            return False
+
+        # Remove layer data
+        del self.layers[layer_index]
+        if str(layer_index) in self._tiles:
+            del self._tiles[str(layer_index)]
+
+        # Adjust current layer if needed
+        if self.current_layer >= len(self.layers):
+            self.current_layer = len(self.layers) - 1
+
+        # Reindex remaining layers
+        new_tiles = {}
+        for i, layer in enumerate(self.layers):
+            old_key = str(i + 1 if i >= layer_index else i)
+            if old_key in self._tiles:
+                new_tiles[str(i)] = self._tiles[old_key]
+        self._tiles = new_tiles
+
+        self.emit_signal("layer_changed", layer_index, "removed")
+        return True
+
+    def set_layer_property(self, layer_index: int, property_name: str, value: Any):
+        """Set a layer property"""
+        if 0 <= layer_index < len(self.layers):
+            self.layers[layer_index][property_name] = value
+            self.emit_signal("layer_changed", layer_index, "modified")
+
+    # Tileset management
+    def add_tileset(self, tileset_path: str) -> int:
+        """Add a tileset and return its index"""
+        if tileset_path not in self.tilesets:
+            self.tilesets.append(tileset_path)
+        return self.tilesets.index(tileset_path)
+
+    def remove_tileset(self, tileset_index: int) -> bool:
+        """Remove a tileset"""
+        if 0 <= tileset_index < len(self.tilesets):
+            del self.tilesets[tileset_index]
+            # TODO: Update tiles that reference this tileset
+            return True
+        return False
+
+    # Tile editing API (updated for layers)
+    def set_tile(self, x: int, y: int, tile_data: Optional[Dict[str, Any]], layer: Optional[int] = None):
+        """Assign tile data at grid cell (x, y) on specified layer."""
+        if layer is None:
+            layer = self.current_layer
+
+        layer_key = str(layer)
+        if layer_key not in self._tiles:
+            return
+
+        pos_key = f"{x},{y}"
+        old_data = self._tiles[layer_key].get(pos_key, None)
+
+        if tile_data is None or tile_data.get("tile_id", -1) < 0:
+            # Remove tile
+            if pos_key in self._tiles[layer_key]:
+                del self._tiles[layer_key][pos_key]
         else:
-            self._tiles[key] = tile_index
-        if old != tile_index:
-            self.emit_signal("tiles_changed", x, y, old, tile_index)
+            self._tiles[layer_key][pos_key] = tile_data
 
-    def get_tile(self, x: int, y: int) -> int:
-        """Retrieve the tile index at (x, y), or -1 if none."""
-        return self._tiles.get(f"{x},{y}", -1)
+        self.emit_signal("tiles_changed", x, y, layer, old_data, tile_data)
 
-    def clear_tile(self, x: int, y: int):
-        """Remove any tile at (x, y)."""
-        self.set_tile(x, y, -1)
+    def get_tile(self, x: int, y: int, layer: Optional[int] = None) -> Dict[str, Any]:
+        """Retrieve tile data at (x, y) on specified layer."""
+        if layer is None:
+            layer = self.current_layer
+
+        layer_key = str(layer)
+        if layer_key not in self._tiles:
+            return {}
+
+        return self._tiles[layer_key].get(f"{x},{y}", {})
+
+    def clear_tile(self, x: int, y: int, layer: Optional[int] = None):
+        """Remove any tile at (x, y) on specified layer."""
+        self.set_tile(x, y, None, layer)
+
+    def clear_layer(self, layer: Optional[int] = None):
+        """Remove all tiles from specified layer."""
+        if layer is None:
+            layer = self.current_layer
+
+        layer_key = str(layer)
+        if layer_key in self._tiles:
+            self._tiles[layer_key].clear()
+            self.emit_signal("tiles_changed", None, None, layer, None, None)
 
     def clear_all(self):
-        """Remove all tiles from the map."""
-        self._tiles.clear()
-        self.emit_signal("tiles_changed", None, None, None, None)
+        """Remove all tiles from all layers."""
+        for layer_key in self._tiles:
+            self._tiles[layer_key].clear()
+        self.emit_signal("tiles_changed", None, None, None, None, None)
 
     # Utility methods for tile manipulation
-    def get_used_cells(self) -> List[List[int]]:
-        """Get a list of all cells that have tiles"""
+    def get_used_cells(self, layer: Optional[int] = None) -> List[List[int]]:
+        """Get a list of all cells that have tiles on specified layer"""
+        if layer is None:
+            layer = self.current_layer
+
+        layer_key = str(layer)
+        if layer_key not in self._tiles:
+            return []
+
         cells = []
-        for key in self._tiles.keys():
+        for key in self._tiles[layer_key].keys():
             x, y = map(int, key.split(','))
             cells.append([x, y])
         return cells
 
-    def get_used_rect(self) -> List[int]:
-        """Get the rectangle that encompasses all used tiles"""
-        if not self._tiles:
+    def get_used_rect(self, layer: Optional[int] = None) -> List[int]:
+        """Get the rectangle that encompasses all used tiles on specified layer"""
+        cells = self.get_used_cells(layer)
+        if not cells:
             return [0, 0, 0, 0]
 
-        cells = self.get_used_cells()
         min_x = min(cell[0] for cell in cells)
         max_x = max(cell[0] for cell in cells)
         min_y = min(cell[1] for cell in cells)
         max_y = max(cell[1] for cell in cells)
 
         return [min_x, min_y, max_x - min_x + 1, max_y - min_y + 1]
+
+    def get_all_used_cells(self) -> Dict[int, List[List[int]]]:
+        """Get used cells for all layers"""
+        result = {}
+        for layer_index in range(len(self.layers)):
+            result[layer_index] = self.get_used_cells(layer_index)
+        return result
 
     def world_to_map(self, world_pos: List[float]) -> List[int]:
         """Convert world position to map coordinates"""
@@ -211,7 +341,12 @@ class TileMap(Node2D):
             "collision_mask": self.collision_mask,
             "one_way_collision_enabled": self.one_way_collision_enabled,
             "one_way_collision_margin": self.one_way_collision_margin,
-            "tiles": self._tiles.copy()
+            "layers": [layer.copy() for layer in self.layers],
+            "current_layer": self.current_layer,
+            "tilesets": self.tilesets.copy(),
+            "map_size_mode": self.map_size_mode,
+            "fixed_map_size": self.fixed_map_size.copy(),
+            "tiles": {layer_key: layer_tiles.copy() for layer_key, layer_tiles in self._tiles.items()}
         })
         return data
 
@@ -231,7 +366,27 @@ class TileMap(Node2D):
         tilemap.collision_mask = data.get("collision_mask", 1)
         tilemap.one_way_collision_enabled = data.get("one_way_collision_enabled", False)
         tilemap.one_way_collision_margin = data.get("one_way_collision_margin", 0.0)
-        tilemap._tiles = data.get("tiles", {}).copy()
+
+        # Load layer system data
+        tilemap.layers = data.get("layers", [{"name": "Layer 0", "visible": True, "opacity": 1.0, "z_index": 0}])
+        tilemap.current_layer = data.get("current_layer", 0)
+        tilemap.tilesets = data.get("tilesets", [])
+        tilemap.map_size_mode = data.get("map_size_mode", "infinite")
+        tilemap.fixed_map_size = data.get("fixed_map_size", [100, 100])
+
+        # Load tiles data
+        tiles_data = data.get("tiles", {})
+        if isinstance(tiles_data, dict) and tiles_data:
+            # Check if this is old format (direct tile mapping) or new format (layered)
+            first_key = next(iter(tiles_data.keys()))
+            if first_key.isdigit():
+                # New layered format
+                tilemap._tiles = {layer_key: layer_tiles.copy() for layer_key, layer_tiles in tiles_data.items()}
+            else:
+                # Old format - migrate to layer 0
+                tilemap._tiles = {"0": tiles_data.copy()}
+        else:
+            tilemap._tiles = {"0": {}}
 
         # Re-create children
         for child_data in data.get("children", []):

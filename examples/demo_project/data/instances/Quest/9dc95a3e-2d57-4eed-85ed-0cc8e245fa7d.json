@@ -1,0 +1,16 @@
+{
+  "template_name": "Quest",
+  "instance_id": "9dc95a3e-2d57-4eed-85ed-0cc8e245fa7d",
+  "name": "Tutorial Quest",
+  "data": {
+    "quest_name": "Welcome to Adventure",
+    "description": "Learn the basics of the game",
+    "objective": "Talk to the Village Elder",
+    "reward_gold": 50,
+    "reward_exp": 100,
+    "required_level": 1,
+    "is_main_quest": true,
+    "prerequisites": []
+  },
+  "metadata": {}
+}

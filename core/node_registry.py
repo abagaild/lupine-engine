@@ -19,6 +19,7 @@ class NodeCategory(Enum):
     NODE_2D = "2D"
     UI = "UI"
     AUDIO = "Audio"
+    SCENES = "Scenes"
     PREFABS = "Prefabs"
 
 
@@ -52,6 +53,7 @@ class DynamicNodeRegistry(BaseNodeRegistry):
         self._project_path = project_path
         if not self._initialized:
             self._initialize_builtin_nodes()
+            self.load_scene_files()
             self._initialized = True
 
     def _initialize_builtin_nodes(self):
@@ -221,12 +223,62 @@ class DynamicNodeRegistry(BaseNodeRegistry):
         for py_file in directory.glob("*.py"):
             self._register_node_from_file(py_file, NodeCategory.PREFABS, is_builtin=False)
 
+    def load_scene_files(self):
+        """Load scene files as instantiable nodes"""
+        if not self._project_path:
+            return
+
+        scenes_dir = self._project_path / "scenes"
+        if not scenes_dir.exists():
+            return
+
+        # Load all .scene files
+        for scene_file in scenes_dir.glob("*.scene"):
+            try:
+                scene_name = scene_file.stem
+                relative_path = f"scenes/{scene_file.name}"
+
+                # Create node definition for scene instance
+                node_def = NodeDefinition(
+                    name=f"{scene_name} (Scene)",
+                    category=NodeCategory.SCENES,
+                    class_name="SceneInstance",
+                    script_path=relative_path,
+                    description=f"Instance of scene: {scene_name}",
+                    is_builtin=False
+                )
+
+                # Use a unique key to avoid conflicts
+                scene_key = f"Scene_{scene_name}"
+                self._node_definitions[scene_key] = node_def
+                self._categories[NodeCategory.SCENES].append(node_def)
+
+            except Exception as e:
+                print(f"Error loading scene file {scene_file}: {e}")
+
     def create_node_instance(self, node_type: str, node_name: str) -> Optional[Node]:
         """Create a node instance with proper script path"""
         node_def = self._node_definitions.get(node_type)
         if not node_def:
             # Fallback to base registry
             return self.create_node(node_type, node_name)
+
+        # Handle scene instances specially
+        if node_def.category == NodeCategory.SCENES:
+            try:
+                from nodes.base.SceneInstance import SceneInstance
+                instance = SceneInstance(node_name)
+                if node_def.script_path:
+                    # Set the scene path without trying to load immediately
+                    instance.scene_path = node_def.script_path
+                    instance.export_variables["scene_path"]["value"] = node_def.script_path
+                    instance.set_scene_path(node_def.script_path)
+                return instance
+            except Exception as e:
+                print(f"Error creating scene instance for {node_def.script_path}: {e}")
+                import traceback
+                traceback.print_exc()
+                return None
 
         # Try to load the actual Python class
         if node_def.script_path and node_def.script_path.endswith('.py'):
@@ -304,6 +356,9 @@ class DynamicNodeRegistry(BaseNodeRegistry):
         prefabs_dir = self._project_path / "prefabs"
         if prefabs_dir.exists():
             self.load_prefabs_from_directory(prefabs_dir)
+
+        # Load scene files
+        self.load_scene_files()
 
 
 # Global registry instance

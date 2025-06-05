@@ -18,6 +18,7 @@ class LupineProject:
         self.config: Dict[str, Any] = {}
         self.scenes: List[str] = []
         self.main_scene: Optional[str] = None
+        self._scene_manager = None
         
     def create_new_project(self, name: str, description: str = "") -> bool:
         """Create a new project with standard folder structure"""
@@ -79,6 +80,10 @@ class LupineProject:
                 "export": {
                     "platforms": ["windows", "linux", "mac"],
                     "icon": "icon.png"
+                },
+                "globals": {
+                    "singletons": [],
+                    "variables": []
                 }
             }
             
@@ -261,6 +266,14 @@ class LupineProject:
         except ValueError:
             return str(abs_path)
 
+    @property
+    def scene_manager(self):
+        """Get the scene manager for this project."""
+        if self._scene_manager is None:
+            from .scene.scene_manager import SceneManager
+            self._scene_manager = SceneManager(self)
+        return self._scene_manager
+
 
 class ProjectManager:
     """Manages multiple projects and recent projects list"""
@@ -281,7 +294,7 @@ class ProjectManager:
         except Exception as e:
             print(f"Error loading config: {e}")
             self.recent_projects = []
-    
+
     def save_config(self) -> None:
         """Save global configuration"""
         try:
@@ -294,23 +307,23 @@ class ProjectManager:
                 safe_json_dump(config, f, indent=2)
         except Exception as e:
             print(f"Error saving config: {e}")
-    
+
     def add_recent_project(self, project_path: str) -> None:
         """Add project to recent projects list"""
         project_path = str(Path(project_path).resolve())
-        
+
         # Remove if already in list
         if project_path in self.recent_projects:
             self.recent_projects.remove(project_path)
-        
+
         # Add to beginning
         self.recent_projects.insert(0, project_path)
-        
+
         # Keep only last 10 projects
         self.recent_projects = self.recent_projects[:10]
-        
+
         self.save_config()
-    
+
     def get_recent_projects(self) -> List[Dict[str, str]]:
         """Get list of recent projects with metadata"""
         projects = []
@@ -325,9 +338,24 @@ class ProjectManager:
                         "description": project.get_project_description()
                     })
         return projects
-    
+
     def remove_recent_project(self, project_path: str) -> None:
         """Remove project from recent projects list"""
         if project_path in self.recent_projects:
             self.recent_projects.remove(project_path)
             self.save_config()
+
+
+# Global project instance
+_current_project: Optional[LupineProject] = None
+
+
+def set_current_project(project: LupineProject) -> None:
+    """Set the current active project."""
+    global _current_project
+    _current_project = project
+
+
+def get_current_project() -> Optional[LupineProject]:
+    """Get the current active project."""
+    return _current_project

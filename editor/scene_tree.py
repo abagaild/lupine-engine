@@ -122,7 +122,17 @@ class SceneTreeWidget(QWidget):
         # Set node name and type
         node_name = node_data.get("name", "Unnamed")
         node_type = node_data.get("type", "Node")
-        item.setText(0, f"{node_name} ({node_type})")
+
+        # Special handling for scene instances
+        if node_type == "SceneInstance":
+            scene_path = node_data.get("scene_path", "")
+            if scene_path:
+                scene_name = scene_path.split("/")[-1].replace(".scene", "")
+                item.setText(0, f"📁 {node_name} ({scene_name})")
+            else:
+                item.setText(0, f"📁 {node_name} (No Scene)")
+        else:
+            item.setText(0, f"{node_name} ({node_type})")
         
         # Store node data
         item.setData(0, Qt.ItemDataRole.UserRole, node_data)
@@ -191,13 +201,60 @@ class SceneTreeWidget(QWidget):
         menu.addAction(add_child_action)
         
         if item:
+            node_data = item.data(0, Qt.ItemDataRole.UserRole)
+            node_type = node_data.get("type", "Node") if node_data else "Node"
+
+            # Special options for scene instances
+            if node_type == "SceneInstance":
+                # Edit original scene
+                edit_scene_action = QAction("Edit Original Scene", self)
+                edit_scene_action.triggered.connect(lambda: self.edit_original_scene(item))
+                menu.addAction(edit_scene_action)
+
+                # Reload scene instance
+                reload_action = QAction("Reload Scene Instance", self)
+                reload_action.triggered.connect(lambda: self.reload_scene_instance(item))
+                menu.addAction(reload_action)
+
+                # Advanced scene instance options
+                menu.addSeparator()
+
+                # Create variant
+                variant_action = QAction("Create Variant", self)
+                variant_action.triggered.connect(lambda: self.create_instance_variant(item))
+                menu.addAction(variant_action)
+
+                # Show property overrides
+                overrides_action = QAction("Show Property Overrides", self)
+                overrides_action.triggered.connect(lambda: self.show_property_overrides(item))
+                menu.addAction(overrides_action)
+
+                # Performance information
+                performance_action = QAction("Performance Info", self)
+                performance_action.triggered.connect(lambda: self.show_performance_info(item))
+                menu.addAction(performance_action)
+
+                # Validate instance
+                validate_action = QAction("Validate Instance", self)
+                validate_action.triggered.connect(lambda: self.validate_scene_instance(item))
+                menu.addAction(validate_action)
+
+                menu.addSeparator()
+
+                # Break instance (convert to regular nodes)
+                break_action = QAction("Break Scene Instance", self)
+                break_action.triggered.connect(lambda: self.break_scene_instance(item))
+                menu.addAction(break_action)
+
+                menu.addSeparator()
+
             # Duplicate node
             duplicate_action = QAction("Duplicate Node", self)
             duplicate_action.triggered.connect(lambda: self.duplicate_node(item))
             menu.addAction(duplicate_action)
-            
+
             menu.addSeparator()
-            
+
             # Delete node
             delete_action = QAction("Delete Node", self)
             delete_action.triggered.connect(lambda: self.delete_node(item))
@@ -471,5 +528,245 @@ class SceneTreeWidget(QWidget):
 
         # Emit change signal to notify other components
         self.node_changed.emit({})
+
+    # ========== ENHANCED SCENE INSTANCE METHODS ==========
+
+    def create_instance_variant(self, item: QTreeWidgetItem):
+        """Create a variant of a scene instance"""
+        if not item:
+            return
+
+        node_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not node_data or node_data.get("type") != "SceneInstance":
+            return
+
+        try:
+            # Create scene instance from data
+            from nodes.base.SceneInstance import SceneInstance
+            scene_instance = SceneInstance.from_dict(node_data)
+
+            # Create variant
+            variant_name = f"{scene_instance.name}_variant"
+            variant = scene_instance.create_variant(variant_name)
+
+            if variant:
+                # Add variant to the scene tree
+                variant_data = variant.to_dict()
+                parent_item = item.parent()
+                self.add_node_to_tree(variant_data, parent_item)
+                self.sync_tree_to_scene_data()
+
+                QMessageBox.information(self, "Variant Created",
+                                      f"Created variant: {variant.name}")
+            else:
+                QMessageBox.warning(self, "Error", "Failed to create variant")
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to create variant: {e}")
+
+    def show_property_overrides(self, item: QTreeWidgetItem):
+        """Show property overrides for a scene instance"""
+        if not item:
+            return
+
+        node_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not node_data or node_data.get("type") != "SceneInstance":
+            return
+
+        try:
+            # Get property overrides
+            overrides = node_data.get("property_overrides", {})
+
+            if not overrides:
+                QMessageBox.information(self, "Property Overrides",
+                                      "This scene instance has no property overrides.")
+                return
+
+            # Format overrides for display
+            override_text = "Property Overrides:\n\n"
+            for node_path, properties in overrides.items():
+                override_text += f"Node: {node_path}\n"
+                for prop_name, value in properties.items():
+                    override_text += f"  {prop_name}: {value}\n"
+                override_text += "\n"
+
+            # Show in message box (could be enhanced with a custom dialog)
+            QMessageBox.information(self, "Property Overrides", override_text)
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to show overrides: {e}")
+
+    def show_performance_info(self, item: QTreeWidgetItem):
+        """Show performance information for a scene instance"""
+        if not item:
+            return
+
+        node_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not node_data or node_data.get("type") != "SceneInstance":
+            return
+
+        try:
+            # Create scene instance to get performance info
+            from nodes.base.SceneInstance import SceneInstance
+            scene_instance = SceneInstance.from_dict(node_data)
+
+            # Get memory usage statistics
+            memory_stats = scene_instance.get_memory_usage()
+
+            # Format performance info
+            perf_text = "Performance Information:\n\n"
+            perf_text += f"Instance Size: {memory_stats.get('instance_size', 0)} bytes\n"
+            perf_text += f"Children Count: {memory_stats.get('children_count', 0)}\n"
+            perf_text += f"Override Count: {memory_stats.get('override_count', 0)}\n"
+            perf_text += f"Total Nodes: {memory_stats.get('total_nodes', 0)}\n"
+            perf_text += f"Scene Path: {memory_stats.get('scene_path', 'N/A')}\n"
+            perf_text += f"Is Pooled: {memory_stats.get('is_pooled', False)}\n"
+            perf_text += f"Is Active: {memory_stats.get('is_active', True)}\n"
+
+            QMessageBox.information(self, "Performance Info", perf_text)
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to get performance info: {e}")
+
+    def validate_scene_instance(self, item: QTreeWidgetItem):
+        """Validate a scene instance for integrity issues"""
+        if not item:
+            return
+
+        node_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not node_data or node_data.get("type") != "SceneInstance":
+            return
+
+        try:
+            # Create scene instance to validate
+            from nodes.base.SceneInstance import SceneInstance
+            scene_instance = SceneInstance.from_dict(node_data)
+
+            # Validate integrity
+            issues = scene_instance.validate_integrity()
+
+            if not issues:
+                QMessageBox.information(self, "Validation Result",
+                                      "Scene instance validation passed. No issues found.")
+            else:
+                issue_text = "Validation Issues Found:\n\n"
+                for i, issue in enumerate(issues, 1):
+                    issue_text += f"{i}. {issue}\n"
+
+                QMessageBox.warning(self, "Validation Issues", issue_text)
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to validate instance: {e}")
+
+    def edit_original_scene(self, item: QTreeWidgetItem):
+        """Edit the original scene file of a scene instance"""
+        if not item:
+            return
+
+        node_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not node_data or node_data.get("type") != "SceneInstance":
+            return
+
+        scene_path = node_data.get("scene_path", "")
+        if not scene_path:
+            QMessageBox.warning(self, "Error", "No scene file specified for this instance.")
+            return
+
+        # TODO: Implement opening scene in new tab or window
+        # For now, just show a message
+        QMessageBox.information(self, "Edit Scene", f"Would open scene: {scene_path}")
+
+    def reload_scene_instance(self, item: QTreeWidgetItem):
+        """Reload a scene instance from its original scene file"""
+        if not item:
+            return
+
+        node_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not node_data or node_data.get("type") != "SceneInstance":
+            return
+
+        try:
+            # Get the scene instance node
+            from nodes.base.SceneInstance import SceneInstance
+
+            # Create a new instance and reload it
+            scene_instance = SceneInstance.from_dict(node_data)
+            if scene_instance.reload_scene():
+                # Update the node data with the reloaded content
+                updated_data = scene_instance.to_dict()
+                item.setData(0, Qt.ItemDataRole.UserRole, updated_data)
+
+                # Rebuild the tree item's children
+                # Remove existing children
+                while item.childCount() > 0:
+                    item.removeChild(item.child(0))
+
+                # Add new children from reloaded scene
+                for child_data in updated_data.get("children", []):
+                    self.add_node_to_tree(child_data, item)
+
+                # Synchronize back to scene data
+                self.sync_tree_to_scene_data()
+
+                # Emit change signal
+                self.node_changed.emit(updated_data)
+
+                QMessageBox.information(self, "Success", "Scene instance reloaded successfully.")
+            else:
+                QMessageBox.warning(self, "Error", "Failed to reload scene instance.")
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to reload scene instance: {e}")
+
+    def break_scene_instance(self, item: QTreeWidgetItem):
+        """Break a scene instance, converting it to regular nodes"""
+        if not item:
+            return
+
+        node_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not node_data or node_data.get("type") != "SceneInstance":
+            return
+
+        # Confirm the action
+        reply = QMessageBox.question(
+            self, "Break Scene Instance",
+            "Are you sure you want to break this scene instance? "
+            "This will convert it to regular nodes and remove the link to the original scene.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            # Get the scene instance node
+            from nodes.base.SceneInstance import SceneInstance
+
+            # Create a scene instance and break it
+            scene_instance = SceneInstance.from_dict(node_data)
+            children = scene_instance.break_instance()
+
+            # Update the node data to be a regular Node
+            node_data["type"] = "Node"
+            node_data.pop("scene_path", None)
+            node_data.pop("instance_id", None)
+            node_data.pop("property_overrides", None)
+            node_data.pop("editable_children", None)
+
+            # Update the tree item
+            node_name = node_data.get("name", "Node")
+            item.setText(0, f"{node_name} (Node)")
+            item.setData(0, Qt.ItemDataRole.UserRole, node_data)
+
+            # Synchronize back to scene data
+            self.sync_tree_to_scene_data()
+
+            # Emit change signal
+            self.node_changed.emit(node_data)
+
+            QMessageBox.information(self, "Success", "Scene instance broken successfully.")
+
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to break scene instance: {e}")
 
 

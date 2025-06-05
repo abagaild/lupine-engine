@@ -1,0 +1,64 @@
+{
+  "name": "AudioTest",
+  "root_nodes": [
+    {
+      "name": "AudioStreamPlayer",
+      "type": "AudioStreamPlayer",
+      "position": [0.0, 0.0],
+      "rotation": 0.0,
+      "scale": [1.0, 1.0],
+      "visible": true,
+      "children": [],
+      "properties": {},
+      "export_variables": {
+        "stream": {
+          "type": "path",
+          "value": "assets/audio/test_tone.wav",
+          "filter": "*.wav,*.ogg,*.mp3,*.flac",
+          "description": "Audio file to play"
+        },
+        "volume_db": {
+          "type": "float",
+          "value": -6.0,
+          "min": -80.0,
+          "max": 24.0,
+          "description": "Volume in decibels"
+        },
+        "pitch_scale": {
+          "type": "float",
+          "value": 1.0,
+          "min": 0.01,
+          "max": 4.0,
+          "description": "Pitch scaling factor"
+        },
+        "playing": {
+          "type": "bool",
+          "value": false,
+          "description": "Whether audio is currently playing"
+        },
+        "autoplay": {
+          "type": "bool",
+          "value": true,
+          "description": "Start playing automatically when entering tree"
+        },
+        "stream_paused": {
+          "type": "bool",
+          "value": false,
+          "description": "Whether the stream is paused"
+        },
+        "mix_target": {
+          "type": "string",
+          "value": "stereo",
+          "description": "Audio mix target"
+        }
+      },
+      "stream": "assets/audio/test_tone.wav",
+      "volume_db": -6.0,
+      "pitch_scale": 1.0,
+      "playing": false,
+      "autoplay": true,
+      "stream_paused": false,
+      "mix_target": "stereo"
+    }
+  ]
+}

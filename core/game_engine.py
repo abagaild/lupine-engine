@@ -669,11 +669,19 @@ class LupineGameEngine:
     def _setup_audio_node(self, node: Node):
         """Setup an audio node"""
         try:
-            if self.systems.audio_system and hasattr(node, 'stream_path'):
-                # Audio setup would go here
-                print(f"[OK] Audio node setup: {node.name}")
+            print(f"[OK] Audio node setup: {node.name} (type: {node.type})")
+
+            # The AudioStreamPlayer will handle its own initialization in _ready()
+            # Just ensure it has access to the audio system
+            if self.systems.audio_system:
+                print(f"[AudioStreamPlayer] Audio system available for {node.name}")
+            else:
+                print(f"[AudioStreamPlayer] Warning: No audio system available for {node.name}")
+
         except Exception as e:
             print(f"Error setting up audio node {node.name}: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _setup_camera_node(self, node: Node):
         """Setup a camera node"""

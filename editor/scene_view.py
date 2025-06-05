@@ -4,7 +4,7 @@ OpenGL-based scene viewport for visual editing
 """
 
 import math
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QLabel
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QPainter, QPen, QColor, QFont, QImage
@@ -685,6 +685,8 @@ class SceneViewport(QOpenGLWidget):
                         self.draw_path2d(node_data)
                     else:
                         self.draw_pathfollow2d(node_data)
+                elif node_type == "SceneInstance":
+                    self.draw_scene_instance(node_data)
                 else:
                     # Default node representation
                     self.draw_default_node(node_data)
@@ -1066,6 +1068,87 @@ class SceneViewport(QOpenGLWidget):
             y = 8 * math.sin(angle)
             glVertex2f(x, y)
         glEnd()
+
+    def draw_node_type_label(self, label: str, size: List[float]):
+        """Draw a simple node type label (simplified text rendering)"""
+        # Draw a small indicator with the first letter of the type
+        glColor3f(1.0, 1.0, 0.8)  # Light yellow for labels
+
+        # Draw a small box for the label
+        label_size = 12
+        x_pos = size[0]/2 - label_size - 5
+        y_pos = size[1]/2 - label_size - 5
+
+        glBegin(GL_QUADS)
+        glVertex2f(x_pos, y_pos)
+        glVertex2f(x_pos + label_size, y_pos)
+        glVertex2f(x_pos + label_size, y_pos + label_size)
+        glVertex2f(x_pos, y_pos + label_size)
+        glEnd()
+
+        # Draw border around label
+        glColor3f(0.8, 0.8, 0.6)
+        glBegin(GL_LINE_LOOP)
+        glVertex2f(x_pos, y_pos)
+        glVertex2f(x_pos + label_size, y_pos)
+        glVertex2f(x_pos + label_size, y_pos + label_size)
+        glVertex2f(x_pos, y_pos + label_size)
+        glEnd()
+
+        # Draw a simple representation of the first letter
+        # This is a simplified approach - in a full implementation you'd use proper text rendering
+        glColor3f(0.2, 0.2, 0.2)
+        glLineWidth(2.0)
+
+        first_char = label[0].upper() if label else "N"
+        center_x = x_pos + label_size/2
+        center_y = y_pos + label_size/2
+
+        # Draw simple letter shapes
+        glBegin(GL_LINES)
+        if first_char == "V":
+            glVertex2f(center_x - 3, center_y + 3)
+            glVertex2f(center_x, center_y - 3)
+            glVertex2f(center_x, center_y - 3)
+            glVertex2f(center_x + 3, center_y + 3)
+        elif first_char == "H":
+            glVertex2f(center_x - 3, center_y - 3)
+            glVertex2f(center_x - 3, center_y + 3)
+            glVertex2f(center_x - 3, center_y)
+            glVertex2f(center_x + 3, center_y)
+            glVertex2f(center_x + 3, center_y - 3)
+            glVertex2f(center_x + 3, center_y + 3)
+        elif first_char == "G":
+            # Draw a simplified G
+            glVertex2f(center_x - 2, center_y + 3)
+            glVertex2f(center_x + 2, center_y + 3)
+            glVertex2f(center_x - 2, center_y + 3)
+            glVertex2f(center_x - 2, center_y - 3)
+            glVertex2f(center_x - 2, center_y - 3)
+            glVertex2f(center_x + 2, center_y - 3)
+            glVertex2f(center_x + 2, center_y - 3)
+            glVertex2f(center_x + 2, center_y)
+            glVertex2f(center_x + 2, center_y)
+            glVertex2f(center_x, center_y)
+        elif first_char == "P":
+            # Draw a simplified P
+            glVertex2f(center_x - 3, center_y - 3)
+            glVertex2f(center_x - 3, center_y + 3)
+            glVertex2f(center_x - 3, center_y + 3)
+            glVertex2f(center_x + 2, center_y + 3)
+            glVertex2f(center_x + 2, center_y + 3)
+            glVertex2f(center_x + 2, center_y)
+            glVertex2f(center_x + 2, center_y)
+            glVertex2f(center_x - 3, center_y)
+        else:
+            # Default: draw a simple cross
+            glVertex2f(center_x - 2, center_y - 2)
+            glVertex2f(center_x + 2, center_y + 2)
+            glVertex2f(center_x - 2, center_y + 2)
+            glVertex2f(center_x + 2, center_y - 2)
+        glEnd()
+
+        glLineWidth(1.0)
 
     def draw_control(self, node_data: Dict[str, Any]):
         """Draw Control node (base UI node)"""
@@ -1449,10 +1532,12 @@ class SceneViewport(QOpenGLWidget):
         """Draw TextureRect node"""
         # Get texture rect properties
         size = node_data.get("size", [100.0, 100.0])
-        texture_path = node_data.get("texture", None)
+        # Support both "texture" and "texture_path" properties
+        texture_path = node_data.get("texture") or node_data.get("texture_path")
         stretch_mode = node_data.get("stretch_mode", "stretch")
         flip_h = node_data.get("flip_h", False)
         flip_v = node_data.get("flip_v", False)
+        modulate_color = node_data.get("modulate_color", [1.0, 1.0, 1.0, 1.0])
 
         # Try to load and draw texture if available
         if texture_path and isinstance(texture_path, str):
@@ -1468,7 +1553,8 @@ class SceneViewport(QOpenGLWidget):
                 # Draw textured rectangle
                 glEnable(GL_TEXTURE_2D)
                 glBindTexture(GL_TEXTURE_2D, texture_id)
-                glColor3f(1.0, 1.0, 1.0)  # White to show texture as-is
+                # Apply modulate color (tint)
+                glColor4f(modulate_color[0], modulate_color[1], modulate_color[2], modulate_color[3])
 
                 # Set up texture coordinates based on flip settings
                 u1, v1 = (1.0, 0.0) if flip_h else (0.0, 0.0)
@@ -2585,48 +2671,48 @@ class SceneViewport(QOpenGLWidget):
 
         # Simple text indicators for different UI types
         if node_type == "Button":
-            self.draw_simple_text("BTN", 0, 0, 8)
+            self.draw_text_opengl("BTN", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "Label":
-            self.draw_simple_text("LBL", 0, 0, 8)
+            self.draw_text_opengl("LBL", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "Panel":
-            self.draw_simple_text("PNL", 0, 0, 8)
+            self.draw_text_opengl("PNL", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "ProgressBar":
-            self.draw_simple_text("PGB", 0, 0, 8)
+            self.draw_text_opengl("PGB", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "ColorRect":
-            self.draw_simple_text("CLR", 0, 0, 8)
+            self.draw_text_opengl("CLR", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "TextureRect":
-            self.draw_simple_text("TEX", 0, 0, 8)
+            self.draw_text_opengl("TEX", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "NinePatchRect":
-            self.draw_simple_text("9PT", 0, 0, 8)
+            self.draw_text_opengl("9PT", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "VBoxContainer":
-            self.draw_simple_text("VBX", 0, 0, 8)
+            self.draw_text_opengl("VBX", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "HBoxContainer":
-            self.draw_simple_text("HBX", 0, 0, 8)
+            self.draw_text_opengl("HBX", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "CenterContainer":
-            self.draw_simple_text("CTR", 0, 0, 8)
+            self.draw_text_opengl("CTR", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "GridContainer":
-            self.draw_simple_text("GRD", 0, 0, 8)
+            self.draw_text_opengl("GRD", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "PanelContainer":
-            self.draw_simple_text("PC", 0, 0, 8)
+            self.draw_text_opengl("PC", -12, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "LineEdit":
-            self.draw_simple_text("EDT", 0, 0, 8)
+            self.draw_text_opengl("EDT", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "CheckBox":
-            self.draw_simple_text("CHK", 0, 0, 8)
+            self.draw_text_opengl("CHK", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "Slider":
-            self.draw_simple_text("SLD", 0, 0, 8)
+            self.draw_text_opengl("SLD", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "ScrollContainer":
-            self.draw_simple_text("SCR", 0, 0, 8)
+            self.draw_text_opengl("SCR", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "ItemList":
-            self.draw_simple_text("LST", 0, 0, 8)
+            self.draw_text_opengl("LST", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "HSeparator":
-            self.draw_simple_text("H-", 0, 0, 8)
+            self.draw_text_opengl("H-", -6, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "VSeparator":
-            self.draw_simple_text("V|", 0, 0, 8)
+            self.draw_text_opengl("V|", -6, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "RichTextLabel":
-            self.draw_simple_text("RTL", 0, 0, 8)
+            self.draw_text_opengl("RTL", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         else:
             # Generic UI indicator
-            self.draw_simple_text("UI", 0, 0, 8)
+            self.draw_text_opengl("UI", -6, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
 
     def draw_canvas_layer(self, node_data: Dict[str, Any]):
         """Draw CanvasLayer node"""
@@ -2992,62 +3078,182 @@ class SceneViewport(QOpenGLWidget):
             glEnd()
 
     def draw_tilemap(self, node_data: Dict[str, Any]):
-        """Draw TileMap node"""
+        """Draw TileMap node with layer support"""
         cell_size = node_data.get("cell_size", [32.0, 32.0])
         tiles = node_data.get("tiles", {})
+        layers = node_data.get("layers", [])
         modulate = node_data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+        opacity = node_data.get("opacity", 1.0)
 
-        # Set color
-        glColor3f(modulate[0], modulate[1], modulate[2])
-
-        # Draw grid for tilemap
-        if tiles:
-            # Find bounds of tiles
-            min_x = min_y = float('inf')
-            max_x = max_y = float('-inf')
-
-            for key in tiles.keys():
-                x, y = map(int, key.split(','))
-                min_x = min(min_x, x)
-                max_x = max(max_x, x)
-                min_y = min(min_y, y)
-                max_y = max(max_y, y)
-
-            # Draw grid lines
-            glBegin(GL_LINES)
-            for x in range(min_x, max_x + 2):
-                world_x = x * cell_size[0]
-                glVertex2f(world_x, min_y * cell_size[1])
-                glVertex2f(world_x, (max_y + 1) * cell_size[1])
-
-            for y in range(min_y, max_y + 2):
-                world_y = y * cell_size[1]
-                glVertex2f(min_x * cell_size[0], world_y)
-                glVertex2f((max_x + 1) * cell_size[0], world_y)
-            glEnd()
-
-            # Draw filled tiles
-            glColor3f(0.8, 0.8, 0.8)
-            for key, tile_id in tiles.items():
-                if tile_id >= 0:
-                    x, y = map(int, key.split(','))
-                    world_x = x * cell_size[0]
-                    world_y = y * cell_size[1]
-
-                    glBegin(GL_QUADS)
-                    glVertex2f(world_x, world_y)
-                    glVertex2f(world_x + cell_size[0], world_y)
-                    glVertex2f(world_x + cell_size[0], world_y + cell_size[1])
-                    glVertex2f(world_x, world_y + cell_size[1])
-                    glEnd()
+        # Handle both old and new tile data formats
+        if isinstance(tiles, dict) and tiles:
+            # Check if this is the new layered format
+            first_key = next(iter(tiles.keys()))
+            if first_key.isdigit():
+                # New layered format
+                self._draw_layered_tilemap(tiles, layers, cell_size, modulate, opacity)
+            else:
+                # Old format - treat as single layer
+                self._draw_single_layer_tilemap(tiles, cell_size, modulate, opacity)
         else:
             # Draw placeholder grid
+            glColor3f(modulate[0] * 0.5, modulate[1] * 0.5, modulate[2] * 0.5)
             glBegin(GL_LINE_LOOP)
             glVertex2f(0, 0)
             glVertex2f(cell_size[0] * 3, 0)
             glVertex2f(cell_size[0] * 3, cell_size[1] * 3)
             glVertex2f(0, cell_size[1] * 3)
             glEnd()
+
+    def _draw_layered_tilemap(self, tiles: Dict[str, Dict[str, Any]], layers: List[Dict[str, Any]],
+                             cell_size: List[float], modulate: List[float], opacity: float):
+        """Draw tilemap with multiple layers"""
+        # Draw layers in order (background to foreground)
+        for layer_index, layer in enumerate(layers):
+            if not layer.get("visible", True):
+                continue
+
+            layer_key = str(layer_index)
+            if layer_key not in tiles:
+                continue
+
+            layer_tiles = tiles[layer_key]
+            layer_opacity = layer.get("opacity", 1.0) * opacity
+
+            # Set layer color with opacity
+            layer_color = [
+                modulate[0] * layer_opacity,
+                modulate[1] * layer_opacity,
+                modulate[2] * layer_opacity
+            ]
+
+            self._draw_tiles_for_layer(layer_tiles, cell_size, layer_color, layer_index)
+
+    def _draw_single_layer_tilemap(self, tiles: Dict[str, Any], cell_size: List[float],
+                                  modulate: List[float], opacity: float):
+        """Draw tilemap with single layer (legacy format)"""
+        color = [modulate[0] * opacity, modulate[1] * opacity, modulate[2] * opacity]
+        self._draw_tiles_for_layer(tiles, cell_size, color, 0)
+
+    def _draw_tiles_for_layer(self, layer_tiles: Dict[str, Any], cell_size: List[float],
+                             color: List[float], layer_index: int):
+        """Draw tiles for a specific layer"""
+        if not layer_tiles:
+            return
+
+        # Find bounds of tiles for grid drawing
+        min_x = min_y = float('inf')
+        max_x = max_y = float('-inf')
+
+        valid_tiles = []
+        for pos_key, tile_data in layer_tiles.items():
+            try:
+                x, y = map(int, pos_key.split(','))
+                min_x = min(min_x, x)
+                max_x = max(max_x, x)
+                min_y = min(min_y, y)
+                max_y = max(max_y, y)
+
+                # Handle both old format (tile_id as value) and new format (tile_data dict)
+                if isinstance(tile_data, dict):
+                    tile_id = tile_data.get("tile_id", -1)
+                else:
+                    tile_id = tile_data
+
+                if tile_id >= 0:
+                    valid_tiles.append((x, y, tile_id))
+            except (ValueError, TypeError):
+                continue
+
+        if not valid_tiles:
+            return
+
+        # Draw grid lines for this layer (subtle)
+        grid_alpha = 0.3 if layer_index == 0 else 0.1  # More visible for base layer
+        glColor3f(color[0] * grid_alpha, color[1] * grid_alpha, color[2] * grid_alpha)
+        glBegin(GL_LINES)
+
+        # Vertical lines
+        for x in range(min_x, max_x + 2):
+            world_x = x * cell_size[0]
+            glVertex2f(world_x, min_y * cell_size[1])
+            glVertex2f(world_x, (max_y + 1) * cell_size[1])
+
+        # Horizontal lines
+        for y in range(min_y, max_y + 2):
+            world_y = y * cell_size[1]
+            glVertex2f(min_x * cell_size[0], world_y)
+            glVertex2f((max_x + 1) * cell_size[0], world_y)
+        glEnd()
+
+        # Draw filled tiles
+        glColor3f(color[0], color[1], color[2])
+
+        for x, y, tile_id in valid_tiles:
+            world_x = x * cell_size[0]
+            world_y = y * cell_size[1]
+
+            # Draw tile as filled quad
+            glBegin(GL_QUADS)
+            glVertex2f(world_x, world_y)
+            glVertex2f(world_x + cell_size[0], world_y)
+            glVertex2f(world_x + cell_size[0], world_y + cell_size[1])
+            glVertex2f(world_x, world_y + cell_size[1])
+            glEnd()
+
+            # Draw tile border
+            glColor3f(color[0] * 0.7, color[1] * 0.7, color[2] * 0.7)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(world_x, world_y)
+            glVertex2f(world_x + cell_size[0], world_y)
+            glVertex2f(world_x + cell_size[0], world_y + cell_size[1])
+            glVertex2f(world_x, world_y + cell_size[1])
+            glEnd()
+
+            # Draw tile ID for debugging (small text)
+            glColor3f(1.0, 1.0, 1.0)  # White text
+            # Simple tile ID indicator - draw small number representation
+            if tile_id < 10:
+                # Draw single digit as simple lines
+                self._draw_simple_digit(tile_id, world_x + 2, world_y + 2, 8)
+
+            # Reset color for next tile
+            glColor3f(color[0], color[1], color[2])
+
+    def _draw_simple_digit(self, digit: int, x: float, y: float, size: float):
+        """Draw a simple digit using OpenGL lines"""
+        # Simple 7-segment style digit drawing
+        glBegin(GL_LINES)
+
+        if digit == 0:
+            # Draw 0
+            glVertex2f(x, y)
+            glVertex2f(x + size, y)
+            glVertex2f(x + size, y)
+            glVertex2f(x + size, y + size)
+            glVertex2f(x + size, y + size)
+            glVertex2f(x, y + size)
+            glVertex2f(x, y + size)
+            glVertex2f(x, y)
+        elif digit == 1:
+            # Draw 1
+            glVertex2f(x + size/2, y)
+            glVertex2f(x + size/2, y + size)
+        elif digit == 2:
+            # Draw 2
+            glVertex2f(x, y)
+            glVertex2f(x + size, y)
+            glVertex2f(x + size, y)
+            glVertex2f(x + size, y + size/2)
+            glVertex2f(x + size, y + size/2)
+            glVertex2f(x, y + size/2)
+            glVertex2f(x, y + size/2)
+            glVertex2f(x, y + size)
+            glVertex2f(x, y + size)
+            glVertex2f(x + size, y + size)
+        # Add more digits as needed...
+
+        glEnd()
 
     def draw_raycast2d(self, node_data: Dict[str, Any]):
         """Draw RayCast2D node"""
@@ -3154,6 +3360,74 @@ class SceneViewport(QOpenGLWidget):
             glVertex2f(0, 0)
             glVertex2f(size + 5, 0)
             glEnd()
+
+    def draw_scene_instance(self, node_data: Dict[str, Any]):
+        """Draw SceneInstance node"""
+        scene_path = node_data.get("scene_path", "")
+        editable_children = node_data.get("editable_children", False)
+
+        # Draw scene instance indicator (folder-like icon with scene symbol)
+        if scene_path:
+            glColor3f(0.2, 0.8, 0.2)  # Green for valid scene instance
+        else:
+            glColor3f(0.8, 0.2, 0.2)  # Red for invalid scene instance
+
+        # Draw folder-like shape
+        glBegin(GL_LINE_LOOP)
+        glVertex2f(-15, -10)
+        glVertex2f(-10, -15)
+        glVertex2f(15, -15)
+        glVertex2f(15, 10)
+        glVertex2f(-15, 10)
+        glEnd()
+
+        # Draw folder tab
+        glBegin(GL_LINE_STRIP)
+        glVertex2f(-15, 10)
+        glVertex2f(-10, 15)
+        glVertex2f(-5, 15)
+        glVertex2f(-5, 10)
+        glEnd()
+
+        # Draw scene symbol inside (small tree-like structure)
+        glColor3f(1.0, 1.0, 1.0)  # White for scene symbol
+        glBegin(GL_LINES)
+        # Root node
+        glVertex2f(0, 5)
+        glVertex2f(0, -5)
+        # Child nodes
+        glVertex2f(0, 0)
+        glVertex2f(-8, -8)
+        glVertex2f(0, 0)
+        glVertex2f(8, -8)
+        glEnd()
+
+        # Draw small circles for nodes
+        for x, y in [(0, 5), (-8, -8), (8, -8)]:
+            glBegin(GL_LINE_LOOP)
+            for i in range(8):
+                angle = 2 * math.pi * i / 8
+                px = x + 2 * math.cos(angle)
+                py = y + 2 * math.sin(angle)
+                glVertex2f(px, py)
+            glEnd()
+
+        # Draw editable indicator if children are editable
+        if editable_children:
+            glColor3f(1.0, 1.0, 0.0)  # Yellow for editable
+            glBegin(GL_LINES)
+            glVertex2f(12, 12)
+            glVertex2f(15, 12)
+            glVertex2f(15, 12)
+            glVertex2f(15, 15)
+            glEnd()
+
+        # Draw scene path as text if available
+        if scene_path:
+            scene_name = scene_path.split("/")[-1].replace(".scene", "")
+            # Draw simplified text indicator
+            glColor3f(0.8, 0.8, 0.8)
+            self.draw_text_opengl(scene_name[:8], -20, -25, None, 10, (0.8, 0.8, 0.8, 1.0))
 
     def wheelEvent(self, event):
         """Handle mouse wheel for zooming"""

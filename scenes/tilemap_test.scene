@@ -1,0 +1,161 @@
+{
+  "name": "TilemapTestScene",
+  "type": "Node2D",
+  "position": [
+    0,
+    0
+  ],
+  "rotation": 0,
+  "scale": [
+    1,
+    1
+  ],
+  "children": [
+    {
+      "name": "TestTileMap",
+      "type": "TileMap",
+      "position": [
+        0,
+        0
+      ],
+      "rotation": 0,
+      "scale": [
+        1,
+        1
+      ],
+      "cell_size": [
+        32,
+        32
+      ],
+      "cell_origin": "TopLeft",
+      "mode": "Square",
+      "modulate": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "opacity": 1.0,
+      "collision_layer": 1,
+      "collision_mask": 1,
+      "one_way_collision_enabled": false,
+      "one_way_collision_margin": 0.0,
+      "layers": [
+        {
+          "name": "Background",
+          "visible": true,
+          "opacity": 1.0,
+          "z_index": 0
+        },
+        {
+          "name": "Foreground",
+          "visible": true,
+          "opacity": 0.8,
+          "z_index": 1
+        }
+      ],
+      "current_layer": 0,
+      "tilesets": [
+        "assets/sample_tileset.tres"
+      ],
+      "map_size_mode": "infinite",
+      "fixed_map_size": [
+        100,
+        100
+      ],
+      "tiles": {
+        "0": {
+          "0,0": {
+            "tile_id": 0,
+            "tileset": 0
+          },
+          "1,0": {
+            "tile_id": 1,
+            "tileset": 0
+          },
+          "2,0": {
+            "tile_id": 2,
+            "tileset": 0
+          },
+          "0,1": {
+            "tile_id": 3,
+            "tileset": 0
+          },
+          "1,1": {
+            "tile_id": 4,
+            "tileset": 0
+          },
+          "2,1": {
+            "tile_id": 5,
+            "tileset": 0
+          },
+          "3,0": {
+            "tile_id": 0,
+            "tileset": 0
+          },
+          "3,1": {
+            "tile_id": 1,
+            "tileset": 0
+          },
+          "4,0": {
+            "tile_id": 2,
+            "tileset": 0
+          },
+          "4,1": {
+            "tile_id": 3,
+            "tileset": 0
+          }
+        },
+        "1": {
+          "1,1": {
+            "tile_id": 2,
+            "tileset": 0
+          },
+          "2,2": {
+            "tile_id": 3,
+            "tileset": 0
+          }
+        }
+      },
+      "children": []
+    },
+    {
+      "name": "Camera2D",
+      "type": "Camera2D",
+      "position": [
+        0,
+        0
+      ],
+      "rotation": 0,
+      "scale": [
+        1,
+        1
+      ],
+      "current": true,
+      "enabled": true,
+      "zoom": [
+        1.0,
+        1.0
+      ],
+      "offset": [
+        0.0,
+        0.0
+      ],
+      "follow_target": null,
+      "smoothing_enabled": false,
+      "smoothing_speed": 5.0,
+      "limit_left": -10000000,
+      "limit_top": -10000000,
+      "limit_right": 10000000,
+      "limit_bottom": 10000000,
+      "limit_smoothed": false,
+      "drag_margin_left": 0.2,
+      "drag_margin_top": 0.2,
+      "drag_margin_right": 0.2,
+      "drag_margin_bottom": 0.2,
+      "editor_draw_limits": false,
+      "editor_draw_drag_margin": false,
+      "children": []
+    }
+  ]
+}

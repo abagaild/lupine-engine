@@ -1,0 +1,83 @@
+{
+  "name": "Weapon",
+  "description": "Weapon item with combat stats",
+  "fields": [
+    {
+      "name": "weapon_name",
+      "type": "string",
+      "default_value": "Basic Sword",
+      "description": "Weapon name",
+      "group": "Basic Info",
+      "code_snippet": "",
+      "metadata": {}
+    },
+    {
+      "name": "damage",
+      "type": "int",
+      "default_value": 10,
+      "description": "Base damage",
+      "group": "Combat Stats",
+      "code_snippet": "",
+      "metadata": {}
+    },
+    {
+      "name": "attack_speed",
+      "type": "float",
+      "default_value": 1.0,
+      "description": "Attacks per second",
+      "group": "Combat Stats",
+      "code_snippet": "",
+      "metadata": {}
+    },
+    {
+      "name": "critical_chance",
+      "type": "float",
+      "default_value": 0.05,
+      "description": "Critical hit chance (0-1)",
+      "group": "Combat Stats",
+      "code_snippet": "",
+      "metadata": {}
+    },
+    {
+      "name": "durability",
+      "type": "int",
+      "default_value": 100,
+      "description": "Maximum durability",
+      "group": "Properties",
+      "code_snippet": "",
+      "metadata": {}
+    },
+    {
+      "name": "weapon_type",
+      "type": "string",
+      "default_value": "sword",
+      "description": "Type of weapon",
+      "group": "Basic Info",
+      "code_snippet": "",
+      "metadata": {}
+    },
+    {
+      "name": "two_handed",
+      "type": "bool",
+      "default_value": false,
+      "description": "Requires both hands?",
+      "group": "Properties",
+      "code_snippet": "",
+      "metadata": {}
+    },
+    {
+      "name": "enchantment_slots",
+      "type": "int",
+      "default_value": 0,
+      "description": "Number of enchantment slots",
+      "group": "Properties",
+      "code_snippet": "",
+      "metadata": {}
+    }
+  ],
+  "base_code": "\n    def calculate_damage(self, base_damage_bonus=0):\n        \"\"\"Calculate total damage including bonuses\"\"\"\n        total_damage = self.damage + base_damage_bonus\n        \n        # Apply critical hit\n        import random\n        if random.random() < self.critical_chance:\n            total_damage *= 2\n            return total_damage, True  # Return damage and crit flag\n        \n        return total_damage, False\n    \n    def repair(self, amount):\n        \"\"\"Repair the weapon\"\"\"\n        self.current_durability = min(self.durability, \n                                    getattr(self, 'current_durability', self.durability) + amount)\n    ",
+  "icon_path": "",
+  "category": "Equipment",
+  "version": "1.0.0",
+  "metadata": {}
+}

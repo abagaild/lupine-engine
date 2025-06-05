@@ -1,0 +1,88 @@
+{
+  "name": "Item",
+  "description": "Basic game item with properties",
+  "fields": [
+    {
+      "name": "display_name",
+      "type": "string",
+      "default_value": "New Item",
+      "description": "Display name shown to player",
+      "group": "",
+      "code_snippet": "",
+      "metadata": {}
+    },
+    {
+      "name": "description",
+      "type": "string",
+      "default_value": "",
+      "description": "Item description",
+      "group": "",
+      "code_snippet": "",
+      "metadata": {}
+    },
+    {
+      "name": "icon",
+      "type": "image",
+      "default_value": "",
+      "description": "Item icon image",
+      "group": "Display",
+      "code_snippet": "",
+      "metadata": {}
+    },
+    {
+      "name": "value",
+      "type": "int",
+      "default_value": 0,
+      "description": "Item value in gold",
+      "group": "Economy",
+      "code_snippet": "",
+      "metadata": {}
+    },
+    {
+      "name": "weight",
+      "type": "float",
+      "default_value": 1.0,
+      "description": "Item weight",
+      "group": "Economy",
+      "code_snippet": "",
+      "metadata": {}
+    },
+    {
+      "name": "stackable",
+      "type": "bool",
+      "default_value": true,
+      "description": "Can this item stack?",
+      "group": "Properties",
+      "code_snippet": "",
+      "metadata": {}
+    },
+    {
+      "name": "max_stack",
+      "type": "int",
+      "default_value": 99,
+      "description": "Maximum stack size",
+      "group": "Properties",
+      "code_snippet": "",
+      "metadata": {}
+    },
+    {
+      "name": "rarity_color",
+      "type": "color",
+      "default_value": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "description": "Color indicating rarity",
+      "group": "Display",
+      "code_snippet": "",
+      "metadata": {}
+    }
+  ],
+  "base_code": "\n    def get_display_text(self):\n        \"\"\"Get formatted display text for this item\"\"\"\n        return f\"{self.display_name} (x{self.quantity if hasattr(self, 'quantity') else 1})\"\n    \n    def can_stack_with(self, other_item):\n        \"\"\"Check if this item can stack with another\"\"\"\n        return (self.stackable and \n                hasattr(other_item, 'template_name') and \n                other_item.template_name == self.template_name and\n                other_item.display_name == self.display_name)\n    ",
+  "icon_path": "",
+  "category": "Game Objects",
+  "version": "1.0.0",
+  "metadata": {}
+}

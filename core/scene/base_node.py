@@ -278,19 +278,31 @@ class Node:
     # Property access with fallback to script variables
     def __getattr__(self, name: str) -> Any:
         """Get attribute with fallback to script variables."""
-        # First check if it's in properties
-        if name in self.properties:
-            return self.properties[name]
+        # Avoid infinite recursion for special methods and internal attributes
+        if name.startswith('__') or name.startswith('_'):
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+        # Safely check if properties exists to avoid recursion
+        try:
+            properties = object.__getattribute__(self, 'properties')
+            if name in properties:
+                return properties[name]
+        except AttributeError:
+            pass
 
         # Then check script instance export variables
-        if self.script_instance and hasattr(self.script_instance, 'export_variables'):
-            if name in self.script_instance.export_variables:
-                return self.script_instance.export_variables[name]['value']
+        try:
+            script_instance = object.__getattribute__(self, 'script_instance')
+            if script_instance and hasattr(script_instance, 'export_variables'):
+                if name in script_instance.export_variables:
+                    return script_instance.export_variables[name]['value']
 
-        # Then check script namespace
-        if self.script_instance and hasattr(self.script_instance, 'namespace'):
-            if name in self.script_instance.namespace:
-                return self.script_instance.namespace[name]
+            # Then check script namespace
+            if script_instance and hasattr(script_instance, 'namespace'):
+                if name in script_instance.namespace:
+                    return script_instance.namespace[name]
+        except AttributeError:
+            pass
 
         # If not found, raise AttributeError
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
@@ -349,18 +361,35 @@ class Node:
         """
         from ..json_utils import convert_to_json_serializable
 
+        # Safely copy properties without deep copy to avoid recursion
+        safe_properties = {}
+        for key, value in self.properties.items():
+            try:
+                # Skip circular references and problematic objects
+                if hasattr(value, '__dict__') and hasattr(value, 'children'):
+                    # Skip scene objects and nodes to avoid circular references
+                    continue
+                if hasattr(value, 'root_nodes'):
+                    # Skip scene objects
+                    continue
+                # Only include JSON-serializable values
+                safe_properties[key] = convert_to_json_serializable(value)
+            except (TypeError, ValueError, RecursionError):
+                # Skip non-serializable values
+                continue
+
         data: Dict[str, Any] = {
             "name": self.name,
             "type": self.type,
             "visible": self.visible,
             "process_mode": self.process_mode,
-            "properties": convert_to_json_serializable(copy.deepcopy(self.properties)),
+            "properties": safe_properties,
             "children": [child.to_dict() for child in self.children]
         }
         if self.script_path:
             data["script"] = self.script_path
         if self._groups:
-            data["groups"] = self._groups.copy()
+            data["groups"] = list(self._groups)  # Convert set to list
 
         # Ensure all data is JSON serializable
         return convert_to_json_serializable(data)
@@ -373,7 +402,8 @@ class Node:
         """
         node.visible = data.get("visible", True)
         node.process_mode = data.get("process_mode", "inherit")
-        node.properties = copy.deepcopy(data.get("properties", {}))
+        # Use dict() constructor instead of deepcopy to avoid recursion issues
+        node.properties = dict(data.get("properties", {}))
 
         # Handle multiple scripts (new format)
         scripts = data.get("scripts", [])

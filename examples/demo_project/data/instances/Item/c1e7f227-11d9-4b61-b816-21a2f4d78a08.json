@@ -1,0 +1,21 @@
+{
+  "template_name": "Item",
+  "instance_id": "c1e7f227-11d9-4b61-b816-21a2f4d78a08",
+  "name": "Health Potion",
+  "data": {
+    "display_name": "Health Potion",
+    "description": "Restores 50 HP when consumed",
+    "icon": "",
+    "value": 25,
+    "weight": 0.1,
+    "stackable": true,
+    "max_stack": 99,
+    "rarity_color": [
+      0.0,
+      1.0,
+      0.0,
+      1.0
+    ]
+  },
+  "metadata": {}
+}

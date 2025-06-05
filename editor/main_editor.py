@@ -32,6 +32,10 @@ class MainEditor(QMainWindow):
         self.project = LupineProject(project_path)
         self.project.load_project()
 
+        # Set as current project globally
+        from core.project import set_current_project
+        set_current_project(self.project)
+
         # Set up node registry with project path for dynamic node loading
         set_project_path(Path(project_path))
 
@@ -169,6 +173,39 @@ class MainEditor(QMainWindow):
         input_actions_action = QAction("Input Actions", self)
         input_actions_action.triggered.connect(self.open_input_actions)
         tools_menu.addAction(input_actions_action)
+
+        tools_menu.addSeparator()
+
+        # Scriptable Object Template Editor
+        so_template_action = QAction("Scriptable Object Templates", self)
+        so_template_action.triggered.connect(self.open_scriptable_object_templates)
+        tools_menu.addAction(so_template_action)
+
+        # Database Manager
+        database_action = QAction("Database Manager", self)
+        database_action.triggered.connect(self.open_database_manager)
+        tools_menu.addAction(database_action)
+
+        tools_menu.addSeparator()
+
+        # Global Manager
+        globals_action = QAction("Global Manager", self)
+        globals_action.triggered.connect(self.open_globals_manager)
+        tools_menu.addAction(globals_action)
+
+        tools_menu.addSeparator()
+
+        # Menu and HUD Builder
+        menu_hud_action = QAction("Menu and HUD Builder", self)
+        menu_hud_action.triggered.connect(self.open_menu_hud_builder)
+        tools_menu.addAction(menu_hud_action)
+
+        tools_menu.addSeparator()
+
+        # Tileset Editor
+        tileset_editor_action = QAction("Tileset Editor", self)
+        tileset_editor_action.triggered.connect(self.open_tileset_editor)
+        tools_menu.addAction(tileset_editor_action)
         
         # Help menu
         help_menu = menubar.addMenu("Help")
@@ -686,6 +723,105 @@ class MainEditor(QMainWindow):
             QMessageBox.warning(self, "Error", "Input Actions dialog not available yet.")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open Input Actions dialog: {e}")
+
+    def open_scriptable_object_templates(self):
+        """Open the scriptable object template editor"""
+        try:
+            from editor.scriptable_objects.template_editor import ScriptableObjectTemplateEditor
+
+            # Create as dockable widget
+            if not hasattr(self, 'so_template_dock'):
+                self.so_template_dock = QDockWidget("Scriptable Object Templates", self)
+                self.so_template_dock.setObjectName("ScriptableObjectTemplatesDock")
+                self.so_template_editor = ScriptableObjectTemplateEditor(self.project)
+                self.so_template_dock.setWidget(self.so_template_editor)
+                self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.so_template_dock)
+
+                # Add to view menu
+                self.view_menu.addAction(self.so_template_dock.toggleViewAction())
+
+            # Show and raise the dock
+            self.so_template_dock.show()
+            self.so_template_dock.raise_()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Scriptable Object Template Editor not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Scriptable Object Template Editor: {e}")
+
+    def open_database_manager(self):
+        """Open the database manager"""
+        try:
+            from editor.scriptable_objects.database_manager import DatabaseManager
+
+            # Create as dockable widget
+            if not hasattr(self, 'database_dock'):
+                self.database_dock = QDockWidget("Database Manager", self)
+                self.database_dock.setObjectName("DatabaseManagerDock")
+                self.database_manager = DatabaseManager(self.project)
+                self.database_dock.setWidget(self.database_manager)
+                self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.database_dock)
+
+                # Add to view menu
+                self.view_menu.addAction(self.database_dock.toggleViewAction())
+
+            # Show and raise the dock
+            self.database_dock.show()
+            self.database_dock.raise_()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Database Manager not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Database Manager: {e}")
+
+    def open_globals_manager(self):
+        """Open the global manager dialog"""
+        try:
+            from editor.globals_manager_dialog import GlobalsManagerDialog
+            dialog = GlobalsManagerDialog(self.project, self)
+            dialog.exec()
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Global Manager not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Global Manager: {e}")
+
+    def open_menu_hud_builder(self):
+        """Open the menu and HUD builder as a popup window"""
+        try:
+            from editor.menu_hud_builder import MenuHudBuilderWindow
+
+            # Create as standalone window
+            if not hasattr(self, 'menu_hud_builder_window') or not self.menu_hud_builder_window:
+                self.menu_hud_builder_window = MenuHudBuilderWindow(self.project, self)
+
+            # Show the window
+            self.menu_hud_builder_window.show()
+            self.menu_hud_builder_window.raise_()
+            self.menu_hud_builder_window.activateWindow()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Menu and HUD Builder not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Menu and HUD Builder: {e}")
+
+    def open_tileset_editor(self):
+        """Open the tileset editor as a popup window"""
+        try:
+            from editor.tileset_editor import TilesetEditorWindow
+
+            # Create as standalone window
+            if not hasattr(self, 'tileset_editor_window') or not self.tileset_editor_window:
+                self.tileset_editor_window = TilesetEditorWindow(self.project, self)
+
+            # Show the window
+            self.tileset_editor_window.show()
+            self.tileset_editor_window.raise_()
+            self.tileset_editor_window.activateWindow()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Tileset Editor not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Tileset Editor: {e}")
 
     def closeEvent(self, event):
         """Handle window close event"""

@@ -19,7 +19,7 @@ class CollisionShape2D(Node2D):
         self.type = "CollisionShape2D"
 
         # Export variables for editor
-        self.export_variables = {
+        self.export_variables.update({
             "shape": {
                 "type": "enum",
                 "value": "rectangle",
@@ -76,7 +76,7 @@ class CollisionShape2D(Node2D):
                 "value": [0.0, 0.6, 0.7, 0.5],
                 "description": "Color for debug visualization"
             }
-        }
+        })
 
         # Core properties
         self.shape: str = "rectangle"  # rectangle, circle, capsule, polygon, line
