@@ -95,14 +95,20 @@ except Exception as e:
     def read_stdout(self):
         """Read stdout from process"""
         if self.process:
-            data = self.process.readAllStandardOutput().data().decode()
-            self.output_received.emit(data)
-    
+            try:
+                data = self.process.readAllStandardOutput().data().decode('utf-8', errors='replace')
+                self.output_received.emit(data)
+            except Exception as e:
+                self.error_received.emit(f"Error reading stdout: {e}")
+
     def read_stderr(self):
         """Read stderr from process"""
         if self.process:
-            data = self.process.readAllStandardError().data().decode()
-            self.error_received.emit(data)
+            try:
+                data = self.process.readAllStandardError().data().decode('utf-8', errors='replace')
+                self.error_received.emit(data)
+            except Exception as e:
+                self.error_received.emit(f"Error reading stderr: {e}")
     
     def on_finished(self, exit_code):
         """Handle process finished"""

@@ -194,31 +194,31 @@ class SharedRenderer:
             # Draw a colored rectangle as fallback (light gray instead of pink)
             self.draw_rectangle(x, y, width or 64, height or 64, (0.8, 0.8, 0.8, alpha))
             return
-        
+
         texture_id, tex_width, tex_height = texture_info
-        
+
         # Use texture dimensions if width/height not specified
         if width is None:
             width = tex_width
         if height is None:
             height = tex_height
-        
+
         # Calculate half dimensions for centering
         half_width = width / 2
         half_height = height / 2
-        
+
         glPushMatrix()
-        
+
         # Apply transformations
         glTranslatef(x, y, 0)
         if rotation != 0:
             glRotatef(rotation, 0, 0, 1)
-        
+
         # Bind texture and set color
         glEnable(GL_TEXTURE_2D)
         glBindTexture(GL_TEXTURE_2D, texture_id)
         glColor4f(1.0, 1.0, 1.0, alpha)
-        
+
         # Draw textured quad
         glBegin(GL_QUADS)
         glTexCoord2f(0.0, 0.0)
@@ -230,13 +230,145 @@ class SharedRenderer:
         glTexCoord2f(0.0, 1.0)
         glVertex2f(-half_width, half_height)
         glEnd()
-        
+
         glBindTexture(GL_TEXTURE_2D, 0)
         glDisable(GL_TEXTURE_2D)
-        
+
         glPopMatrix()
-    
-    def draw_rectangle(self, x: float, y: float, width: float, height: float, 
+
+    def draw_texture_rect(self, texture_path: str, x: float, y: float,
+                         width: float, height: float,
+                         stretch_mode: str = "stretch",
+                         flip_h: bool = False, flip_v: bool = False,
+                         modulate_color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
+                         uv_offset: Tuple[float, float] = (0.0, 0.0),
+                         uv_scale: Tuple[float, float] = (1.0, 1.0),
+                         rotation: float = 0.0,
+                         region_rect: Optional[Tuple[float, float, float, float]] = None):
+        """Draw a texture rectangle with advanced features"""
+        texture_info = self.load_texture(texture_path)
+        if not texture_info:
+            # Draw a colored rectangle as fallback
+            self.draw_rectangle(x, y, width, height, (0.8, 0.8, 0.8, modulate_color[3]))
+            return
+
+        texture_id, tex_width, tex_height = texture_info
+
+        # Calculate half dimensions for centering
+        half_width = width / 2
+        half_height = height / 2
+
+        glPushMatrix()
+
+        # Apply transformations
+        glTranslatef(x, y, 0)
+        if rotation != 0:
+            glRotatef(rotation, 0, 0, 1)
+
+        # Bind texture and set color with modulation
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, texture_id)
+        glColor4f(modulate_color[0], modulate_color[1], modulate_color[2], modulate_color[3])
+
+        # Calculate UV coordinates based on stretch mode and other parameters
+        u1, v1, u2, v2 = self._calculate_uv_coordinates(
+            stretch_mode, width, height, tex_width, tex_height,
+            flip_h, flip_v, uv_offset, uv_scale, region_rect
+        )
+
+        # Draw textured quad (flip V coordinates for UI coordinate system)
+        glBegin(GL_QUADS)
+        glTexCoord2f(u1, v2)  # Top-left
+        glVertex2f(-half_width, -half_height)
+        glTexCoord2f(u2, v2)  # Top-right
+        glVertex2f(half_width, -half_height)
+        glTexCoord2f(u2, v1)  # Bottom-right
+        glVertex2f(half_width, half_height)
+        glTexCoord2f(u1, v1)  # Bottom-left
+        glVertex2f(-half_width, half_height)
+        glEnd()
+
+        glBindTexture(GL_TEXTURE_2D, 0)
+        glDisable(GL_TEXTURE_2D)
+
+        glPopMatrix()
+
+    def _calculate_uv_coordinates(self, stretch_mode: str, width: float, height: float,
+                                 tex_width: int, tex_height: int,
+                                 flip_h: bool, flip_v: bool,
+                                 uv_offset: Tuple[float, float],
+                                 uv_scale: Tuple[float, float],
+                                 region_rect: Optional[Tuple[float, float, float, float]]) -> Tuple[float, float, float, float]:
+        """Calculate UV coordinates for texture rendering"""
+        # Start with base UV coordinates
+        if region_rect:
+            # Use region if specified (normalized coordinates)
+            u1, v1 = region_rect[0], region_rect[1]
+            u2, v2 = region_rect[0] + region_rect[2], region_rect[1] + region_rect[3]
+        else:
+            u1, v1, u2, v2 = 0.0, 0.0, 1.0, 1.0
+
+        # Apply stretch mode
+        if stretch_mode == "tile":
+            # Tile the texture based on size ratio
+            tile_x = width / tex_width
+            tile_y = height / tex_height
+            u2 = u1 + tile_x
+            v2 = v1 + tile_y
+        elif stretch_mode in ["keep", "keep_centered"]:
+            # Keep original texture size, potentially centered
+            scale_x = tex_width / width
+            scale_y = tex_height / height
+            if stretch_mode == "keep_centered":
+                # Center the texture
+                offset_x = (1.0 - scale_x) / 2.0
+                offset_y = (1.0 - scale_y) / 2.0
+                u1 += offset_x
+                v1 += offset_y
+                u2 = u1 + scale_x
+                v2 = v1 + scale_y
+            else:
+                u2 = u1 + scale_x
+                v2 = v1 + scale_y
+        elif stretch_mode in ["keep_aspect", "keep_aspect_centered"]:
+            # Keep aspect ratio
+            aspect_ratio = tex_width / tex_height
+            target_aspect = width / height
+
+            if aspect_ratio > target_aspect:
+                # Texture is wider, fit to width
+                scale = width / tex_width
+                scaled_height = tex_height * scale
+                if stretch_mode == "keep_aspect_centered":
+                    offset_y = (height - scaled_height) / (2.0 * height)
+                    v1 += offset_y
+                    v2 = v1 + (scaled_height / height)
+            else:
+                # Texture is taller, fit to height
+                scale = height / tex_height
+                scaled_width = tex_width * scale
+                if stretch_mode == "keep_aspect_centered":
+                    offset_x = (width - scaled_width) / (2.0 * width)
+                    u1 += offset_x
+                    u2 = u1 + (scaled_width / width)
+
+        # Apply UV offset and scale
+        u_range = u2 - u1
+        v_range = v2 - v1
+        u1 = u1 + uv_offset[0] * u_range
+        v1 = v1 + uv_offset[1] * v_range
+        u2 = u1 + u_range * uv_scale[0]
+        v2 = v1 + v_range * uv_scale[1]
+
+        # Apply flipping
+        if flip_h:
+            u1, u2 = u2, u1
+        if flip_v:
+            v1, v2 = v2, v1
+
+        return u1, v1, u2, v2
+
+    def draw_rectangle(self, x: float, y: float, width: float, height: float,
                       color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
                       filled: bool = True):
         """Draw a colored rectangle"""

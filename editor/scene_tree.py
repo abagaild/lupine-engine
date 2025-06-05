@@ -7,7 +7,7 @@ import json
 from typing import Dict, Any, Optional
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem,
-    QHeaderView, QMenu, QMessageBox, QPushButton, QHBoxLayout
+    QHeaderView, QMenu, QMessageBox, QPushButton, QHBoxLayout, QCheckBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction
@@ -46,11 +46,15 @@ class SceneTreeWidget(QWidget):
         
         # Tree widget
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabel("Scene")
+        self.tree.setHeaderLabels(["Scene", "Visible"])
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
         self.tree.itemSelectionChanged.connect(self.on_selection_changed)
         self.tree.itemChanged.connect(self.on_item_changed)
+
+        # Set column widths
+        self.tree.setColumnWidth(0, 200)  # Scene name column
+        self.tree.setColumnWidth(1, 60)   # Visibility column
         
         # Enable drag and drop for reordering
         self.tree.setDragDropMode(QTreeWidget.DragDropMode.InternalMove)
@@ -118,7 +122,7 @@ class SceneTreeWidget(QWidget):
             item = QTreeWidgetItem(parent_item)
         else:
             item = QTreeWidgetItem(self.tree)
-        
+
         # Set node name and type
         node_name = node_data.get("name", "Unnamed")
         node_type = node_data.get("type", "Node")
@@ -133,20 +137,60 @@ class SceneTreeWidget(QWidget):
                 item.setText(0, f"📁 {node_name} (No Scene)")
         else:
             item.setText(0, f"{node_name} ({node_type})")
-        
+
         # Store node data
         item.setData(0, Qt.ItemDataRole.UserRole, node_data)
-        
+
         # Make item editable
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-        
+
+        # Add visibility toggle button
+        self._add_visibility_toggle(item, node_data)
+
         # Add children
         children = node_data.get("children", [])
         for child_data in children:
             self.add_node_to_tree(child_data, item)
-        
+
         return item
-    
+
+    def _add_visibility_toggle(self, item: QTreeWidgetItem, node_data: Dict[str, Any]):
+        """Add visibility toggle button to tree item"""
+        # Create visibility checkbox
+        visibility_checkbox = QCheckBox()
+        visibility_checkbox.setChecked(node_data.get("visible", True))
+        visibility_checkbox.setToolTip("Toggle node visibility")
+
+        # Connect to visibility change handler
+        visibility_checkbox.stateChanged.connect(
+            lambda state, item=item: self._on_visibility_changed(item, state == Qt.CheckState.Checked.value)
+        )
+
+        # Set the checkbox as a widget for the tree item
+        self.tree.setItemWidget(item, 1, visibility_checkbox)
+
+    def _on_visibility_changed(self, item: QTreeWidgetItem, visible: bool):
+        """Handle visibility toggle"""
+        node_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if node_data:
+            node_data["visible"] = visible
+
+            # Update visual appearance of the item
+            font = item.font(0)
+            if visible:
+                font.setStrikeOut(False)
+                item.setForeground(0, self.palette().color(self.palette().ColorRole.Text))
+            else:
+                font.setStrikeOut(True)
+                item.setForeground(0, self.palette().color(self.palette().ColorRole.PlaceholderText))
+            item.setFont(0, font)
+
+            # Synchronize to scene data
+            self.sync_tree_to_scene_data()
+
+            # Emit change signal
+            self.node_changed.emit(node_data)
+
     def on_selection_changed(self):
         """Handle tree selection change"""
         selected_items = self.tree.selectedItems()

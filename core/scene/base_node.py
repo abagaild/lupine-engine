@@ -105,12 +105,12 @@ class Node:
                 print(f"Error calling _ready in {self.script_path}: {e}")
 
         # Execute visual script if attached
-        if self.visual_script_instance:
+        if hasattr(self, 'visual_script_instance') and self.visual_script_instance:
             try:
                 if hasattr(self.visual_script_instance, 'execute'):
                     self.visual_script_instance.execute()
             except Exception as e:
-                print(f"Error executing visual script in {self.visual_script_path}: {e}")
+                print(f"Error executing visual script in {getattr(self, 'visual_script_path', 'unknown')}: {e}")
 
     def _process(self, delta: float) -> None:
         """Called every frame. Override in subclasses."""

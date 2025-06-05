@@ -254,10 +254,15 @@ class PlatformerPlayerController(KinematicBody2D):
                 pass
                 
             # Store previous input for direction change detection
-            previous_input = self._input_vector.copy()
+            # Handle both list and tuple input vectors safely
+            if isinstance(self._input_vector, list):
+                previous_input = self._input_vector.copy()
+            else:
+                previous_input = list(self._input_vector)
+
             self._input_vector = [input_x, 0.0]  # Y is handled by gravity/jumping
             self._jump_held = jump_pressed
-            
+
             # Emit direction changed signal if horizontal input changed
             if previous_input[0] != self._input_vector[0]:
                 self.emit_signal("direction_changed", self._input_vector.copy())
@@ -319,14 +324,24 @@ class PlatformerPlayerController(KinematicBody2D):
         """Move the character using move_and_slide"""
         # delta parameter kept for consistency with physics processing
         # Store previous position for movement detection
-        previous_pos = self.position.copy()
-        
+        # Handle both list and tuple positions safely
+        if isinstance(self.position, list):
+            previous_pos = self.position.copy()
+        else:
+            previous_pos = list(self.position)
+
+        print(f"[PLAYER] Moving with velocity: {self._velocity}, position: {self.position}")
+
         # Use move_and_slide for collision handling
         self.move_and_slide(self._velocity, [0.0, 1.0])  # Down vector for floor detection
-        
+
+        print(f"[PLAYER] After move_and_slide, position: {self.position}")
+
         # Check if actually moved
-        if previous_pos != self.position:
-            self.emit_signal("moved", self.position.copy())
+        if previous_pos != list(self.position):
+            # Safely get position as list for signal emission
+            current_pos = list(self.position) if not isinstance(self.position, list) else self.position.copy()
+            self.emit_signal("moved", current_pos)
         elif abs(self._velocity[0]) <= 0.1 and self._is_on_floor:
             # Emit stopped signal when horizontal velocity is near zero and on floor
             self.emit_signal("stopped")

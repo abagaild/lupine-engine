@@ -68,7 +68,7 @@ class TextureRect(Control):
 
         # Texture properties
         self.texture_path = ""
-        self.texture = None  # Will hold the actual texture object
+        self.texture = ""  # Export variable for texture path
         
         # Display properties
         self.stretch_mode = "stretch"  # stretch, tile, keep, keep_centered, keep_aspect, keep_aspect_centered
@@ -98,6 +98,16 @@ class TextureRect(Control):
         
         # Built-in signals
         self.add_signal("texture_changed")
+
+    def _on_export_variable_changed(self, var_name: str, value):
+        """Handle export variable changes"""
+        super()._on_export_variable_changed(var_name, value)
+
+        # Sync texture export variable with internal texture_path
+        if var_name == "texture":
+            self.texture_path = value
+            self.texture = value  # Keep export variable in sync
+            self.emit_signal("texture_changed", value)
     
     def _process(self, delta: float):
         """Process UV animations"""
@@ -213,7 +223,8 @@ class TextureRect(Control):
         
         # Add TextureRect-specific properties
         data.update({
-            "texture_path": self.texture_path,
+            "texture": self.texture_path,  # Export variable
+            "texture_path": self.texture_path,  # Internal property
             "stretch_mode": self.stretch_mode,
             "expand": self.expand,
             "filter": self.filter,
@@ -237,7 +248,10 @@ class TextureRect(Control):
         cls._apply_node_properties(texture_rect, data)
         
         # Apply TextureRect properties
-        texture_rect.texture_path = data.get("texture_path", None)
+        # Handle both 'texture' (export variable) and 'texture_path' (internal property)
+        texture_path = data.get("texture_path", "") or data.get("texture", "")
+        texture_rect.texture_path = texture_path
+        texture_rect.texture = texture_path  # Keep export variable in sync
         texture_rect.stretch_mode = data.get("stretch_mode", "stretch")
         texture_rect.expand = data.get("expand", False)
         texture_rect.filter = data.get("filter", True)

@@ -175,15 +175,19 @@ class TopDown4DirPlayerController(KinematicBody2D):
                 pass
             
             # Store previous input for direction change detection
-            previous_input = self._input_vector.copy()
-            
+            # Handle both list and tuple input vectors safely
+            if isinstance(self._input_vector, list):
+                previous_input = self._input_vector.copy()
+            else:
+                previous_input = list(self._input_vector)
+
             # 4-directional movement - prioritize one axis if both are pressed
             if input_x != 0.0 and input_y != 0.0:
                 # Prioritize horizontal movement
                 input_y = 0.0
-            
+
             self._input_vector = [input_x, input_y]
-            
+
             # Emit direction changed signal if input direction changed
             if previous_input != self._input_vector and (self._input_vector[0] != 0.0 or self._input_vector[1] != 0.0):
                 self.emit_signal("direction_changed", self._input_vector.copy())
@@ -230,14 +234,20 @@ class TopDown4DirPlayerController(KinematicBody2D):
         # delta parameter kept for consistency with physics processing
         if abs(self._velocity[0]) > 0.1 or abs(self._velocity[1]) > 0.1:
             # Store previous position for movement detection
-            previous_pos = self.position.copy()
-            
+            # Handle both list and tuple positions safely
+            if isinstance(self.position, list):
+                previous_pos = self.position.copy()
+            else:
+                previous_pos = list(self.position)
+
             # Use move_and_slide for collision handling
             self.move_and_slide(self._velocity, [0.0, -1.0])  # Up vector for floor detection
-            
+
             # Check if actually moved
-            if previous_pos != self.position:
-                self.emit_signal("moved", self.position.copy())
+            if previous_pos != list(self.position):
+                # Safely get position as list for signal emission
+                current_pos = list(self.position) if not isinstance(self.position, list) else self.position.copy()
+                self.emit_signal("moved", current_pos)
         else:
             # Emit stopped signal when velocity is near zero
             if abs(self._velocity[0]) <= 0.1 and abs(self._velocity[1]) <= 0.1:

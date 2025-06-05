@@ -567,7 +567,22 @@ class LupineGameEngine:
 
             # Type-specific properties
             if node.type == "TextureRect":
-                ui_data['texture_path'] = getattr(node, 'texture_path', '')
+                # Handle both 'texture' (export variable) and 'texture_path' (internal property)
+                texture_path = getattr(node, 'texture_path', '') or getattr(node, 'texture', '')
+                ui_data['texture_path'] = texture_path
+                ui_data['stretch_mode'] = getattr(node, 'stretch_mode', 'stretch')
+                ui_data['expand'] = getattr(node, 'expand', False)
+                ui_data['filter'] = getattr(node, 'filter', True)
+                ui_data['flip_h'] = getattr(node, 'flip_h', False)
+                ui_data['flip_v'] = getattr(node, 'flip_v', False)
+                ui_data['rotation'] = getattr(node, 'rotation', 0.0)
+                ui_data['uv_offset'] = list(getattr(node, 'uv_offset', [0.0, 0.0]))
+                ui_data['uv_scale'] = list(getattr(node, 'uv_scale', [1.0, 1.0]))
+                ui_data['use_region'] = getattr(node, 'use_region', False)
+                ui_data['region_rect'] = list(getattr(node, 'region_rect', [0.0, 0.0, 1.0, 1.0]))
+                ui_data['modulate_color'] = list(getattr(node, 'modulate_color', [1.0, 1.0, 1.0, 1.0]))
+                ui_data['uv_animation_speed'] = list(getattr(node, 'uv_animation_speed', [0.0, 0.0]))
+                print(f"[DEBUG] TextureRect setup: {node.name}, texture_path: {texture_path}")
             elif node.type == "Label":
                 ui_data['text'] = getattr(node, 'text', '')
                 ui_data['font_path'] = getattr(node, 'font_path', '')
@@ -610,12 +625,7 @@ class LupineGameEngine:
                 ui_data['padding_top'] = getattr(node, 'padding_top', 8.0)
                 ui_data['padding_right'] = getattr(node, 'padding_right', 8.0)
                 ui_data['padding_bottom'] = getattr(node, 'padding_bottom', 8.0)
-            elif node.type == "TextureRect":
-                ui_data['texture_path'] = getattr(node, 'texture_path', None)
-                ui_data['stretch_mode'] = getattr(node, 'stretch_mode', 'stretch')
-                ui_data['modulate_color'] = list(getattr(node, 'modulate_color', [1, 1, 1, 1]))
-                ui_data['uv_offset'] = list(getattr(node, 'uv_offset', [0, 0]))
-                ui_data['uv_scale'] = list(getattr(node, 'uv_scale', [1, 1]))
+
             elif node.type == "NinePatchRect":
                 ui_data['texture_path'] = getattr(node, 'texture_path', None)
                 ui_data['patch_margin_left'] = getattr(node, 'patch_margin_left', 0)
@@ -908,20 +918,31 @@ class LupineGameEngine:
         # Setup viewport and projection based on camera or game bounds
         self._setup_viewport_and_projection()
 
+        # Sort sprites by Z-index before rendering
+        sorted_sprites = self._sort_by_z_index(self.sprites)
+
         # Render sprites (affected by camera)
-        for sprite_data in self.sprites:
+        for sprite_data in sorted_sprites:
             if sprite_data.get('visible', True):
                 self._render_sprite(sprite_data)
 
         # Render UI (always in screen space, not affected by camera)
         self._setup_ui_projection()
-        for ui_data in self.ui_elements:
+
+        # Sort UI elements by Z-index before rendering
+        sorted_ui = self._sort_by_z_index(self.ui_elements)
+
+        for ui_data in sorted_ui:
             if ui_data.get('visible', True):
                 self._render_ui_element(ui_data)
 
     def _update_node_scripts_recursive(self, node: Node, delta_time: float):
         """Update scripts for a node and its children"""
         try:
+            # Check if node is visible - if not, skip processing for this node and all children
+            if not getattr(node, 'visible', True):
+                return
+
             # First, call the node's own lifecycle methods if they exist
             # This handles custom node classes like player controllers
             try:
@@ -964,7 +985,7 @@ class LupineGameEngine:
                 elif script_instance.has_method('_on_physics_process'):
                     script_instance.call_method('_on_physics_process', delta_time)
 
-            # Update children
+            # Update children (only if this node is visible)
             for child in node.children:
                 self._update_node_scripts_recursive(child, delta_time)
 
@@ -986,6 +1007,20 @@ class LupineGameEngine:
                     sprite_data['rotation'] = getattr(node, 'rotation', 0)
                     sprite_data['modulate'] = list(getattr(node, 'modulate', [1, 1, 1, 1]))
                     sprite_data['visible'] = getattr(node, 'visible', True)
+
+        # Also sync UI element properties
+        for ui_data in self.ui_elements:
+            if 'lupine_node' in ui_data:
+                node = ui_data['lupine_node']
+                # Sync visibility and other dynamic properties
+                ui_data['visible'] = getattr(node, 'visible', True)
+                ui_data['modulate'] = list(getattr(node, 'modulate', [1, 1, 1, 1]))
+
+                # Sync TextureRect specific properties that might change
+                if node.type == "TextureRect":
+                    texture_path = getattr(node, 'texture_path', '') or getattr(node, 'texture', '')
+                    ui_data['texture_path'] = texture_path
+                    ui_data['modulate_color'] = list(getattr(node, 'modulate_color', [1.0, 1.0, 1.0, 1.0]))
 
     def _get_global_position(self, node):
         """Get the global position of a node (including parent transforms)"""
@@ -1065,13 +1100,34 @@ class LupineGameEngine:
 
             if ui_type == "TextureRect":
                 texture_path = ui_data.get('texture_path', '')
+                stretch_mode = ui_data.get('stretch_mode', 'stretch')
+                flip_h = ui_data.get('flip_h', False)
+                flip_v = ui_data.get('flip_v', False)
+                modulate_color = ui_data.get('modulate_color', modulate)
+                uv_offset = ui_data.get('uv_offset', [0.0, 0.0])
+                uv_scale = ui_data.get('uv_scale', [1.0, 1.0])
+                rotation = ui_data.get('rotation', 0.0)
+                region_rect = ui_data.get('region_rect') if ui_data.get('use_region', False) else None
+
                 # Convert top-left position to center position for SharedRenderer
                 center_x = scaled_pos[0] + scaled_size[0] / 2
                 center_y = scaled_pos[1] + scaled_size[1] / 2
-                self.systems.renderer.draw_sprite(
-                    texture_path, center_x, center_y,
-                    scaled_size[0], scaled_size[1], 0, modulate[3]
-                )
+
+                # Use the enhanced texture rect rendering
+                if hasattr(self.systems.renderer, 'draw_texture_rect'):
+                    self.systems.renderer.draw_texture_rect(
+                        texture_path, center_x, center_y,
+                        scaled_size[0], scaled_size[1],
+                        stretch_mode, flip_h, flip_v, modulate_color,
+                        tuple(uv_offset), tuple(uv_scale), rotation,
+                        tuple(region_rect) if region_rect else None
+                    )
+                else:
+                    # Fallback to basic sprite rendering
+                    self.systems.renderer.draw_sprite(
+                        texture_path, center_x, center_y,
+                        scaled_size[0], scaled_size[1], rotation, modulate_color[3]
+                    )
             elif ui_type == "ColorRect":
                 color = ui_data.get('color', [1, 1, 1, 1])
                 # Convert top-left position to center position for SharedRenderer
@@ -1319,6 +1375,33 @@ class LupineGameEngine:
             text_y = pos[1] + padding
 
         return text_x, text_y
+
+    def _sort_by_z_index(self, elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Sort elements by Z-index for proper rendering order"""
+        def get_z_index(element):
+            # Get z_index from the element data
+            z_index = element.get('z_index', 0)
+
+            # If element has a lupine_node, check if it has z_index too
+            if 'lupine_node' in element:
+                node = element['lupine_node']
+                if hasattr(node, 'z_index'):
+                    z_index = node.z_index
+
+                    # Handle relative z_index
+                    if hasattr(node, 'z_as_relative') and node.z_as_relative:
+                        # Calculate absolute z_index by walking up parent chain
+                        current_parent = getattr(node, 'parent', None)
+                        while current_parent and hasattr(current_parent, 'z_index'):
+                            z_index += current_parent.z_index
+                            if not getattr(current_parent, 'z_as_relative', True):
+                                break
+                            current_parent = getattr(current_parent, 'parent', None)
+
+            return z_index
+
+        # Sort by z_index (lower values render first, higher values render on top)
+        return sorted(elements, key=get_z_index)
 
     def _on_key_press(self, key: int, modifiers: int):
         """Handle key press events"""

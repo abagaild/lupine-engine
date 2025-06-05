@@ -613,6 +613,10 @@ class SceneViewport(QOpenGLWidget):
     
     def draw_node(self, node_data: Dict[str, Any]):
         """Draw a single node"""
+        # Check visibility first
+        if not node_data.get("visible", True):
+            return
+
         node_type = node_data.get("type", "Node")
 
         # All nodes now use the same position property
@@ -1541,7 +1545,12 @@ class SceneViewport(QOpenGLWidget):
 
         # Try to load and draw texture if available
         if texture_path and isinstance(texture_path, str):
+            print(f"[DEBUG] Scene view loading texture: {texture_path}")
             texture_info = self.load_texture(texture_path)
+            if texture_info:
+                print(f"[DEBUG] Scene view texture loaded successfully: {texture_info}")
+            else:
+                print(f"[DEBUG] Scene view texture failed to load: {texture_path}")
             if texture_info:
                 texture_id, tex_width, tex_height = texture_info
 
@@ -4026,6 +4035,14 @@ class SceneViewport(QOpenGLWidget):
 
             return left <= local_x <= right and bottom <= local_y <= top
 
+        elif node_type == "CollisionShape2D":
+            # Check collision shape bounds based on shape type
+            return self._is_point_in_collision_shape(node, local_x, local_y)
+
+        elif node_type == "CollisionPolygon2D":
+            # Check collision polygon bounds
+            return self._is_point_in_collision_polygon(node, local_x, local_y)
+
         elif node_type == "Node2D":
             # Check small area around node center
             return abs(local_x) <= 10 and abs(local_y) <= 10
@@ -4033,6 +4050,103 @@ class SceneViewport(QOpenGLWidget):
         else:
             # Default node hit area
             return abs(local_x) <= 8 and abs(local_y) <= 8
+
+    def _is_point_in_collision_shape(self, node: Dict[str, Any], local_x: float, local_y: float) -> bool:
+        """Check if a point is inside a collision shape's bounds"""
+        shape_type = node.get("shape", "rectangle")
+
+        if shape_type == "rectangle":
+            size = node.get("size", [32.0, 32.0])
+            width, height = size[0], size[1]
+            return abs(local_x) <= width/2 and abs(local_y) <= height/2
+
+        elif shape_type == "circle":
+            radius = node.get("radius", 16.0)
+            distance = math.sqrt(local_x**2 + local_y**2)
+            return distance <= radius
+
+        elif shape_type == "capsule":
+            size = node.get("size", [32.0, 32.0])
+            height = node.get("height", 32.0)
+            width = size[0]
+
+            # Capsule is a rectangle with rounded ends
+            # Check if point is in the rectangular middle section
+            if abs(local_x) <= width/2 and abs(local_y) <= height/2:
+                return True
+
+            # Check if point is in the circular end caps
+            if abs(local_y) > height/2:
+                # Check distance from the center of the appropriate end cap
+                cap_center_y = height/2 if local_y > 0 else -height/2
+                distance = math.sqrt(local_x**2 + (local_y - cap_center_y)**2)
+                return distance <= width/2
+
+            return False
+
+        elif shape_type == "polygon":
+            points = node.get("points", [[0, 0], [32, 0], [32, 32], [0, 32]])
+            return self._point_in_polygon(local_x, local_y, points)
+
+        elif shape_type == "line":
+            line_start = node.get("line_start", [0.0, 0.0])
+            line_end = node.get("line_end", [32.0, 0.0])
+
+            # Check if point is close to the line (within 3 pixels)
+            distance = self._point_to_line_distance(local_x, local_y, line_start, line_end)
+            return distance <= 3.0
+
+        # Default fallback
+        return abs(local_x) <= 16 and abs(local_y) <= 16
+
+    def _is_point_in_collision_polygon(self, node: Dict[str, Any], local_x: float, local_y: float) -> bool:
+        """Check if a point is inside a collision polygon's bounds"""
+        polygon = node.get("polygon", [[0, 0], [32, 0], [32, 32], [0, 32]])
+        return self._point_in_polygon(local_x, local_y, polygon)
+
+    def _point_in_polygon(self, x: float, y: float, polygon: List[List[float]]) -> bool:
+        """Check if a point is inside a polygon using ray casting algorithm"""
+        if len(polygon) < 3:
+            return False
+
+        inside = False
+        j = len(polygon) - 1
+
+        for i in range(len(polygon)):
+            if len(polygon[i]) < 2 or len(polygon[j]) < 2:
+                j = i
+                continue
+
+            xi, yi = polygon[i][0], polygon[i][1]
+            xj, yj = polygon[j][0], polygon[j][1]
+
+            if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+                inside = not inside
+            j = i
+
+        return inside
+
+    def _point_to_line_distance(self, px: float, py: float, line_start: List[float], line_end: List[float]) -> float:
+        """Calculate the distance from a point to a line segment"""
+        x1, y1 = line_start[0], line_start[1]
+        x2, y2 = line_end[0], line_end[1]
+
+        # Calculate the squared length of the line segment
+        line_length_sq = (x2 - x1)**2 + (y2 - y1)**2
+
+        if line_length_sq == 0:
+            # Line is actually a point
+            return math.sqrt((px - x1)**2 + (py - y1)**2)
+
+        # Calculate the parameter t for the closest point on the line
+        t = max(0, min(1, ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / line_length_sq))
+
+        # Calculate the closest point on the line
+        closest_x = x1 + t * (x2 - x1)
+        closest_y = y1 + t * (y2 - y1)
+
+        # Return the distance from the point to the closest point on the line
+        return math.sqrt((px - closest_x)**2 + (py - closest_y)**2)
 
     def _is_ui_node(self, node_type: str) -> bool:
         """Check if a node type is a UI node - dynamic detection"""
@@ -4156,6 +4270,12 @@ class SceneViewport(QOpenGLWidget):
                 glVertex2f(right, top)
                 glVertex2f(left, top)
                 glEnd()
+            elif node_type == "CollisionShape2D":
+                # Draw around collision shape bounds based on shape type
+                self._draw_collision_shape_selection_outline()
+            elif node_type == "CollisionPolygon2D":
+                # Draw around collision polygon bounds
+                self._draw_collision_polygon_selection_outline()
             elif node_type in ["Button", "Panel", "Label", "ColorRect", "TextureRect", "ProgressBar", "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
                 # Draw around UI node bounds
                 size = self.selected_node.get("size", [100.0, 30.0])
@@ -4251,6 +4371,99 @@ class SceneViewport(QOpenGLWidget):
         if node and property_name in node:
             node[property_name] = value
             self.update()
+
+    def _draw_collision_shape_selection_outline(self):
+        """Draw selection outline for CollisionShape2D based on shape type"""
+        if not self.selected_node:
+            return
+        shape_type = self.selected_node.get("shape", "rectangle")
+
+        if shape_type == "rectangle":
+            size = self.selected_node.get("size", [32.0, 32.0])
+            width, height = size[0], size[1]
+
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-width/2, -height/2)
+            glVertex2f(width/2, -height/2)
+            glVertex2f(width/2, height/2)
+            glVertex2f(-width/2, height/2)
+            glEnd()
+
+        elif shape_type == "circle":
+            radius = self.selected_node.get("radius", 16.0)
+            segments = 32
+
+            glBegin(GL_LINE_LOOP)
+            for i in range(segments):
+                angle = 2 * math.pi * i / segments
+                x = radius * math.cos(angle)
+                y = radius * math.sin(angle)
+                glVertex2f(x, y)
+            glEnd()
+
+        elif shape_type == "capsule":
+            size = self.selected_node.get("size", [32.0, 32.0])
+            height = self.selected_node.get("height", 32.0)
+            width = size[0]
+
+            # Draw the capsule as a rectangle with rounded ends
+            glBegin(GL_LINE_STRIP)
+            # Top line
+            glVertex2f(-width/2, height/2)
+            glVertex2f(width/2, height/2)
+
+            # Right semicircle (top half)
+            segments = 16
+            for i in range(segments + 1):
+                angle = math.pi * i / segments
+                x = width/2 + (width/2) * math.cos(angle)
+                y = height/2 + (width/2) * math.sin(angle)
+                glVertex2f(x, y)
+
+            # Bottom line
+            glVertex2f(width/2, -height/2)
+            glVertex2f(-width/2, -height/2)
+
+            # Left semicircle (bottom half)
+            for i in range(segments + 1):
+                angle = math.pi + math.pi * i / segments
+                x = -width/2 + (width/2) * math.cos(angle)
+                y = -height/2 + (width/2) * math.sin(angle)
+                glVertex2f(x, y)
+
+            glEnd()
+
+        elif shape_type == "polygon":
+            points = self.selected_node.get("points", [[0, 0], [32, 0], [32, 32], [0, 32]])
+
+            if len(points) >= 3:
+                glBegin(GL_LINE_LOOP)
+                for point in points:
+                    if isinstance(point, list) and len(point) >= 2:
+                        glVertex2f(point[0], point[1])
+                glEnd()
+
+        elif shape_type == "line":
+            line_start = self.selected_node.get("line_start", [0.0, 0.0])
+            line_end = self.selected_node.get("line_end", [32.0, 0.0])
+
+            glBegin(GL_LINES)
+            glVertex2f(line_start[0], line_start[1])
+            glVertex2f(line_end[0], line_end[1])
+            glEnd()
+
+    def _draw_collision_polygon_selection_outline(self):
+        """Draw selection outline for CollisionPolygon2D"""
+        if not self.selected_node:
+            return
+        polygon = self.selected_node.get("polygon", [[0, 0], [32, 0], [32, 32], [0, 32]])
+
+        if len(polygon) >= 3:
+            glBegin(GL_LINE_LOOP)
+            for vertex in polygon:
+                if isinstance(vertex, list) and len(vertex) >= 2:
+                    glVertex2f(vertex[0], vertex[1])
+            glEnd()
 
     def set_selected_node(self, node: Optional[Dict[str, Any]]):
         """Set the selected node from external source (like scene tree)"""
