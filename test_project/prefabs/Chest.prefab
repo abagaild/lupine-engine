@@ -1,0 +1,124 @@
+{
+  "id": "b5570721-7e04-4caf-a75c-679b2ebaa11f",
+  "name": "Chest",
+  "prefab_type": "interactive",
+  "description": "Interactive chest with items",
+  "category": "Interactive",
+  "icon": "chest.png",
+  "preview_image": "",
+  "base_node_type": "StaticBody2D",
+  "node_structure": {},
+  "properties": [
+    {
+      "name": "chest_name",
+      "type": "string",
+      "default_value": "Chest",
+      "description": "Name of the chest",
+      "group": "Basic",
+      "export": true,
+      "min_value": null,
+      "max_value": null,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "sprite_texture",
+      "type": "path",
+      "default_value": "",
+      "description": "Sprite texture path",
+      "group": "Appearance",
+      "export": true,
+      "min_value": null,
+      "max_value": null,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "is_locked",
+      "type": "boolean",
+      "default_value": false,
+      "description": "Whether chest is locked",
+      "group": "Behavior",
+      "export": true,
+      "min_value": null,
+      "max_value": null,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "key_item",
+      "type": "string",
+      "default_value": "",
+      "description": "Required key item ID",
+      "group": "Behavior",
+      "export": true,
+      "min_value": null,
+      "max_value": null,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "contents",
+      "type": "string",
+      "default_value": "",
+      "description": "Chest contents (JSON)",
+      "group": "Contents",
+      "export": true,
+      "min_value": null,
+      "max_value": null,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "one_time_use",
+      "type": "boolean",
+      "default_value": true,
+      "description": "Can only be opened once",
+      "group": "Behavior",
+      "export": true,
+      "min_value": null,
+      "max_value": null,
+      "step": null,
+      "options": null
+    }
+  ],
+  "property_groups": {},
+  "events": [
+    {
+      "name": "on_open",
+      "description": "Called when chest is opened",
+      "parameters": [
+        {
+          "name": "opener",
+          "type": "node",
+          "default_value": null,
+          "description": "The node opening the chest",
+          "required": true,
+          "options": null
+        }
+      ],
+      "default_script": ""
+    },
+    {
+      "name": "on_locked_attempt",
+      "description": "Called when locked chest is accessed",
+      "parameters": [],
+      "default_script": ""
+    }
+  ],
+  "visual_script_blocks": [],
+  "default_script": "",
+  "tags": [
+    "chest",
+    "container",
+    "interactive",
+    "loot"
+  ],
+  "version": "1.0.0",
+  "author": "",
+  "created_at": "2025-06-04T23:37:52.019583",
+  "modified_at": "2025-06-04T23:37:52.021587",
+  "required_nodes": [],
+  "required_scripts": [],
+  "required_assets": []
+}

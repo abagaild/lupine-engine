@@ -435,7 +435,14 @@ class Button(Control):
         """Create from dictionary"""
         button = cls(data.get("name", "Button"))
         cls._apply_node_properties(button, data)
-        
+
+        # Apply Node2D properties (inherited from Control -> Node2D)
+        button.position = data.get("position", [0.0, 0.0])
+        button.rotation = data.get("rotation", 0.0)
+        button.scale = data.get("scale", [1.0, 1.0])
+        button.z_index = data.get("z_index", 0)
+        button.z_as_relative = data.get("z_as_relative", True)
+
         # Apply Control properties
         button.size = data.get("size", [100.0, 30.0])
         button.follow_viewport = data.get("follow_viewport", True)

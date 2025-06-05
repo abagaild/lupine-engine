@@ -23,24 +23,101 @@ class VBoxContainer(Control):
     def __init__(self, name: str = "VBoxContainer"):
         super().__init__(name)
         self.type = "VBoxContainer"
-        
+
+        # Export variables for editor
+        self.export_variables.update({
+            "separation": {
+                "type": "float",
+                "value": 4.0,
+                "min": 0.0,
+                "max": 100.0,
+                "description": "Space between children in pixels"
+            },
+            "alignment": {
+                "type": "enum",
+                "value": "top",
+                "options": ["top", "center", "bottom"],
+                "description": "Vertical alignment of children"
+            },
+            "fit_content_height": {
+                "type": "bool",
+                "value": True,
+                "description": "Auto-resize height to fit children"
+            },
+            "fit_content_width": {
+                "type": "bool",
+                "value": False,
+                "description": "Auto-resize width to fit children"
+            },
+            "padding_left": {
+                "type": "float",
+                "value": 0.0,
+                "min": 0.0,
+                "max": 100.0,
+                "description": "Left padding in pixels"
+            },
+            "padding_top": {
+                "type": "float",
+                "value": 0.0,
+                "min": 0.0,
+                "max": 100.0,
+                "description": "Top padding in pixels"
+            },
+            "padding_right": {
+                "type": "float",
+                "value": 0.0,
+                "min": 0.0,
+                "max": 100.0,
+                "description": "Right padding in pixels"
+            },
+            "padding_bottom": {
+                "type": "float",
+                "value": 0.0,
+                "min": 0.0,
+                "max": 100.0,
+                "description": "Bottom padding in pixels"
+            },
+            "background_color": {
+                "type": "color",
+                "value": [0.0, 0.0, 0.0, 0.0],
+                "description": "Background color (RGBA)"
+            },
+            "border_color": {
+                "type": "color",
+                "value": [0.5, 0.5, 0.5, 1.0],
+                "description": "Border color (RGBA)"
+            },
+            "border_width": {
+                "type": "float",
+                "value": 0.0,
+                "min": 0.0,
+                "max": 10.0,
+                "description": "Border width in pixels"
+            }
+        })
+
         # Layout properties
         self.separation = 4.0  # Space between children
         self.alignment = "top"  # top, center, bottom
-        
+
         # Container properties
         self.fit_content_height = True  # Auto-resize to fit children
         self.fit_content_width = False  # Keep fixed width
-        
+
         # Padding
         self.padding_left = 0.0
         self.padding_top = 0.0
         self.padding_right = 0.0
         self.padding_bottom = 0.0
-        
+
+        # Visual properties
+        self.background_color = [0.0, 0.0, 0.0, 0.0]
+        self.border_color = [0.5, 0.5, 0.5, 1.0]
+        self.border_width = 0.0
+
         # Built-in signals
         self.add_signal("layout_changed")
-        
+
         # Internal state
         self._needs_layout_update = True
     
@@ -183,7 +260,7 @@ class VBoxContainer(Control):
         """Get vertical alignment"""
         return self.alignment
     
-    def set_fit_content(self, fit_height: bool, fit_width: bool = None):
+    def set_fit_content(self, fit_height: bool, fit_width: Optional[bool] = None):
         """Set content fitting options"""
         self.fit_content_height = fit_height
         if fit_width is not None:

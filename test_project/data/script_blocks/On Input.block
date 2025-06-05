@@ -1,0 +1,39 @@
+{
+  "id": "b8db9d55-0af9-4ed2-b405-0df23c296c3d",
+  "name": "On Input",
+  "category": "Events",
+  "block_type": "event",
+  "description": "Execute code on input",
+  "inputs": [
+    {
+      "name": "input_action",
+      "type": "string",
+      "default_value": "",
+      "description": "Input action name",
+      "required": true,
+      "options": null
+    },
+    {
+      "name": "event_type",
+      "type": "string",
+      "default_value": "pressed",
+      "description": "Event type",
+      "required": true,
+      "options": [
+        "pressed",
+        "released",
+        "held"
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "name": "triggered",
+      "type": "flow",
+      "description": "Execute on input"
+    }
+  ],
+  "code_template": "on_input(\"{input_action}\", \"{event_type}\", lambda: {triggered_flow})",
+  "icon": "",
+  "color": "#A8E6CF"
+}

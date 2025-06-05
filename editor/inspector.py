@@ -269,20 +269,31 @@ class InspectorWidget(QWidget):
     
     def set_node(self, node_data: Dict[str, Any]):
         """Set the node to inspect"""
-        self.current_node = node_data
+        try:
+            self.current_node = node_data
 
-        # For nodes with built-in scripts, ensure script path is properly set using dynamic registry
-        if node_data and node_data.get("type"):
-            node_type = node_data.get("type")
-            if node_type and not node_data.get("script"):
-                # Get script path from node registry dynamically
-                from core.node_registry import get_node_registry
-                registry = get_node_registry()
-                node_def = registry.get_node_definition(node_type)
-                if node_def and node_def.script_path:
-                    node_data["script"] = node_def.script_path
+            # For nodes with built-in scripts, ensure script path is properly set using dynamic registry
+            if node_data and node_data.get("type"):
+                node_type = node_data.get("type")
+                if node_type and not node_data.get("script"):
+                    try:
+                        # Get script path from node registry dynamically
+                        from core.node_registry import get_node_registry
+                        registry = get_node_registry()
+                        node_def = registry.get_node_definition(node_type)
+                        if node_def and node_def.script_path:
+                            node_data["script"] = node_def.script_path
+                    except Exception as script_error:
+                        print(f"Error setting script path for {node_type}: {script_error}")
+                        # Don't re-raise, just continue without script path
 
-        self.refresh_properties()
+            self.refresh_properties()
+
+        except Exception as e:
+            print(f"Error in Inspector.set_node: {e}")
+            import traceback
+            traceback.print_exc()
+            # Don't re-raise to prevent crash
 
     def update_node_reference(self, updated_node_data: dict):
         """Update the current node reference while preserving the UI state"""
@@ -374,26 +385,49 @@ class InspectorWidget(QWidget):
                     if key in self.property_widgets:
                         widget = self.property_widgets[key]
                         widget.blockSignals(True)
-                        widget.setText(str(value))
+
+                        # Check if widget has setText method (QLineEdit, etc.)
+                        if hasattr(widget, 'setText'):
+                            widget.setText(str(value))
+                        # Check if widget has setCurrentText method (QComboBox)
+                        elif hasattr(widget, 'setCurrentText'):
+                            widget.setCurrentText(str(value))
+                        # Check if widget has setChecked method (QCheckBox)
+                        elif hasattr(widget, 'setChecked'):
+                            widget.setChecked(bool(value))
+                        # Check if widget has setValue method (QSpinBox, QDoubleSpinBox)
+                        elif hasattr(widget, 'setValue'):
+                            try:
+                                widget.setValue(float(value) if isinstance(value, (int, float)) else 0)
+                            except (ValueError, TypeError):
+                                pass
+
                         widget.blockSignals(False)
                         break
     
     def refresh_properties(self):
         """Refresh the properties display"""
-        self.clear_properties()
+        try:
+            self.clear_properties()
 
-        if not self.current_node:
-            self.show_empty_state()
-            return
+            if not self.current_node:
+                self.show_empty_state()
+                return
 
-        # Node info group
-        self.create_node_info_group()
+            # Node info group
+            self.create_node_info_group()
 
-        # Create export variables from built-in node definitions
-        self.create_builtin_node_properties()
+            # Create export variables from built-in node definitions
+            self.create_builtin_node_properties()
 
-        # Script management section
-        self.create_script_management_section()
+            # Script management section
+            self.create_script_management_section()
+
+        except Exception as e:
+            print(f"Error in Inspector.refresh_properties: {e}")
+            import traceback
+            traceback.print_exc()
+            # Don't re-raise to prevent crash
     
     def create_node_info_group(self):
         """Create node information group"""
@@ -518,6 +552,26 @@ class InspectorWidget(QWidget):
         group = QGroupBox(group_name)
         layout = QFormLayout(group)
 
+        # Add special TileMap editor button if this is a TileMap node
+        if (self.current_node and self.current_node.get("type") == "TileMap" and
+            group_name in ["Properties", "Tilemap"]):
+            editor_btn = QPushButton("Open Tilemap Editor")
+            editor_btn.clicked.connect(self._open_tilemap_editor)
+            editor_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #4CAF50;
+                    color: white;
+                    border: none;
+                    padding: 8px 16px;
+                    font-weight: bold;
+                    border-radius: 4px;
+                }
+                QPushButton:hover {
+                    background-color: #45a049;
+                }
+            """)
+            layout.addRow("", editor_btn)
+
         # Sort variables by name for consistent ordering
         sorted_vars = sorted(variables.items())
 
@@ -525,6 +579,41 @@ class InspectorWidget(QWidget):
             self._create_export_variable_widget(layout, var_name, var_info)
 
         self.properties_layout.addWidget(group)
+
+    def _open_tilemap_editor(self):
+        """Open the tilemap editor for the current TileMap node"""
+        if not self.current_node or self.current_node.get("type") != "TileMap":
+            return
+
+        try:
+            # Get the main editor window
+            main_window = self.window()
+            while main_window.parent():
+                main_window = main_window.parent()
+
+            # Import and open the tilemap editor
+            from editor.tilemap_editor import TilemapEditorWindow
+
+            # Create tilemap editor window with current node data
+            if not hasattr(main_window, 'tilemap_editor_window') or not main_window.tilemap_editor_window:
+                main_window.tilemap_editor_window = TilemapEditorWindow(
+                    self.project, self.current_node, main_window
+                )
+            else:
+                # Update with current node
+                main_window.tilemap_editor_window.set_tilemap_node(self.current_node)
+
+            # Show the window
+            main_window.tilemap_editor_window.show()
+            main_window.tilemap_editor_window.raise_()
+            main_window.tilemap_editor_window.activateWindow()
+
+        except ImportError as e:
+            QMessageBox.warning(self, "Error", f"Tilemap Editor not available: {e}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open Tilemap Editor: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _create_export_variable_widget(self, layout: QFormLayout, var_name: str, var_info: Dict[str, Any]):
         """Create widget for an export variable from built-in nodes"""
@@ -1858,6 +1947,16 @@ def take_damage(amount):
         if self.current_node:
             self.current_node[property_name] = value
 
+            # Special handling for scene instance properties
+            if self.current_node.get("type") == "SceneInstance":
+                if property_name == "scene_path":
+                    # Also update the scene_path in the node data for persistence
+                    self.current_node["scene_path"] = value
+                elif property_name == "editable_children":
+                    self.current_node["editable_children"] = value
+                elif property_name == "auto_reload":
+                    self.current_node["auto_reload"] = value
+
             # For UI nodes, also update alternative property names for compatibility
             if property_name == "size" and "rect_size" in self.current_node:
                 self.current_node["rect_size"] = value
@@ -1889,13 +1988,7 @@ def take_damage(amount):
             self.current_node["scale"] = scale
             self.property_changed.emit(self.current_node.get("name", ""), "scale", scale)
     
-    def update_size(self, index: int, value: int):
-        """Update size component"""
-        if self.current_node:
-            size = self.current_node.get("size", [64, 64])
-            size[index] = value
-            self.current_node["size"] = size
-            self.property_changed.emit(self.current_node.get("name", ""), "size", size)
+
     
     def update_zoom(self, index: int, value: float):
         """Update zoom component"""
@@ -2175,25 +2268,25 @@ def take_damage(amount):
 
         layout.addRow("Position:", pos_layout)
 
-        # Rect Size
-        rect_size = self.current_node.get("rect_size", [100.0, 100.0])
+        # Size (UI nodes use 'size' property)
+        size = self.current_node.get("size", [100.0, 100.0])
         size_layout = QHBoxLayout()
 
         size_x = QDoubleSpinBox()
         size_x.setRange(0, 9999)
-        size_x.setValue(rect_size[0])
-        size_x.valueChanged.connect(lambda v: self.update_rect_size(0, v))
+        size_x.setValue(size[0])
+        size_x.valueChanged.connect(lambda v: self.update_size(0, v))
         size_layout.addWidget(size_x)
-        self.property_widgets["rect_size_x"] = size_x
+        self.property_widgets["size_x"] = size_x
 
         size_y = QDoubleSpinBox()
         size_y.setRange(0, 9999)
-        size_y.setValue(rect_size[1])
-        size_y.valueChanged.connect(lambda v: self.update_rect_size(1, v))
+        size_y.setValue(size[1])
+        size_y.valueChanged.connect(lambda v: self.update_size(1, v))
         size_layout.addWidget(size_y)
-        self.property_widgets["rect_size_y"] = size_y
+        self.property_widgets["size_y"] = size_y
 
-        layout.addRow("Rect Size:", size_layout)
+        layout.addRow("Size:", size_layout)
 
         # Anchors Section
         self.create_anchor_controls(layout)
@@ -2549,28 +2642,21 @@ def take_damage(amount):
         layout.addRow("Offset:", offset_layout)
 
         # Follow Viewport
-        follow_viewport = self.current_node.get("follow_viewport_enable", False)
+        follow_viewport = self.current_node.get("follow_viewport", True)
         follow_check = QCheckBox()
         follow_check.setChecked(follow_viewport)
-        follow_check.toggled.connect(lambda v: self.update_property("follow_viewport_enable", v))
+        follow_check.toggled.connect(lambda v: self.update_property("follow_viewport", v))
         layout.addRow("Follow Viewport:", follow_check)
-        self.property_widgets["follow_viewport_enable"] = follow_check
+        self.property_widgets["follow_viewport"] = follow_check
 
         self.properties_layout.addWidget(group)
 
-    def update_rect_position(self, index: int, value: float):
-        """Update rect position component (legacy method for compatibility)"""
+    def update_size(self, index: int, value: float):
+        """Update size component for UI nodes"""
         if self.current_node:
-            rect_position = self.current_node.get("rect_position", [0.0, 0.0])
-            rect_position[index] = value
-            self.update_property("rect_position", rect_position)
-
-    def update_rect_size(self, index: int, value: float):
-        """Update rect size component"""
-        if self.current_node:
-            rect_size = self.current_node.get("rect_size", [100.0, 100.0])
-            rect_size[index] = value
-            self.update_property("rect_size", rect_size)
+            size = self.current_node.get("size", [100.0, 100.0])
+            size[index] = value
+            self.update_property("size", size)
 
     def update_color_component(self, color_name: str, index: int, value: float):
         """Update color component"""

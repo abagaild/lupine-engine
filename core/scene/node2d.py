@@ -134,13 +134,21 @@ class Node2D(Node):
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization"""
         data = super().to_dict()
-        data.update({
-            "position": self.position.copy(),
-            "rotation": self.rotation,
-            "scale": self.scale.copy(),
-            "z_index": self.z_index,
-            "z_as_relative": self.z_as_relative
-        })
+
+        # Only include Node2D properties if they exist (some subclasses might not have them)
+        node2d_data = {}
+        if hasattr(self, 'position'):
+            node2d_data["position"] = self.position.copy() if hasattr(self.position, 'copy') else list(self.position)
+        if hasattr(self, 'rotation'):
+            node2d_data["rotation"] = self.rotation
+        if hasattr(self, 'scale'):
+            node2d_data["scale"] = self.scale.copy() if hasattr(self.scale, 'copy') else list(self.scale)
+        if hasattr(self, 'z_index'):
+            node2d_data["z_index"] = self.z_index
+        if hasattr(self, 'z_as_relative'):
+            node2d_data["z_as_relative"] = self.z_as_relative
+
+        data.update(node2d_data)
         return data
     
     @classmethod

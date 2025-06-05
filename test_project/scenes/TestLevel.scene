@@ -1,0 +1,89 @@
+{
+  "name": "TestLevel",
+  "nodes": [
+    {
+      "name": "TestLevel",
+      "type": "Node2D",
+      "position": [
+        0,
+        0
+      ],
+      "children": [
+        {
+          "name": "Layer_Events",
+          "type": "Node2D",
+          "position": [
+            0,
+            0
+          ],
+          "children": [
+            {
+              "name": "NPC",
+              "type": "Area2D",
+              "position": [
+                64,
+                96
+              ],
+              "children": [
+                {
+                  "name": "CollisionShape2D",
+                  "type": "CollisionShape2D",
+                  "position": [
+                    0,
+                    0
+                  ],
+                  "shape": "rectangle",
+                  "size": [
+                    32,
+                    32
+                  ],
+                  "children": []
+                }
+              ],
+              "script": "scripts/NPC_9ed79e77.py",
+              "event_data": {
+                "trigger": "player_interact",
+                "through": false,
+                "visible": true,
+                "notes": "",
+                "tags": []
+              }
+            },
+            {
+              "name": "Chest",
+              "type": "Area2D",
+              "position": [
+                160,
+                192
+              ],
+              "children": [
+                {
+                  "name": "CollisionShape2D",
+                  "type": "CollisionShape2D",
+                  "position": [
+                    0,
+                    0
+                  ],
+                  "shape": "rectangle",
+                  "size": [
+                    32,
+                    32
+                  ],
+                  "children": []
+                }
+              ],
+              "script": "scripts/Chest_75342b4f.py",
+              "event_data": {
+                "trigger": "player_interact",
+                "through": false,
+                "visible": true,
+                "notes": "",
+                "tags": []
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

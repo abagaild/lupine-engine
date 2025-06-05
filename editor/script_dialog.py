@@ -46,7 +46,26 @@ class ScriptAttachmentDialog(QDialog):
         title_label.setFont(title_font)
         title_label.setStyleSheet("color: #e0e0e0; margin-bottom: 10px;")
         main_layout.addWidget(title_label)
-        
+
+        # Script type selection
+        type_group = QGroupBox("Script Type")
+        type_layout = QHBoxLayout(type_group)
+
+        self.type_button_group = QButtonGroup()
+
+        self.python_radio = QRadioButton("Python Script")
+        self.python_radio.setChecked(True)
+        self.python_radio.toggled.connect(self.on_script_type_changed)
+        self.type_button_group.addButton(self.python_radio)
+        type_layout.addWidget(self.python_radio)
+
+        self.visual_radio = QRadioButton("Visual Script")
+        self.visual_radio.toggled.connect(self.on_script_type_changed)
+        self.type_button_group.addButton(self.visual_radio)
+        type_layout.addWidget(self.visual_radio)
+
+        main_layout.addWidget(type_group)
+
         # Script source selection
         source_group = QGroupBox("Script Source")
         source_layout = QVBoxLayout(source_group)
@@ -152,6 +171,46 @@ class ScriptAttachmentDialog(QDialog):
         # Connect signals
         self.template_combo.currentTextChanged.connect(self.update_preview)
         self.script_name_edit.textChanged.connect(self.update_preview)
+
+    def on_script_type_changed(self):
+        """Handle script type change"""
+        is_python = self.python_radio.isChecked()
+
+        # Update script name extension
+        current_name = self.script_name_edit.text()
+        if is_python:
+            if current_name.endswith('.vscript'):
+                current_name = current_name.replace('.vscript', '.py')
+            elif not current_name.endswith('.py'):
+                current_name = current_name.split('.')[0] + '.py'
+        else:
+            if current_name.endswith('.py'):
+                current_name = current_name.replace('.py', '.vscript')
+            elif not current_name.endswith('.vscript'):
+                current_name = current_name.split('.')[0] + '.vscript'
+
+        self.script_name_edit.setText(current_name)
+
+        # Update template combo for visual scripts
+        if is_python:
+            self.template_combo.clear()
+            self.template_combo.addItems([
+                "Node2D Script",
+                "Control Script",
+                "Area2D Script",
+                "RigidBody2D Script",
+                "Empty Script"
+            ])
+        else:
+            self.template_combo.clear()
+            self.template_combo.addItems([
+                "Basic Visual Script",
+                "Event Handler Script",
+                "Input Handler Script",
+                "Timer Script"
+            ])
+
+        self.update_preview()
     
     def on_source_changed(self):
         """Handle script source selection change"""
@@ -165,8 +224,14 @@ class ScriptAttachmentDialog(QDialog):
     def browse_script(self):
         """Browse for existing script file"""
         scripts_dir = self.project.get_absolute_path("scripts")
+
+        if self.python_radio.isChecked():
+            file_filter = "Python Scripts (*.py);;All Files (*)"
+        else:
+            file_filter = "Visual Scripts (*.vscript);;All Files (*)"
+
         script_file, _ = QFileDialog.getOpenFileName(
-            self, "Select Script File", str(scripts_dir), "LSC Scripts (*.lsc);;All Files (*)"
+            self, "Select Script File", str(scripts_dir), file_filter
         )
         
         if script_file:
@@ -206,6 +271,10 @@ class ScriptAttachmentDialog(QDialog):
         template_name = self.template_combo.currentText()
         node_type = self.node_data.get('type', 'Node')
         node_name = self.node_data.get('name', 'Node')
+
+        # Handle visual script templates
+        if self.visual_radio.isChecked():
+            return self.get_visual_script_template(template_name, node_type, node_name)
         
         base_template = f'''# Python Script for {node_name}
 # Node type: {node_type}
@@ -317,6 +386,131 @@ def _ready():
 '''
         
         return base_template
+
+    def get_visual_script_template(self, template_name: str, node_type: str, node_name: str) -> str:
+        """Get visual script template"""
+        import json
+
+        if template_name == "Basic Visual Script":
+            return json.dumps({
+                "version": "1.0",
+                "name": f"{node_name} Visual Script",
+                "description": f"Basic visual script for {node_name}",
+                "blocks": [
+                    {
+                        "id": "start_1",
+                        "position": [100, 100],
+                        "node_name": "Start",
+                        "block_definition": {
+                            "id": "start_1",
+                            "name": "Start",
+                            "category": "Events",
+                            "block_type": {"value": "event"},
+                            "description": "Script entry point",
+                            "inputs": [],
+                            "outputs": [
+                                {
+                                    "name": "exec",
+                                    "type": "exec",
+                                    "description": "Execution output",
+                                    "is_execution_pin": True
+                                }
+                            ],
+                            "code_template": "# Start",
+                            "color": "#4CAF50"
+                        }
+                    },
+                    {
+                        "id": "print_1",
+                        "position": [300, 100],
+                        "node_name": "Print Hello",
+                        "block_definition": {
+                            "id": "print_1",
+                            "name": "Print",
+                            "category": "Debug",
+                            "block_type": {"value": "action"},
+                            "description": "Print a message",
+                            "inputs": [
+                                {
+                                    "name": "exec",
+                                    "type": "exec",
+                                    "default_value": None,
+                                    "description": "Execution input",
+                                    "is_execution_pin": True
+                                },
+                                {
+                                    "name": "message",
+                                    "type": "string",
+                                    "default_value": f"Hello from {node_name}!",
+                                    "description": "Message to print"
+                                }
+                            ],
+                            "outputs": [
+                                {
+                                    "name": "exec",
+                                    "type": "exec",
+                                    "description": "Execution output",
+                                    "is_execution_pin": True
+                                }
+                            ],
+                            "code_template": "print({message})",
+                            "color": "#2196F3"
+                        }
+                    }
+                ],
+                "connections": [
+                    {
+                        "id": "conn_1",
+                        "from_block_id": "start_1",
+                        "from_output": "exec",
+                        "to_block_id": "print_1",
+                        "to_input": "exec",
+                        "connection_type": "exec",
+                        "color": "#FFFFFF"
+                    }
+                ]
+            }, indent=2)
+
+        elif template_name == "Event Handler Script":
+            return json.dumps({
+                "version": "1.0",
+                "name": f"{node_name} Event Handler",
+                "description": f"Event handling script for {node_name}",
+                "blocks": [
+                    {
+                        "id": "ready_1",
+                        "position": [100, 100],
+                        "node_name": "Ready Event",
+                        "block_definition": {
+                            "id": "ready_1",
+                            "name": "Ready",
+                            "category": "Events",
+                            "block_type": {"value": "event"},
+                            "description": "Called when node is ready",
+                            "inputs": [],
+                            "outputs": [
+                                {
+                                    "name": "exec",
+                                    "type": "exec",
+                                    "description": "Execution output",
+                                    "is_execution_pin": True
+                                }
+                            ],
+                            "code_template": "# Ready event",
+                            "color": "#4CAF50"
+                        }
+                    }
+                ]
+            }, indent=2)
+
+        # Default basic template
+        return json.dumps({
+            "version": "1.0",
+            "name": f"{node_name} Visual Script",
+            "description": f"Visual script for {node_name}",
+            "blocks": [],
+            "connections": []
+        }, indent=2)
     
     def attach_script(self):
         """Attach the script to the node"""
@@ -328,8 +522,13 @@ def _ready():
                     QMessageBox.warning(self, "Invalid Input", "Please enter a script name!")
                     return
                 
-                if not script_name.endswith('.py'):
-                    script_name += '.py'
+                # Add appropriate extension
+                if self.python_radio.isChecked():
+                    if not script_name.endswith('.py'):
+                        script_name += '.py'
+                else:
+                    if not script_name.endswith('.vscript'):
+                        script_name += '.vscript'
                 
                 # Create script file
                 scripts_dir = self.project.get_absolute_path("scripts")

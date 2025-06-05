@@ -1,0 +1,21 @@
+{
+  "id": "39d353a9-2327-4de1-9677-d896152844ff",
+  "name": "Print",
+  "category": "Actions",
+  "block_type": "action",
+  "description": "Print a message to console",
+  "inputs": [
+    {
+      "name": "message",
+      "type": "string",
+      "default_value": "Hello World!",
+      "description": "Message to print",
+      "required": true,
+      "options": null
+    }
+  ],
+  "outputs": [],
+  "code_template": "print({message})",
+  "icon": "",
+  "color": "#4ECDC4"
+}

@@ -24,9 +24,50 @@ class TextureRect(Control):
     def __init__(self, name: str = "TextureRect"):
         super().__init__(name)
         self.type = "TextureRect"
-        
+
+        # Export variables for editor
+        self.export_variables.update({
+            "texture": {
+                "type": "path",
+                "value": "",
+                "filter": "*.png,*.jpg,*.jpeg,*.bmp,*.tga",
+                "description": "Texture file to display"
+            },
+            "stretch_mode": {
+                "type": "enum",
+                "value": "stretch",
+                "options": ["stretch", "tile", "keep", "keep_centered", "keep_aspect", "keep_aspect_centered"],
+                "description": "How the texture is stretched to fit the control"
+            },
+            "expand": {
+                "type": "bool",
+                "value": False,
+                "description": "Whether to expand beyond the control's size"
+            },
+            "filter": {
+                "type": "bool",
+                "value": True,
+                "description": "Enable linear texture filtering"
+            },
+            "flip_h": {
+                "type": "bool",
+                "value": False,
+                "description": "Flip texture horizontally"
+            },
+            "flip_v": {
+                "type": "bool",
+                "value": False,
+                "description": "Flip texture vertically"
+            },
+            "modulate_color": {
+                "type": "color",
+                "value": [1.0, 1.0, 1.0, 1.0],
+                "description": "Color modulation (tint)"
+            }
+        })
+
         # Texture properties
-        self.texture_path = None
+        self.texture_path = ""
         self.texture = None  # Will hold the actual texture object
         
         # Display properties
@@ -127,11 +168,11 @@ class TextureRect(Control):
         self.flip_h = horizontal
         self.flip_v = vertical
     
-    def set_rotation(self, degrees: float):
+    def set_texture_rotation(self, degrees: float):
         """Set texture rotation in degrees"""
         self.rotation = degrees % 360.0
-    
-    def set_region(self, enabled: bool, rect: List[float] = None):
+
+    def set_region(self, enabled: bool, rect: Optional[List[float]] = None):
         """Set texture region (for sprite sheets)"""
         self.use_region = enabled
         if rect:

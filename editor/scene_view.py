@@ -4,7 +4,7 @@ OpenGL-based scene viewport for visual editing
 """
 
 import math
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QLabel
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QPainter, QPen, QColor, QFont, QImage
@@ -618,76 +618,86 @@ class SceneViewport(QOpenGLWidget):
         # All nodes now use the same position property
         position = node_data.get("position", [0, 0])
 
+        # Store original position for UI nodes
+        original_position = position.copy() if isinstance(position, list) else [position[0], position[1]]
+
         # Handle coordinate conversion based on follow_viewport setting
         follow_viewport = node_data.get("follow_viewport", False)  # Default false for non-UI nodes
         if follow_viewport:
-            # Convert viewport coordinates to editor world coordinates
+            # Convert viewport coordinates to editor world coordinates for rendering
             position = self._ui_to_world_coords(position)
 
         glPushMatrix()
-        glTranslatef(position[0], position[1], 0)
+        try:
+            glTranslatef(position[0], position[1], 0)
 
-        # Draw based on node type - use dynamic dispatch
-        draw_method_name = f"draw_{node_type.lower()}"
-        if hasattr(self, draw_method_name):
-            getattr(self, draw_method_name)(node_data)
-        else:
-            # Try common patterns
-            if node_type == "Node2D":
-                self.draw_node2d(node_data)
-            elif node_type in ["Sprite", "AnimatedSprite"]:
-                self.draw_sprite(node_data)
-            elif node_type == "Timer":
-                self.draw_timer(node_data)
-            elif node_type == "Camera2D":
-                self.draw_camera(node_data)
-            elif node_type in ["Control", "Panel", "Label", "Button", "ColorRect", "TextureRect"]:
-                # All UI nodes can use generic UI drawing
-                self.draw_ui_node(node_data)
-            elif node_type == "CanvasLayer":
-                self.draw_canvas_layer(node_data)
-            elif node_type in ["ProgressBar", "AudioStreamPlayer", "AudioStreamPlayer2D",
-                              "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer",
-                              "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
-                # Use generic UI drawing for these types
-                self.draw_ui_node(node_data)
-            elif node_type in ["CollisionShape2D", "CollisionPolygon2D"]:
-                # Physics collision shapes
-                if node_type == "CollisionShape2D":
-                    self.draw_collision_shape(node_data)
-                else:
-                    self.draw_collision_polygon(node_data)
-            elif node_type in ["Area2D", "RigidBody2D", "StaticBody2D", "KinematicBody2D"]:
-                # Physics bodies
-                if node_type == "Area2D":
-                    self.draw_area2d(node_data)
-                elif node_type == "RigidBody2D":
-                    self.draw_rigid_body(node_data)
-                elif node_type == "StaticBody2D":
-                    self.draw_static_body(node_data)
-                else:
-                    self.draw_kinematic_body(node_data)
-            elif node_type == "Light2D":
-                self.draw_light2d(node_data)
-            elif node_type == "TileMap":
-                self.draw_tilemap(node_data)
-            elif node_type == "RayCast2D":
-                self.draw_raycast2d(node_data)
-            elif node_type in ["Path2D", "PathFollow2D"]:
-                if node_type == "Path2D":
-                    self.draw_path2d(node_data)
-                else:
-                    self.draw_pathfollow2d(node_data)
+            # Store the original position in the node data for hit detection
+            node_data["_original_position"] = original_position
+
+            # Draw based on node type - use dynamic dispatch
+            draw_method_name = f"draw_{node_type.lower()}"
+            if hasattr(self, draw_method_name):
+                getattr(self, draw_method_name)(node_data)
             else:
-                # Default node representation
-                self.draw_default_node(node_data)
+                # Try common patterns
+                if node_type == "Node2D":
+                    self.draw_node2d(node_data)
+                elif node_type in ["Sprite", "AnimatedSprite"]:
+                    self.draw_sprite(node_data)
+                elif node_type == "Timer":
+                    self.draw_timer(node_data)
+                elif node_type == "Camera2D":
+                    self.draw_camera(node_data)
+                elif node_type in ["Control", "Panel", "Label", "Button", "ColorRect", "TextureRect"]:
+                    # All UI nodes can use generic UI drawing
+                    self.draw_ui_node(node_data)
+                elif node_type == "CanvasLayer":
+                    self.draw_canvas_layer(node_data)
+                elif node_type in ["ProgressBar", "AudioStreamPlayer", "AudioStreamPlayer2D",
+                                  "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer",
+                                  "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
+                    # Use generic UI drawing for these types
+                    self.draw_ui_node(node_data)
+                elif node_type in ["CollisionShape2D", "CollisionPolygon2D"]:
+                    # Physics collision shapes
+                    if node_type == "CollisionShape2D":
+                        self.draw_collision_shape(node_data)
+                    else:
+                        self.draw_collision_polygon(node_data)
+                elif node_type in ["Area2D", "RigidBody2D", "StaticBody2D", "KinematicBody2D"]:
+                    # Physics bodies
+                    if node_type == "Area2D":
+                        self.draw_area2d(node_data)
+                    elif node_type == "RigidBody2D":
+                        self.draw_rigid_body(node_data)
+                    elif node_type == "StaticBody2D":
+                        self.draw_static_body(node_data)
+                    else:
+                        self.draw_kinematic_body(node_data)
+                elif node_type == "Light2D":
+                    self.draw_light2d(node_data)
+                elif node_type == "TileMap":
+                    self.draw_tilemap(node_data)
+                elif node_type == "RayCast2D":
+                    self.draw_raycast2d(node_data)
+                elif node_type in ["Path2D", "PathFollow2D"]:
+                    if node_type == "Path2D":
+                        self.draw_path2d(node_data)
+                    else:
+                        self.draw_pathfollow2d(node_data)
+                elif node_type == "SceneInstance":
+                    self.draw_scene_instance(node_data)
+                else:
+                    # Default node representation
+                    self.draw_default_node(node_data)
 
-        # Draw children
-        children = node_data.get("children", [])
-        for child in children:
-            self.draw_node(child)
+            # Draw children
+            children = node_data.get("children", [])
+            for child in children:
+                self.draw_node(child)
 
-        glPopMatrix()
+        finally:
+            glPopMatrix()
     
     def draw_node2d(self, node_data: Dict[str, Any]):
         """Draw Node2D"""
@@ -1059,33 +1069,114 @@ class SceneViewport(QOpenGLWidget):
             glVertex2f(x, y)
         glEnd()
 
+    def draw_node_type_label(self, label: str, size: List[float]):
+        """Draw a simple node type label (simplified text rendering)"""
+        # Draw a small indicator with the first letter of the type
+        glColor3f(1.0, 1.0, 0.8)  # Light yellow for labels
+
+        # Draw a small box for the label
+        label_size = 12
+        x_pos = size[0]/2 - label_size - 5
+        y_pos = size[1]/2 - label_size - 5
+
+        glBegin(GL_QUADS)
+        glVertex2f(x_pos, y_pos)
+        glVertex2f(x_pos + label_size, y_pos)
+        glVertex2f(x_pos + label_size, y_pos + label_size)
+        glVertex2f(x_pos, y_pos + label_size)
+        glEnd()
+
+        # Draw border around label
+        glColor3f(0.8, 0.8, 0.6)
+        glBegin(GL_LINE_LOOP)
+        glVertex2f(x_pos, y_pos)
+        glVertex2f(x_pos + label_size, y_pos)
+        glVertex2f(x_pos + label_size, y_pos + label_size)
+        glVertex2f(x_pos, y_pos + label_size)
+        glEnd()
+
+        # Draw a simple representation of the first letter
+        # This is a simplified approach - in a full implementation you'd use proper text rendering
+        glColor3f(0.2, 0.2, 0.2)
+        glLineWidth(2.0)
+
+        first_char = label[0].upper() if label else "N"
+        center_x = x_pos + label_size/2
+        center_y = y_pos + label_size/2
+
+        # Draw simple letter shapes
+        glBegin(GL_LINES)
+        if first_char == "V":
+            glVertex2f(center_x - 3, center_y + 3)
+            glVertex2f(center_x, center_y - 3)
+            glVertex2f(center_x, center_y - 3)
+            glVertex2f(center_x + 3, center_y + 3)
+        elif first_char == "H":
+            glVertex2f(center_x - 3, center_y - 3)
+            glVertex2f(center_x - 3, center_y + 3)
+            glVertex2f(center_x - 3, center_y)
+            glVertex2f(center_x + 3, center_y)
+            glVertex2f(center_x + 3, center_y - 3)
+            glVertex2f(center_x + 3, center_y + 3)
+        elif first_char == "G":
+            # Draw a simplified G
+            glVertex2f(center_x - 2, center_y + 3)
+            glVertex2f(center_x + 2, center_y + 3)
+            glVertex2f(center_x - 2, center_y + 3)
+            glVertex2f(center_x - 2, center_y - 3)
+            glVertex2f(center_x - 2, center_y - 3)
+            glVertex2f(center_x + 2, center_y - 3)
+            glVertex2f(center_x + 2, center_y - 3)
+            glVertex2f(center_x + 2, center_y)
+            glVertex2f(center_x + 2, center_y)
+            glVertex2f(center_x, center_y)
+        elif first_char == "P":
+            # Draw a simplified P
+            glVertex2f(center_x - 3, center_y - 3)
+            glVertex2f(center_x - 3, center_y + 3)
+            glVertex2f(center_x - 3, center_y + 3)
+            glVertex2f(center_x + 2, center_y + 3)
+            glVertex2f(center_x + 2, center_y + 3)
+            glVertex2f(center_x + 2, center_y)
+            glVertex2f(center_x + 2, center_y)
+            glVertex2f(center_x - 3, center_y)
+        else:
+            # Default: draw a simple cross
+            glVertex2f(center_x - 2, center_y - 2)
+            glVertex2f(center_x + 2, center_y + 2)
+            glVertex2f(center_x - 2, center_y + 2)
+            glVertex2f(center_x + 2, center_y - 2)
+        glEnd()
+
+        glLineWidth(1.0)
+
     def draw_control(self, node_data: Dict[str, Any]):
         """Draw Control node (base UI node)"""
-        # Get control properties - now uses position like other nodes
-        rect_size = node_data.get("rect_size", [100.0, 100.0])
+        # Get control properties - now uses size like other UI nodes
+        size = node_data.get("size", [100.0, 100.0])
 
         # Draw control bounds (centered on position)
         glColor3f(0.5, 0.5, 0.8)  # Light blue for UI nodes
         glBegin(GL_LINE_LOOP)
-        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, rect_size[1]/2)
-        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, size[1]/2)
+        glVertex2f(-size[0]/2, size[1]/2)
         glEnd()
 
         # Draw UI indicator (small square in corner)
         glColor3f(0.8, 0.8, 1.0)
         glBegin(GL_QUADS)
-        glVertex2f(rect_size[0]/2 - 8, rect_size[1]/2 - 8)
-        glVertex2f(rect_size[0]/2, rect_size[1]/2 - 8)
-        glVertex2f(rect_size[0]/2, rect_size[1]/2)
-        glVertex2f(rect_size[0]/2 - 8, rect_size[1]/2)
+        glVertex2f(size[0]/2 - 8, size[1]/2 - 8)
+        glVertex2f(size[0]/2, size[1]/2 - 8)
+        glVertex2f(size[0]/2, size[1]/2)
+        glVertex2f(size[0]/2 - 8, size[1]/2)
         glEnd()
 
     def draw_panel(self, node_data: Dict[str, Any]):
         """Draw Panel node"""
-        # Get panel properties - now uses position like other nodes
-        rect_size = node_data.get("rect_size", [100.0, 100.0])
+        # Get panel properties - now uses size like other UI nodes
+        size = node_data.get("size", [100.0, 100.0])
         panel_color = node_data.get("panel_color", [0.2, 0.2, 0.2, 1.0])
         border_width = node_data.get("border_width", 0.0)
         border_color = node_data.get("border_color", [0.0, 0.0, 0.0, 1.0])
@@ -1093,10 +1184,10 @@ class SceneViewport(QOpenGLWidget):
         # Draw panel background (centered on position)
         glColor4f(panel_color[0], panel_color[1], panel_color[2], panel_color[3])
         glBegin(GL_QUADS)
-        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, rect_size[1]/2)
-        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, size[1]/2)
+        glVertex2f(-size[0]/2, size[1]/2)
         glEnd()
 
         # Draw border if enabled
@@ -1104,10 +1195,10 @@ class SceneViewport(QOpenGLWidget):
             glColor3f(border_color[0], border_color[1], border_color[2])
             glLineWidth(border_width)
             glBegin(GL_LINE_LOOP)
-            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, rect_size[1]/2)
-            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, size[1]/2)
+            glVertex2f(-size[0]/2, size[1]/2)
             glEnd()
             glLineWidth(1.0)
 
@@ -1116,23 +1207,23 @@ class SceneViewport(QOpenGLWidget):
         # Simple "P" representation with lines
         glBegin(GL_LINES)
         # Vertical line
-        glVertex2f(rect_size[0]/2 - 12, rect_size[1]/2 - 15)
-        glVertex2f(rect_size[0]/2 - 12, rect_size[1]/2 - 3)
+        glVertex2f(size[0]/2 - 12, size[1]/2 - 15)
+        glVertex2f(size[0]/2 - 12, size[1]/2 - 3)
         # Top horizontal
-        glVertex2f(rect_size[0]/2 - 12, rect_size[1]/2 - 3)
-        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 3)
+        glVertex2f(size[0]/2 - 12, size[1]/2 - 3)
+        glVertex2f(size[0]/2 - 6, size[1]/2 - 3)
         # Middle horizontal
-        glVertex2f(rect_size[0]/2 - 12, rect_size[1]/2 - 9)
-        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 9)
+        glVertex2f(size[0]/2 - 12, size[1]/2 - 9)
+        glVertex2f(size[0]/2 - 6, size[1]/2 - 9)
         # Right vertical (top half)
-        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 9)
-        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 3)
+        glVertex2f(size[0]/2 - 6, size[1]/2 - 9)
+        glVertex2f(size[0]/2 - 6, size[1]/2 - 3)
         glEnd()
 
     def draw_label(self, node_data: Dict[str, Any]):
         """Draw Label node"""
         # Get label properties - now uses position like other nodes
-        rect_size = node_data.get("rect_size", [100.0, 50.0])
+        size = node_data.get("size", [100.0, 50.0])
         text = node_data.get("text", "Label")
         font_color = node_data.get("font_color", [1.0, 1.0, 1.0, 1.0])
         h_align = node_data.get("h_align", "Left")
@@ -1143,10 +1234,10 @@ class SceneViewport(QOpenGLWidget):
         glEnable(GL_LINE_STIPPLE)
         glLineStipple(1, 0xAAAA)  # Dashed line pattern
         glBegin(GL_LINE_LOOP)
-        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, rect_size[1]/2)
-        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, size[1]/2)
+        glVertex2f(-size[0]/2, size[1]/2)
         glEnd()
         glDisable(GL_LINE_STIPPLE)
 
@@ -1157,17 +1248,17 @@ class SceneViewport(QOpenGLWidget):
         font_size = node_data.get("font_size", 14)
 
         # Calculate text position based on alignment (relative to center)
-        text_x = -rect_size[0]/2 + 5  # Default left alignment
+        text_x = -size[0]/2 + 5  # Default left alignment
         if h_align == "Center":
             text_x = -len(text) * 3  # Approximate centering
         elif h_align == "Right":
-            text_x = rect_size[0]/2 - len(text) * 6 - 5  # Approximate right align
+            text_x = size[0]/2 - len(text) * 6 - 5  # Approximate right align
 
-        text_y = rect_size[1]/2 - 15  # Default top alignment
+        text_y = size[1]/2 - 15  # Default top alignment
         if v_align == "Center":
             text_y = 0  # Center vertically
         elif v_align == "Bottom":
-            text_y = -rect_size[1]/2 + 15
+            text_y = -size[1]/2 + 15
 
         # Draw text using OpenGL rendering with pygame fonts
         font_path = node_data.get("font_path", None)  # Get font path from node data
@@ -1177,7 +1268,7 @@ class SceneViewport(QOpenGLWidget):
     def draw_button(self, node_data: Dict[str, Any]):
         """Draw Button node with interactive states"""
         # Get button properties - now uses position like other nodes
-        rect_size = node_data.get("rect_size", [100.0, 30.0])
+        size = node_data.get("size", [100.0, 30.0])
         text = node_data.get("text", "Button")
         font_color = node_data.get("font_color", [1.0, 1.0, 1.0, 1.0])
 
@@ -1212,10 +1303,10 @@ class SceneViewport(QOpenGLWidget):
         # Draw button background (centered on position)
         glColor4f(current_color[0], current_color[1], current_color[2], current_color[3])
         glBegin(GL_QUADS)
-        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, rect_size[1]/2)
-        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, size[1]/2)
+        glVertex2f(-size[0]/2, size[1]/2)
         glEnd()
 
         # Draw border if enabled
@@ -1223,10 +1314,10 @@ class SceneViewport(QOpenGLWidget):
             glColor3f(border_color[0], border_color[1], border_color[2])
             glLineWidth(border_width)
             glBegin(GL_LINE_LOOP)
-            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, rect_size[1]/2)
-            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, size[1]/2)
+            glVertex2f(-size[0]/2, size[1]/2)
             glEnd()
             glLineWidth(1.0)
 
@@ -1250,23 +1341,23 @@ class SceneViewport(QOpenGLWidget):
         # Simple "B" representation with lines
         glBegin(GL_LINES)
         # Vertical line
-        glVertex2f(rect_size[0]/2 - 12, rect_size[1]/2 - 15)
-        glVertex2f(rect_size[0]/2 - 12, rect_size[1]/2 - 3)
+        glVertex2f(size[0]/2 - 12, size[1]/2 - 15)
+        glVertex2f(size[0]/2 - 12, size[1]/2 - 3)
         # Top horizontal
-        glVertex2f(rect_size[0]/2 - 12, rect_size[1]/2 - 3)
-        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 3)
+        glVertex2f(size[0]/2 - 12, size[1]/2 - 3)
+        glVertex2f(size[0]/2 - 6, size[1]/2 - 3)
         # Middle horizontal
-        glVertex2f(rect_size[0]/2 - 12, rect_size[1]/2 - 9)
-        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 9)
+        glVertex2f(size[0]/2 - 12, size[1]/2 - 9)
+        glVertex2f(size[0]/2 - 6, size[1]/2 - 9)
         # Bottom horizontal
-        glVertex2f(rect_size[0]/2 - 12, rect_size[1]/2 - 15)
-        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 15)
+        glVertex2f(size[0]/2 - 12, size[1]/2 - 15)
+        glVertex2f(size[0]/2 - 6, size[1]/2 - 15)
         # Right vertical (top half)
-        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 9)
-        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 3)
+        glVertex2f(size[0]/2 - 6, size[1]/2 - 9)
+        glVertex2f(size[0]/2 - 6, size[1]/2 - 3)
         # Right vertical (bottom half)
-        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 15)
-        glVertex2f(rect_size[0]/2 - 6, rect_size[1]/2 - 9)
+        glVertex2f(size[0]/2 - 6, size[1]/2 - 15)
+        glVertex2f(size[0]/2 - 6, size[1]/2 - 9)
         glEnd()
 
         # Draw state indicators
@@ -1274,19 +1365,19 @@ class SceneViewport(QOpenGLWidget):
             # Draw X for disabled
             glColor3f(0.8, 0.2, 0.2)  # Red for disabled
             glBegin(GL_LINES)
-            glVertex2f(-rect_size[0]/2 + 5, -rect_size[1]/2 + 5)
-            glVertex2f(rect_size[0]/2 - 5, rect_size[1]/2 - 5)
-            glVertex2f(rect_size[0]/2 - 5, -rect_size[1]/2 + 5)
-            glVertex2f(-rect_size[0]/2 + 5, rect_size[1]/2 - 5)
+            glVertex2f(-size[0]/2 + 5, -size[1]/2 + 5)
+            glVertex2f(size[0]/2 - 5, size[1]/2 - 5)
+            glVertex2f(size[0]/2 - 5, -size[1]/2 + 5)
+            glVertex2f(-size[0]/2 + 5, size[1]/2 - 5)
             glEnd()
         elif toggle_mode and pressed:
             # Draw checkmark for pressed toggle
             glColor3f(0.2, 0.8, 0.2)  # Green for pressed toggle
             glBegin(GL_LINES)
-            glVertex2f(-rect_size[0]/2 + 8, 0)
-            glVertex2f(-rect_size[0]/2 + 12, -4)
-            glVertex2f(-rect_size[0]/2 + 12, -4)
-            glVertex2f(-rect_size[0]/2 + 18, 6)
+            glVertex2f(-size[0]/2 + 8, 0)
+            glVertex2f(-size[0]/2 + 12, -4)
+            glVertex2f(-size[0]/2 + 12, -4)
+            glVertex2f(-size[0]/2 + 18, 6)
             glEnd()
 
     def draw_text_bitmap(self, text: str, x: float, y: float, color: list, font_size: int = 14):
@@ -1416,35 +1507,37 @@ class SceneViewport(QOpenGLWidget):
     def draw_color_rect(self, node_data: Dict[str, Any]):
         """Draw ColorRect node"""
         # Get color rect properties
-        rect_size = node_data.get("rect_size", [100.0, 100.0])
+        size = node_data.get("size", [100.0, 100.0])
         color = node_data.get("color", [1.0, 1.0, 1.0, 1.0])
 
         # Draw color rectangle (centered on position)
         glColor4f(color[0], color[1], color[2], color[3])
         glBegin(GL_QUADS)
-        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, rect_size[1]/2)
-        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, size[1]/2)
+        glVertex2f(-size[0]/2, size[1]/2)
         glEnd()
 
         # Draw border for visibility in editor
         glColor3f(0.8, 0.8, 0.9)  # Light color for border
         glBegin(GL_LINE_LOOP)
-        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, rect_size[1]/2)
-        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, size[1]/2)
+        glVertex2f(-size[0]/2, size[1]/2)
         glEnd()
 
     def draw_texture_rect(self, node_data: Dict[str, Any]):
         """Draw TextureRect node"""
         # Get texture rect properties
-        rect_size = node_data.get("rect_size", [100.0, 100.0])
-        texture_path = node_data.get("texture", None)
+        size = node_data.get("size", [100.0, 100.0])
+        # Support both "texture" and "texture_path" properties
+        texture_path = node_data.get("texture") or node_data.get("texture_path")
         stretch_mode = node_data.get("stretch_mode", "stretch")
         flip_h = node_data.get("flip_h", False)
         flip_v = node_data.get("flip_v", False)
+        modulate_color = node_data.get("modulate_color", [1.0, 1.0, 1.0, 1.0])
 
         # Try to load and draw texture if available
         if texture_path and isinstance(texture_path, str):
@@ -1454,13 +1547,14 @@ class SceneViewport(QOpenGLWidget):
 
                 # Calculate draw rectangle based on stretch mode
                 draw_rect = self._calculate_texture_draw_rect(
-                    rect_size, [tex_width, tex_height], stretch_mode
+                    size, [tex_width, tex_height], stretch_mode
                 )
 
                 # Draw textured rectangle
                 glEnable(GL_TEXTURE_2D)
                 glBindTexture(GL_TEXTURE_2D, texture_id)
-                glColor3f(1.0, 1.0, 1.0)  # White to show texture as-is
+                # Apply modulate color (tint)
+                glColor4f(modulate_color[0], modulate_color[1], modulate_color[2], modulate_color[3])
 
                 # Set up texture coordinates based on flip settings
                 u1, v1 = (1.0, 0.0) if flip_h else (0.0, 0.0)
@@ -1485,18 +1579,18 @@ class SceneViewport(QOpenGLWidget):
                 glDisable(GL_TEXTURE_2D)
             else:
                 # Draw placeholder if texture failed to load
-                self._draw_texture_placeholder(rect_size, "MISSING")
+                self._draw_texture_placeholder(size, "MISSING")
         else:
             # Draw placeholder if no texture
-            self._draw_texture_placeholder(rect_size, "NO TEXTURE")
+            self._draw_texture_placeholder(size, "NO TEXTURE")
 
         # Draw border for visibility in editor
         glColor3f(0.9, 0.7, 0.9)  # Light purple for texture rect border
         glBegin(GL_LINE_LOOP)
-        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, rect_size[1]/2)
-        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, size[1]/2)
+        glVertex2f(-size[0]/2, size[1]/2)
         glEnd()
 
     def _calculate_texture_draw_rect(self, control_size, texture_size, stretch_mode):
@@ -1577,7 +1671,7 @@ class SceneViewport(QOpenGLWidget):
     def draw_progress_bar(self, node_data: Dict[str, Any]):
         """Draw ProgressBar node"""
         # Get progress bar properties
-        rect_size = node_data.get("rect_size", [200.0, 24.0])
+        size = node_data.get("size", [200.0, 24.0])
         min_value = node_data.get("min_value", 0.0)
         max_value = node_data.get("max_value", 100.0)
         value = node_data.get("value", 0.0)
@@ -1598,10 +1692,10 @@ class SceneViewport(QOpenGLWidget):
         # Draw background
         glColor4f(background_color[0], background_color[1], background_color[2], background_color[3])
         glBegin(GL_QUADS)
-        glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-        glVertex2f(rect_size[0]/2, rect_size[1]/2)
-        glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+        glVertex2f(-size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, -size[1]/2)
+        glVertex2f(size[0]/2, size[1]/2)
+        glVertex2f(-size[0]/2, size[1]/2)
         glEnd()
 
         # Draw fill based on fill mode
@@ -1609,45 +1703,45 @@ class SceneViewport(QOpenGLWidget):
             glColor4f(fill_color[0], fill_color[1], fill_color[2], fill_color[3])
 
             if fill_mode == "left_to_right":
-                fill_width = rect_size[0] * ratio
+                fill_width = size[0] * ratio
                 glBegin(GL_QUADS)
-                glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-                glVertex2f(-rect_size[0]/2 + fill_width, -rect_size[1]/2)
-                glVertex2f(-rect_size[0]/2 + fill_width, rect_size[1]/2)
-                glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+                glVertex2f(-size[0]/2, -size[1]/2)
+                glVertex2f(-size[0]/2 + fill_width, -size[1]/2)
+                glVertex2f(-size[0]/2 + fill_width, size[1]/2)
+                glVertex2f(-size[0]/2, size[1]/2)
                 glEnd()
             elif fill_mode == "right_to_left":
-                fill_width = rect_size[0] * ratio
+                fill_width = size[0] * ratio
                 glBegin(GL_QUADS)
-                glVertex2f(rect_size[0]/2 - fill_width, -rect_size[1]/2)
-                glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-                glVertex2f(rect_size[0]/2, rect_size[1]/2)
-                glVertex2f(rect_size[0]/2 - fill_width, rect_size[1]/2)
+                glVertex2f(size[0]/2 - fill_width, -size[1]/2)
+                glVertex2f(size[0]/2, -size[1]/2)
+                glVertex2f(size[0]/2, size[1]/2)
+                glVertex2f(size[0]/2 - fill_width, size[1]/2)
                 glEnd()
             elif fill_mode == "top_to_bottom":
-                fill_height = rect_size[1] * ratio
+                fill_height = size[1] * ratio
                 glBegin(GL_QUADS)
-                glVertex2f(-rect_size[0]/2, rect_size[1]/2 - fill_height)
-                glVertex2f(rect_size[0]/2, rect_size[1]/2 - fill_height)
-                glVertex2f(rect_size[0]/2, rect_size[1]/2)
-                glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+                glVertex2f(-size[0]/2, size[1]/2 - fill_height)
+                glVertex2f(size[0]/2, size[1]/2 - fill_height)
+                glVertex2f(size[0]/2, size[1]/2)
+                glVertex2f(-size[0]/2, size[1]/2)
                 glEnd()
             elif fill_mode == "bottom_to_top":
-                fill_height = rect_size[1] * ratio
+                fill_height = size[1] * ratio
                 glBegin(GL_QUADS)
-                glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-                glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-                glVertex2f(rect_size[0]/2, -rect_size[1]/2 + fill_height)
-                glVertex2f(-rect_size[0]/2, -rect_size[1]/2 + fill_height)
+                glVertex2f(-size[0]/2, -size[1]/2)
+                glVertex2f(size[0]/2, -size[1]/2)
+                glVertex2f(size[0]/2, -size[1]/2 + fill_height)
+                glVertex2f(-size[0]/2, -size[1]/2 + fill_height)
                 glEnd()
             elif fill_mode == "center_expand":
-                fill_width = rect_size[0] * ratio
-                offset = (rect_size[0] - fill_width) / 2
+                fill_width = size[0] * ratio
+                offset = (size[0] - fill_width) / 2
                 glBegin(GL_QUADS)
-                glVertex2f(-rect_size[0]/2 + offset, -rect_size[1]/2)
-                glVertex2f(rect_size[0]/2 - offset, -rect_size[1]/2)
-                glVertex2f(rect_size[0]/2 - offset, rect_size[1]/2)
-                glVertex2f(-rect_size[0]/2 + offset, rect_size[1]/2)
+                glVertex2f(-size[0]/2 + offset, -size[1]/2)
+                glVertex2f(size[0]/2 - offset, -size[1]/2)
+                glVertex2f(size[0]/2 - offset, size[1]/2)
+                glVertex2f(-size[0]/2 + offset, size[1]/2)
                 glEnd()
 
         # Draw border
@@ -1655,10 +1749,10 @@ class SceneViewport(QOpenGLWidget):
             glColor4f(border_color[0], border_color[1], border_color[2], border_color[3])
             glLineWidth(border_width)
             glBegin(GL_LINE_LOOP)
-            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, rect_size[1]/2)
-            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, size[1]/2)
+            glVertex2f(-size[0]/2, size[1]/2)
             glEnd()
             glLineWidth(1.0)
 
@@ -1824,7 +1918,7 @@ class SceneViewport(QOpenGLWidget):
 
     def draw_vbox_container(self, node_data: Dict[str, Any]):
         """Draw VBoxContainer node"""
-        rect_size = node_data.get("rect_size", [100.0, 100.0])
+        size = node_data.get("size", [100.0, 100.0])
         separation = node_data.get("separation", 4.0)
         alignment = node_data.get("alignment", "top")
         background_color = node_data.get("background_color", [0.0, 0.0, 0.0, 0.0])
@@ -1839,10 +1933,10 @@ class SceneViewport(QOpenGLWidget):
         if background_color[3] > 0.0:
             glColor4f(background_color[0], background_color[1], background_color[2], background_color[3])
             glBegin(GL_QUADS)
-            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, rect_size[1]/2)
-            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, size[1]/2)
+            glVertex2f(-size[0]/2, size[1]/2)
             glEnd()
 
         # Draw border if enabled
@@ -1850,10 +1944,10 @@ class SceneViewport(QOpenGLWidget):
             glColor4f(border_color[0], border_color[1], border_color[2], border_color[3])
             glLineWidth(border_width)
             glBegin(GL_LINE_LOOP)
-            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, rect_size[1]/2)
-            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, size[1]/2)
+            glVertex2f(-size[0]/2, size[1]/2)
             glEnd()
             glLineWidth(1.0)
 
@@ -1862,23 +1956,23 @@ class SceneViewport(QOpenGLWidget):
             glColor3f(0.3, 0.7, 0.3)  # Green for margins
             glLineWidth(1.0)
             glBegin(GL_LINE_LOOP)
-            glVertex2f(-rect_size[0]/2 + container_margin_left, -rect_size[1]/2 + container_margin_bottom)
-            glVertex2f(rect_size[0]/2 - container_margin_right, -rect_size[1]/2 + container_margin_bottom)
-            glVertex2f(rect_size[0]/2 - container_margin_right, rect_size[1]/2 - container_margin_top)
-            glVertex2f(-rect_size[0]/2 + container_margin_left, rect_size[1]/2 - container_margin_top)
+            glVertex2f(-size[0]/2 + container_margin_left, -size[1]/2 + container_margin_bottom)
+            glVertex2f(size[0]/2 - container_margin_right, -size[1]/2 + container_margin_bottom)
+            glVertex2f(size[0]/2 - container_margin_right, size[1]/2 - container_margin_top)
+            glVertex2f(-size[0]/2 + container_margin_left, size[1]/2 - container_margin_top)
             glEnd()
 
         # Draw layout indicator (vertical arrows)
         glColor3f(0.8, 0.8, 0.2)  # Yellow for layout direction
         glBegin(GL_LINES)
         # Vertical line
-        glVertex2f(0, -rect_size[1]/4)
-        glVertex2f(0, rect_size[1]/4)
+        glVertex2f(0, -size[1]/4)
+        glVertex2f(0, size[1]/4)
         # Arrow heads
-        glVertex2f(0, rect_size[1]/4)
-        glVertex2f(-5, rect_size[1]/4 - 8)
-        glVertex2f(0, rect_size[1]/4)
-        glVertex2f(5, rect_size[1]/4 - 8)
+        glVertex2f(0, size[1]/4)
+        glVertex2f(-5, size[1]/4 - 8)
+        glVertex2f(0, size[1]/4)
+        glVertex2f(5, size[1]/4 - 8)
         glEnd()
 
         # Draw alignment indicator
@@ -1891,13 +1985,13 @@ class SceneViewport(QOpenGLWidget):
         elif alignment == "bottom":
             glColor3f(1.0, 1.0, 0.0)
             glBegin(GL_LINES)
-            glVertex2f(-10, -rect_size[1]/4)
-            glVertex2f(10, -rect_size[1]/4)
+            glVertex2f(-10, -size[1]/4)
+            glVertex2f(10, -size[1]/4)
             glEnd()
 
     def draw_hbox_container(self, node_data: Dict[str, Any]):
         """Draw HBoxContainer node"""
-        rect_size = node_data.get("rect_size", [100.0, 100.0])
+        size = node_data.get("size", [100.0, 100.0])
         separation = node_data.get("separation", 4.0)
         alignment = node_data.get("alignment", "left")
         background_color = node_data.get("background_color", [0.0, 0.0, 0.0, 0.0])
@@ -1912,10 +2006,10 @@ class SceneViewport(QOpenGLWidget):
         if background_color[3] > 0.0:
             glColor4f(background_color[0], background_color[1], background_color[2], background_color[3])
             glBegin(GL_QUADS)
-            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, rect_size[1]/2)
-            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, size[1]/2)
+            glVertex2f(-size[0]/2, size[1]/2)
             glEnd()
 
         # Draw border if enabled
@@ -1923,10 +2017,10 @@ class SceneViewport(QOpenGLWidget):
             glColor4f(border_color[0], border_color[1], border_color[2], border_color[3])
             glLineWidth(border_width)
             glBegin(GL_LINE_LOOP)
-            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, rect_size[1]/2)
-            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, size[1]/2)
+            glVertex2f(-size[0]/2, size[1]/2)
             glEnd()
             glLineWidth(1.0)
 
@@ -1935,23 +2029,23 @@ class SceneViewport(QOpenGLWidget):
             glColor3f(0.3, 0.7, 0.3)  # Green for margins
             glLineWidth(1.0)
             glBegin(GL_LINE_LOOP)
-            glVertex2f(-rect_size[0]/2 + container_margin_left, -rect_size[1]/2 + container_margin_bottom)
-            glVertex2f(rect_size[0]/2 - container_margin_right, -rect_size[1]/2 + container_margin_bottom)
-            glVertex2f(rect_size[0]/2 - container_margin_right, rect_size[1]/2 - container_margin_top)
-            glVertex2f(-rect_size[0]/2 + container_margin_left, rect_size[1]/2 - container_margin_top)
+            glVertex2f(-size[0]/2 + container_margin_left, -size[1]/2 + container_margin_bottom)
+            glVertex2f(size[0]/2 - container_margin_right, -size[1]/2 + container_margin_bottom)
+            glVertex2f(size[0]/2 - container_margin_right, size[1]/2 - container_margin_top)
+            glVertex2f(-size[0]/2 + container_margin_left, size[1]/2 - container_margin_top)
             glEnd()
 
         # Draw layout indicator (horizontal arrows)
         glColor3f(0.8, 0.8, 0.2)  # Yellow for layout direction
         glBegin(GL_LINES)
         # Horizontal line
-        glVertex2f(-rect_size[0]/4, 0)
-        glVertex2f(rect_size[0]/4, 0)
+        glVertex2f(-size[0]/4, 0)
+        glVertex2f(size[0]/4, 0)
         # Arrow heads
-        glVertex2f(rect_size[0]/4, 0)
-        glVertex2f(rect_size[0]/4 - 8, -5)
-        glVertex2f(rect_size[0]/4, 0)
-        glVertex2f(rect_size[0]/4 - 8, 5)
+        glVertex2f(size[0]/4, 0)
+        glVertex2f(size[0]/4 - 8, -5)
+        glVertex2f(size[0]/4, 0)
+        glVertex2f(size[0]/4 - 8, 5)
         glEnd()
 
         # Draw alignment indicator
@@ -1964,13 +2058,13 @@ class SceneViewport(QOpenGLWidget):
         elif alignment == "right":
             glColor3f(1.0, 1.0, 0.0)
             glBegin(GL_LINES)
-            glVertex2f(rect_size[0]/4, -10)
-            glVertex2f(rect_size[0]/4, 10)
+            glVertex2f(size[0]/4, -10)
+            glVertex2f(size[0]/4, 10)
             glEnd()
 
     def draw_center_container(self, node_data: Dict[str, Any]):
         """Draw CenterContainer node"""
-        rect_size = node_data.get("rect_size", [100.0, 100.0])
+        size = node_data.get("size", [100.0, 100.0])
         use_top_left = node_data.get("use_top_left", False)
         background_color = node_data.get("background_color", [0.0, 0.0, 0.0, 0.0])
         border_color = node_data.get("border_color", [0.5, 0.5, 0.5, 1.0])
@@ -1984,10 +2078,10 @@ class SceneViewport(QOpenGLWidget):
         if background_color[3] > 0.0:
             glColor4f(background_color[0], background_color[1], background_color[2], background_color[3])
             glBegin(GL_QUADS)
-            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, rect_size[1]/2)
-            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, size[1]/2)
+            glVertex2f(-size[0]/2, size[1]/2)
             glEnd()
 
         # Draw border if enabled
@@ -1995,10 +2089,10 @@ class SceneViewport(QOpenGLWidget):
             glColor4f(border_color[0], border_color[1], border_color[2], border_color[3])
             glLineWidth(border_width)
             glBegin(GL_LINE_LOOP)
-            glVertex2f(-rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, -rect_size[1]/2)
-            glVertex2f(rect_size[0]/2, rect_size[1]/2)
-            glVertex2f(-rect_size[0]/2, rect_size[1]/2)
+            glVertex2f(-size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, -size[1]/2)
+            glVertex2f(size[0]/2, size[1]/2)
+            glVertex2f(-size[0]/2, size[1]/2)
             glEnd()
             glLineWidth(1.0)
 
@@ -2007,10 +2101,10 @@ class SceneViewport(QOpenGLWidget):
             glColor3f(0.3, 0.7, 0.3)  # Green for margins
             glLineWidth(1.0)
             glBegin(GL_LINE_LOOP)
-            glVertex2f(-rect_size[0]/2 + container_margin_left, -rect_size[1]/2 + container_margin_bottom)
-            glVertex2f(rect_size[0]/2 - container_margin_right, -rect_size[1]/2 + container_margin_bottom)
-            glVertex2f(rect_size[0]/2 - container_margin_right, rect_size[1]/2 - container_margin_top)
-            glVertex2f(-rect_size[0]/2 + container_margin_left, rect_size[1]/2 - container_margin_top)
+            glVertex2f(-size[0]/2 + container_margin_left, -size[1]/2 + container_margin_bottom)
+            glVertex2f(size[0]/2 - container_margin_right, -size[1]/2 + container_margin_bottom)
+            glVertex2f(size[0]/2 - container_margin_right, size[1]/2 - container_margin_top)
+            glVertex2f(-size[0]/2 + container_margin_left, size[1]/2 - container_margin_top)
             glEnd()
 
         # Draw center indicator (crosshair)
@@ -2577,48 +2671,48 @@ class SceneViewport(QOpenGLWidget):
 
         # Simple text indicators for different UI types
         if node_type == "Button":
-            self.draw_simple_text("BTN", 0, 0, 8)
+            self.draw_text_opengl("BTN", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "Label":
-            self.draw_simple_text("LBL", 0, 0, 8)
+            self.draw_text_opengl("LBL", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "Panel":
-            self.draw_simple_text("PNL", 0, 0, 8)
+            self.draw_text_opengl("PNL", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "ProgressBar":
-            self.draw_simple_text("PGB", 0, 0, 8)
+            self.draw_text_opengl("PGB", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "ColorRect":
-            self.draw_simple_text("CLR", 0, 0, 8)
+            self.draw_text_opengl("CLR", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "TextureRect":
-            self.draw_simple_text("TEX", 0, 0, 8)
+            self.draw_text_opengl("TEX", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "NinePatchRect":
-            self.draw_simple_text("9PT", 0, 0, 8)
+            self.draw_text_opengl("9PT", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "VBoxContainer":
-            self.draw_simple_text("VBX", 0, 0, 8)
+            self.draw_text_opengl("VBX", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "HBoxContainer":
-            self.draw_simple_text("HBX", 0, 0, 8)
+            self.draw_text_opengl("HBX", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "CenterContainer":
-            self.draw_simple_text("CTR", 0, 0, 8)
+            self.draw_text_opengl("CTR", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "GridContainer":
-            self.draw_simple_text("GRD", 0, 0, 8)
+            self.draw_text_opengl("GRD", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "PanelContainer":
-            self.draw_simple_text("PC", 0, 0, 8)
+            self.draw_text_opengl("PC", -12, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "LineEdit":
-            self.draw_simple_text("EDT", 0, 0, 8)
+            self.draw_text_opengl("EDT", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "CheckBox":
-            self.draw_simple_text("CHK", 0, 0, 8)
+            self.draw_text_opengl("CHK", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "Slider":
-            self.draw_simple_text("SLD", 0, 0, 8)
+            self.draw_text_opengl("SLD", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "ScrollContainer":
-            self.draw_simple_text("SCR", 0, 0, 8)
+            self.draw_text_opengl("SCR", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "ItemList":
-            self.draw_simple_text("LST", 0, 0, 8)
+            self.draw_text_opengl("LST", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "HSeparator":
-            self.draw_simple_text("H-", 0, 0, 8)
+            self.draw_text_opengl("H-", -6, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "VSeparator":
-            self.draw_simple_text("V|", 0, 0, 8)
+            self.draw_text_opengl("V|", -6, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         elif node_type == "RichTextLabel":
-            self.draw_simple_text("RTL", 0, 0, 8)
+            self.draw_text_opengl("RTL", -8, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
         else:
             # Generic UI indicator
-            self.draw_simple_text("UI", 0, 0, 8)
+            self.draw_text_opengl("UI", -6, -4, None, 8, (1.0, 1.0, 1.0, 1.0))
 
     def draw_canvas_layer(self, node_data: Dict[str, Any]):
         """Draw CanvasLayer node"""
@@ -2984,62 +3078,182 @@ class SceneViewport(QOpenGLWidget):
             glEnd()
 
     def draw_tilemap(self, node_data: Dict[str, Any]):
-        """Draw TileMap node"""
+        """Draw TileMap node with layer support"""
         cell_size = node_data.get("cell_size", [32.0, 32.0])
         tiles = node_data.get("tiles", {})
+        layers = node_data.get("layers", [])
         modulate = node_data.get("modulate", [1.0, 1.0, 1.0, 1.0])
+        opacity = node_data.get("opacity", 1.0)
 
-        # Set color
-        glColor3f(modulate[0], modulate[1], modulate[2])
-
-        # Draw grid for tilemap
-        if tiles:
-            # Find bounds of tiles
-            min_x = min_y = float('inf')
-            max_x = max_y = float('-inf')
-
-            for key in tiles.keys():
-                x, y = map(int, key.split(','))
-                min_x = min(min_x, x)
-                max_x = max(max_x, x)
-                min_y = min(min_y, y)
-                max_y = max(max_y, y)
-
-            # Draw grid lines
-            glBegin(GL_LINES)
-            for x in range(min_x, max_x + 2):
-                world_x = x * cell_size[0]
-                glVertex2f(world_x, min_y * cell_size[1])
-                glVertex2f(world_x, (max_y + 1) * cell_size[1])
-
-            for y in range(min_y, max_y + 2):
-                world_y = y * cell_size[1]
-                glVertex2f(min_x * cell_size[0], world_y)
-                glVertex2f((max_x + 1) * cell_size[0], world_y)
-            glEnd()
-
-            # Draw filled tiles
-            glColor3f(0.8, 0.8, 0.8)
-            for key, tile_id in tiles.items():
-                if tile_id >= 0:
-                    x, y = map(int, key.split(','))
-                    world_x = x * cell_size[0]
-                    world_y = y * cell_size[1]
-
-                    glBegin(GL_QUADS)
-                    glVertex2f(world_x, world_y)
-                    glVertex2f(world_x + cell_size[0], world_y)
-                    glVertex2f(world_x + cell_size[0], world_y + cell_size[1])
-                    glVertex2f(world_x, world_y + cell_size[1])
-                    glEnd()
+        # Handle both old and new tile data formats
+        if isinstance(tiles, dict) and tiles:
+            # Check if this is the new layered format
+            first_key = next(iter(tiles.keys()))
+            if first_key.isdigit():
+                # New layered format
+                self._draw_layered_tilemap(tiles, layers, cell_size, modulate, opacity)
+            else:
+                # Old format - treat as single layer
+                self._draw_single_layer_tilemap(tiles, cell_size, modulate, opacity)
         else:
             # Draw placeholder grid
+            glColor3f(modulate[0] * 0.5, modulate[1] * 0.5, modulate[2] * 0.5)
             glBegin(GL_LINE_LOOP)
             glVertex2f(0, 0)
             glVertex2f(cell_size[0] * 3, 0)
             glVertex2f(cell_size[0] * 3, cell_size[1] * 3)
             glVertex2f(0, cell_size[1] * 3)
             glEnd()
+
+    def _draw_layered_tilemap(self, tiles: Dict[str, Dict[str, Any]], layers: List[Dict[str, Any]],
+                             cell_size: List[float], modulate: List[float], opacity: float):
+        """Draw tilemap with multiple layers"""
+        # Draw layers in order (background to foreground)
+        for layer_index, layer in enumerate(layers):
+            if not layer.get("visible", True):
+                continue
+
+            layer_key = str(layer_index)
+            if layer_key not in tiles:
+                continue
+
+            layer_tiles = tiles[layer_key]
+            layer_opacity = layer.get("opacity", 1.0) * opacity
+
+            # Set layer color with opacity
+            layer_color = [
+                modulate[0] * layer_opacity,
+                modulate[1] * layer_opacity,
+                modulate[2] * layer_opacity
+            ]
+
+            self._draw_tiles_for_layer(layer_tiles, cell_size, layer_color, layer_index)
+
+    def _draw_single_layer_tilemap(self, tiles: Dict[str, Any], cell_size: List[float],
+                                  modulate: List[float], opacity: float):
+        """Draw tilemap with single layer (legacy format)"""
+        color = [modulate[0] * opacity, modulate[1] * opacity, modulate[2] * opacity]
+        self._draw_tiles_for_layer(tiles, cell_size, color, 0)
+
+    def _draw_tiles_for_layer(self, layer_tiles: Dict[str, Any], cell_size: List[float],
+                             color: List[float], layer_index: int):
+        """Draw tiles for a specific layer"""
+        if not layer_tiles:
+            return
+
+        # Find bounds of tiles for grid drawing
+        min_x = min_y = float('inf')
+        max_x = max_y = float('-inf')
+
+        valid_tiles = []
+        for pos_key, tile_data in layer_tiles.items():
+            try:
+                x, y = map(int, pos_key.split(','))
+                min_x = min(min_x, x)
+                max_x = max(max_x, x)
+                min_y = min(min_y, y)
+                max_y = max(max_y, y)
+
+                # Handle both old format (tile_id as value) and new format (tile_data dict)
+                if isinstance(tile_data, dict):
+                    tile_id = tile_data.get("tile_id", -1)
+                else:
+                    tile_id = tile_data
+
+                if tile_id >= 0:
+                    valid_tiles.append((x, y, tile_id))
+            except (ValueError, TypeError):
+                continue
+
+        if not valid_tiles:
+            return
+
+        # Draw grid lines for this layer (subtle)
+        grid_alpha = 0.3 if layer_index == 0 else 0.1  # More visible for base layer
+        glColor3f(color[0] * grid_alpha, color[1] * grid_alpha, color[2] * grid_alpha)
+        glBegin(GL_LINES)
+
+        # Vertical lines
+        for x in range(min_x, max_x + 2):
+            world_x = x * cell_size[0]
+            glVertex2f(world_x, min_y * cell_size[1])
+            glVertex2f(world_x, (max_y + 1) * cell_size[1])
+
+        # Horizontal lines
+        for y in range(min_y, max_y + 2):
+            world_y = y * cell_size[1]
+            glVertex2f(min_x * cell_size[0], world_y)
+            glVertex2f((max_x + 1) * cell_size[0], world_y)
+        glEnd()
+
+        # Draw filled tiles
+        glColor3f(color[0], color[1], color[2])
+
+        for x, y, tile_id in valid_tiles:
+            world_x = x * cell_size[0]
+            world_y = y * cell_size[1]
+
+            # Draw tile as filled quad
+            glBegin(GL_QUADS)
+            glVertex2f(world_x, world_y)
+            glVertex2f(world_x + cell_size[0], world_y)
+            glVertex2f(world_x + cell_size[0], world_y + cell_size[1])
+            glVertex2f(world_x, world_y + cell_size[1])
+            glEnd()
+
+            # Draw tile border
+            glColor3f(color[0] * 0.7, color[1] * 0.7, color[2] * 0.7)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(world_x, world_y)
+            glVertex2f(world_x + cell_size[0], world_y)
+            glVertex2f(world_x + cell_size[0], world_y + cell_size[1])
+            glVertex2f(world_x, world_y + cell_size[1])
+            glEnd()
+
+            # Draw tile ID for debugging (small text)
+            glColor3f(1.0, 1.0, 1.0)  # White text
+            # Simple tile ID indicator - draw small number representation
+            if tile_id < 10:
+                # Draw single digit as simple lines
+                self._draw_simple_digit(tile_id, world_x + 2, world_y + 2, 8)
+
+            # Reset color for next tile
+            glColor3f(color[0], color[1], color[2])
+
+    def _draw_simple_digit(self, digit: int, x: float, y: float, size: float):
+        """Draw a simple digit using OpenGL lines"""
+        # Simple 7-segment style digit drawing
+        glBegin(GL_LINES)
+
+        if digit == 0:
+            # Draw 0
+            glVertex2f(x, y)
+            glVertex2f(x + size, y)
+            glVertex2f(x + size, y)
+            glVertex2f(x + size, y + size)
+            glVertex2f(x + size, y + size)
+            glVertex2f(x, y + size)
+            glVertex2f(x, y + size)
+            glVertex2f(x, y)
+        elif digit == 1:
+            # Draw 1
+            glVertex2f(x + size/2, y)
+            glVertex2f(x + size/2, y + size)
+        elif digit == 2:
+            # Draw 2
+            glVertex2f(x, y)
+            glVertex2f(x + size, y)
+            glVertex2f(x + size, y)
+            glVertex2f(x + size, y + size/2)
+            glVertex2f(x + size, y + size/2)
+            glVertex2f(x, y + size/2)
+            glVertex2f(x, y + size/2)
+            glVertex2f(x, y + size)
+            glVertex2f(x, y + size)
+            glVertex2f(x + size, y + size)
+        # Add more digits as needed...
+
+        glEnd()
 
     def draw_raycast2d(self, node_data: Dict[str, Any]):
         """Draw RayCast2D node"""
@@ -3147,6 +3361,74 @@ class SceneViewport(QOpenGLWidget):
             glVertex2f(size + 5, 0)
             glEnd()
 
+    def draw_scene_instance(self, node_data: Dict[str, Any]):
+        """Draw SceneInstance node"""
+        scene_path = node_data.get("scene_path", "")
+        editable_children = node_data.get("editable_children", False)
+
+        # Draw scene instance indicator (folder-like icon with scene symbol)
+        if scene_path:
+            glColor3f(0.2, 0.8, 0.2)  # Green for valid scene instance
+        else:
+            glColor3f(0.8, 0.2, 0.2)  # Red for invalid scene instance
+
+        # Draw folder-like shape
+        glBegin(GL_LINE_LOOP)
+        glVertex2f(-15, -10)
+        glVertex2f(-10, -15)
+        glVertex2f(15, -15)
+        glVertex2f(15, 10)
+        glVertex2f(-15, 10)
+        glEnd()
+
+        # Draw folder tab
+        glBegin(GL_LINE_STRIP)
+        glVertex2f(-15, 10)
+        glVertex2f(-10, 15)
+        glVertex2f(-5, 15)
+        glVertex2f(-5, 10)
+        glEnd()
+
+        # Draw scene symbol inside (small tree-like structure)
+        glColor3f(1.0, 1.0, 1.0)  # White for scene symbol
+        glBegin(GL_LINES)
+        # Root node
+        glVertex2f(0, 5)
+        glVertex2f(0, -5)
+        # Child nodes
+        glVertex2f(0, 0)
+        glVertex2f(-8, -8)
+        glVertex2f(0, 0)
+        glVertex2f(8, -8)
+        glEnd()
+
+        # Draw small circles for nodes
+        for x, y in [(0, 5), (-8, -8), (8, -8)]:
+            glBegin(GL_LINE_LOOP)
+            for i in range(8):
+                angle = 2 * math.pi * i / 8
+                px = x + 2 * math.cos(angle)
+                py = y + 2 * math.sin(angle)
+                glVertex2f(px, py)
+            glEnd()
+
+        # Draw editable indicator if children are editable
+        if editable_children:
+            glColor3f(1.0, 1.0, 0.0)  # Yellow for editable
+            glBegin(GL_LINES)
+            glVertex2f(12, 12)
+            glVertex2f(15, 12)
+            glVertex2f(15, 12)
+            glVertex2f(15, 15)
+            glEnd()
+
+        # Draw scene path as text if available
+        if scene_path:
+            scene_name = scene_path.split("/")[-1].replace(".scene", "")
+            # Draw simplified text indicator
+            glColor3f(0.8, 0.8, 0.8)
+            self.draw_text_opengl(scene_name[:8], -20, -25, None, 10, (0.8, 0.8, 0.8, 1.0))
+
     def wheelEvent(self, event):
         """Handle mouse wheel for zooming"""
         delta = event.angleDelta().y()
@@ -3181,12 +3463,8 @@ class SceneViewport(QOpenGLWidget):
                             self.is_scaling = True
 
                         self.drag_start_pos = world_pos
-                        # Safely get position with validation - check if UI node
-                        node_type = self.selected_node.get("type", "")
-                        if self._is_ui_node(node_type):
-                            node_pos = self.selected_node.get("rect_position", [0, 0])
-                        else:
-                            node_pos = self.selected_node.get("position", [0, 0])
+                        # All nodes now use the same position property
+                        node_pos = self.selected_node.get("position", [0, 0])
 
                         if isinstance(node_pos, list) and len(node_pos) >= 2:
                             self.drag_start_node_pos = [float(node_pos[0]), float(node_pos[1])]
@@ -3260,9 +3538,10 @@ class SceneViewport(QOpenGLWidget):
 
                     if follow_viewport:
                         # For UI nodes, convert world delta to UI delta
-                        # UI coordinates have different scaling than world coordinates
-                        ui_delta_x = delta_x * self.game_width / self.view_width * self.zoom
-                        ui_delta_y = -delta_y * self.game_height / self.view_height * self.zoom  # Flip Y
+                        # World delta is in world coordinates, need to convert to UI coordinates
+                        # Use the same scaling as the coordinate conversion
+                        ui_delta_x = delta_x * self.game_width / self.view_width
+                        ui_delta_y = -delta_y * self.game_height / self.view_height  # Flip Y
 
                         new_pos = [
                             self.drag_start_node_pos[0] + ui_delta_x,
@@ -3451,24 +3730,32 @@ class SceneViewport(QOpenGLWidget):
         # UI coordinates are in game bounds space (0,0 at top-left, Y increases downward)
         # Editor world coordinates are centered at (0,0), Y increases upward
 
-        # Convert from UI space to world space
-        # UI (0,0) should map to world (-game_width/2, +game_height/2)
-        # UI Y increases downward, world Y increases upward, so we need to flip Y
-        world_x = ui_position[0] - self.game_width / 2
-        world_y = (self.game_height / 2) - ui_position[1]  # Flip Y axis
+        # Scale UI coordinates to world coordinates based on current view
+        # UI coordinates are in game bounds (0 to game_width, 0 to game_height)
+        # World coordinates are in view bounds (-view_width/2 to +view_width/2, etc.)
+
+        # Convert UI position to normalized coordinates (0 to 1)
+        norm_x = ui_position[0] / self.game_width
+        norm_y = ui_position[1] / self.game_height
+
+        # Convert to world coordinates
+        world_x = (norm_x - 0.5) * self.view_width
+        world_y = (0.5 - norm_y) * self.view_height  # Flip Y axis
 
         return [world_x, world_y]
 
     def _world_to_ui_coords(self, world_position):
         """Convert editor world coordinates to UI coordinates (game bounds space)"""
-        # World coordinates are centered at (0,0), Y increases upward
+        # World coordinates are in view bounds (-view_width/2 to +view_width/2, etc.)
         # UI coordinates are in game bounds space (0,0 at top-left), Y increases downward
 
-        # Convert from world space to UI space
-        # World (0,0) should map to UI (game_width/2, game_height/2)
-        # World Y increases upward, UI Y increases downward, so we need to flip Y
-        ui_x = world_position[0] + self.game_width / 2
-        ui_y = (self.game_height / 2) - world_position[1]  # Flip Y axis
+        # Convert world coordinates to normalized coordinates (0 to 1)
+        norm_x = (world_position[0] / self.view_width) + 0.5
+        norm_y = 0.5 - (world_position[1] / self.view_height)  # Flip Y axis
+
+        # Convert to UI coordinates
+        ui_x = norm_x * self.game_width
+        ui_y = norm_y * self.game_height
 
         return [ui_x, ui_y]
 
@@ -3478,29 +3765,45 @@ class SceneViewport(QOpenGLWidget):
         """Ensure node has all required properties with safe defaults"""
         node_type = node.get("type", "")
 
+        # All nodes now use position, rotation, scale consistently
+        if "position" not in node or not isinstance(node["position"], list) or len(node["position"]) < 2:
+            node["position"] = [0.0, 0.0]
+
+        if "rotation" not in node or not isinstance(node["rotation"], (int, float)):
+            node["rotation"] = 0.0
+
+        if "scale" not in node or not isinstance(node["scale"], list) or len(node["scale"]) < 2:
+            node["scale"] = [1.0, 1.0]
+
+        # UI nodes also need size property
         if self._is_ui_node(node_type):
-            # UI nodes use rect_position and rect_size
-            if "rect_position" not in node or not isinstance(node["rect_position"], list) or len(node["rect_position"]) < 2:
-                node["rect_position"] = [0.0, 0.0]
-            if "rect_size" not in node or not isinstance(node["rect_size"], list) or len(node["rect_size"]) < 2:
-                node["rect_size"] = [100.0, 100.0]
+            if "size" not in node or not isinstance(node["size"], list) or len(node["size"]) < 2:
+                node["size"] = [100.0, 100.0]
+
+            # Ensure follow_viewport property exists
+            if "follow_viewport" not in node:
+                node["follow_viewport"] = True  # Default for UI nodes
 
             try:
-                node["rect_position"] = [float(node["rect_position"][0]), float(node["rect_position"][1])]
-                node["rect_size"] = [float(node["rect_size"][0]), float(node["rect_size"][1])]
+                node["position"] = [float(node["position"][0]), float(node["position"][1])]
+                node["size"] = [float(node["size"][0]), float(node["size"][1])]
+                node["rotation"] = float(node["rotation"])
+                node["scale"] = [float(node["scale"][0]), float(node["scale"][1])]
             except (ValueError, TypeError, IndexError) as e:
-                print(f"Warning: Failed to convert UI node properties to float: {e}")
-                node["rect_position"] = [0.0, 0.0]
-                node["rect_size"] = [100.0, 100.0]
-        else:
-            # Regular nodes use position, rotation, scale
-            if "position" not in node or not isinstance(node["position"], list) or len(node["position"]) < 2:
+                print(f"Warning: Failed to convert node properties to float: {e}")
                 node["position"] = [0.0, 0.0]
-
-            if "rotation" not in node or not isinstance(node["rotation"], (int, float)):
+                node["size"] = [100.0, 100.0] if self._is_ui_node(node_type) else None
                 node["rotation"] = 0.0
-
-            if "scale" not in node or not isinstance(node["scale"], list) or len(node["scale"]) < 2:
+                node["scale"] = [1.0, 1.0]
+        else:
+            try:
+                node["position"] = [float(node["position"][0]), float(node["position"][1])]
+                node["rotation"] = float(node["rotation"])
+                node["scale"] = [float(node["scale"][0]), float(node["scale"][1])]
+            except (ValueError, TypeError, IndexError) as e:
+                print(f"Warning: Failed to convert node properties to float: {e}")
+                node["position"] = [0.0, 0.0]
+                node["rotation"] = 0.0
                 node["scale"] = [1.0, 1.0]
 
             # Ensure position and scale are mutable lists with float values
@@ -3819,75 +4122,77 @@ class SceneViewport(QOpenGLWidget):
             position = self._ui_to_world_coords(position)
 
         glPushMatrix()
-        glTranslatef(position[0], position[1], 0)
+        try:
+            glTranslatef(position[0], position[1], 0)
 
-        # Draw selection outline
-        glColor3f(1.0, 1.0, 0.0)  # Yellow selection
-        glLineWidth(2.0)
+            # Draw selection outline
+            glColor3f(1.0, 1.0, 0.0)  # Yellow selection
+            glLineWidth(2.0)
 
-        # Draw selection box around node
-        node_type = self.selected_node.get("type", "Node")
-        if node_type == "Sprite":
-            # Draw around sprite bounds
-            centered = self.selected_node.get("centered", True)
-            offset = self.selected_node.get("offset", [0.0, 0.0])
+            # Draw selection box around node
+            node_type = self.selected_node.get("type", "Node")
+            if node_type == "Sprite":
+                # Draw around sprite bounds
+                centered = self.selected_node.get("centered", True)
+                offset = self.selected_node.get("offset", [0.0, 0.0])
 
-            frame_width = 64
-            frame_height = 64
+                frame_width = 64
+                frame_height = 64
 
-            if centered:
-                left = offset[0] - frame_width / 2
-                right = offset[0] + frame_width / 2
-                bottom = offset[1] - frame_height / 2
-                top = offset[1] + frame_height / 2
+                if centered:
+                    left = offset[0] - frame_width / 2
+                    right = offset[0] + frame_width / 2
+                    bottom = offset[1] - frame_height / 2
+                    top = offset[1] + frame_height / 2
+                else:
+                    left = offset[0]
+                    right = offset[0] + frame_width
+                    bottom = offset[1]
+                    top = offset[1] + frame_height
+
+                glBegin(GL_LINE_LOOP)
+                glVertex2f(left, bottom)
+                glVertex2f(right, bottom)
+                glVertex2f(right, top)
+                glVertex2f(left, top)
+                glEnd()
+            elif node_type in ["Button", "Panel", "Label", "ColorRect", "TextureRect", "ProgressBar", "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
+                # Draw around UI node bounds
+                size = self.selected_node.get("size", [100.0, 30.0])
+
+                # Convert UI size to world scale for proper gizmo sizing
+                world_scale_x = size[0] / self.game_width * self.view_width
+                world_scale_y = size[1] / self.game_height * self.view_height
+
+                # UI nodes are centered on their position in the new coordinate system
+                left = -world_scale_x / 2
+                right = world_scale_x / 2
+                bottom = -world_scale_y / 2
+                top = world_scale_y / 2
+
+                glBegin(GL_LINE_LOOP)
+                glVertex2f(left, bottom)
+                glVertex2f(right, bottom)
+                glVertex2f(right, top)
+                glVertex2f(left, top)
+                glEnd()
             else:
-                left = offset[0]
-                right = offset[0] + frame_width
-                bottom = offset[1]
-                top = offset[1] + frame_height
+                # Draw around node center
+                glBegin(GL_LINE_LOOP)
+                glVertex2f(-15, -15)
+                glVertex2f(15, -15)
+                glVertex2f(15, 15)
+                glVertex2f(-15, 15)
+                glEnd()
 
-            glBegin(GL_LINE_LOOP)
-            glVertex2f(left, bottom)
-            glVertex2f(right, bottom)
-            glVertex2f(right, top)
-            glVertex2f(left, top)
-            glEnd()
-        elif node_type in ["Button", "Panel", "Label", "ColorRect", "TextureRect", "ProgressBar", "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
-            # Draw around UI node bounds
-            rect_size = self.selected_node.get("size", [100.0, 30.0])
+            # Draw transformation handles
+            self.draw_move_gizmo()
+            self.draw_scale_gizmos()
+            self.draw_rotation_gizmo()
 
-            # Convert UI size to world scale for proper gizmo sizing
-            world_scale_x = rect_size[0] / self.game_width * self.view_width / self.zoom
-            world_scale_y = rect_size[1] / self.game_height * self.view_height / self.zoom
-
-            # UI nodes use top-left positioning, draw gizmo relative to the transformed position
-            left = 0
-            right = world_scale_x
-            bottom = -world_scale_y  # Negative because Y is flipped in world coords
-            top = 0
-
-            glBegin(GL_LINE_LOOP)
-            glVertex2f(left, bottom)
-            glVertex2f(right, bottom)
-            glVertex2f(right, top)
-            glVertex2f(left, top)
-            glEnd()
-        else:
-            # Draw around node center
-            glBegin(GL_LINE_LOOP)
-            glVertex2f(-15, -15)
-            glVertex2f(15, -15)
-            glVertex2f(15, 15)
-            glVertex2f(-15, 15)
-            glEnd()
-
-        # Draw transformation handles
-        self.draw_move_gizmo()
-        self.draw_scale_gizmos()
-        self.draw_rotation_gizmo()
-
-        glLineWidth(1.0)
-        glPopMatrix()
+            glLineWidth(1.0)
+        finally:
+            glPopMatrix()
 
     def draw_move_gizmo(self):
         """Draw move gizmo (center cross)"""

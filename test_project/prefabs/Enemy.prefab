@@ -1,0 +1,257 @@
+{
+  "id": "f7e4592a-f1d5-4edd-8e9c-d4481f8dfbca",
+  "name": "Enemy",
+  "prefab_type": "entity",
+  "description": "Basic enemy with AI and combat",
+  "category": "Characters",
+  "icon": "enemy.png",
+  "preview_image": "",
+  "base_node_type": "KinematicBody2D",
+  "node_structure": {
+    "name": "Enemy",
+    "type": "KinematicBody2D",
+    "position": [
+      0,
+      0
+    ],
+    "children": [
+      {
+        "name": "Sprite",
+        "type": "Sprite2D",
+        "position": [
+          0,
+          0
+        ],
+        "texture": "",
+        "children": []
+      },
+      {
+        "name": "CollisionShape2D",
+        "type": "CollisionShape2D",
+        "position": [
+          0,
+          0
+        ],
+        "shape": "rectangle",
+        "size": [
+          32,
+          32
+        ],
+        "children": []
+      },
+      {
+        "name": "DetectionArea",
+        "type": "Area2D",
+        "position": [
+          0,
+          0
+        ],
+        "children": [
+          {
+            "name": "DetectionCollision",
+            "type": "CollisionShape2D",
+            "position": [
+              0,
+              0
+            ],
+            "shape": "circle",
+            "radius": 100,
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  "properties": [
+    {
+      "name": "enemy_name",
+      "type": "string",
+      "default_value": "Enemy",
+      "description": "Name of the enemy",
+      "group": "Basic",
+      "export": true,
+      "min_value": null,
+      "max_value": null,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "sprite_texture",
+      "type": "path",
+      "default_value": "",
+      "description": "Sprite texture path",
+      "group": "Appearance",
+      "export": true,
+      "min_value": null,
+      "max_value": null,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "max_health",
+      "type": "number",
+      "default_value": 100.0,
+      "description": "Maximum health",
+      "group": "Combat",
+      "export": true,
+      "min_value": 1,
+      "max_value": 1000,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "attack_damage",
+      "type": "number",
+      "default_value": 10.0,
+      "description": "Attack damage",
+      "group": "Combat",
+      "export": true,
+      "min_value": 1,
+      "max_value": 100,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "movement_speed",
+      "type": "number",
+      "default_value": 75.0,
+      "description": "Movement speed",
+      "group": "Movement",
+      "export": true,
+      "min_value": 0,
+      "max_value": 200,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "detection_range",
+      "type": "number",
+      "default_value": 100.0,
+      "description": "Detection range",
+      "group": "AI",
+      "export": true,
+      "min_value": 32,
+      "max_value": 300,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "attack_range",
+      "type": "number",
+      "default_value": 32.0,
+      "description": "Attack range",
+      "group": "Combat",
+      "export": true,
+      "min_value": 16,
+      "max_value": 100,
+      "step": null,
+      "options": null
+    },
+    {
+      "name": "ai_type",
+      "type": "string",
+      "default_value": "aggressive",
+      "description": "AI behavior type",
+      "group": "AI",
+      "export": true,
+      "min_value": null,
+      "max_value": null,
+      "step": null,
+      "options": [
+        "passive",
+        "aggressive",
+        "patrol",
+        "guard"
+      ]
+    }
+  ],
+  "property_groups": {
+    "Basic": "Basic enemy properties",
+    "Appearance": "Visual appearance settings",
+    "Combat": "Combat and damage settings",
+    "Movement": "Movement settings",
+    "AI": "AI behavior settings"
+  },
+  "events": [
+    {
+      "name": "on_player_detected",
+      "description": "Called when player is detected",
+      "parameters": [
+        {
+          "name": "player",
+          "type": "node",
+          "default_value": null,
+          "description": "The player node",
+          "required": true,
+          "options": null
+        }
+      ],
+      "default_script": ""
+    },
+    {
+      "name": "on_player_lost",
+      "description": "Called when player is lost",
+      "parameters": [],
+      "default_script": ""
+    },
+    {
+      "name": "on_attack",
+      "description": "Called when enemy attacks",
+      "parameters": [
+        {
+          "name": "target",
+          "type": "node",
+          "default_value": null,
+          "description": "The attack target",
+          "required": true,
+          "options": null
+        }
+      ],
+      "default_script": ""
+    },
+    {
+      "name": "on_take_damage",
+      "description": "Called when enemy takes damage",
+      "parameters": [
+        {
+          "name": "damage",
+          "type": "number",
+          "default_value": null,
+          "description": "Damage amount",
+          "required": true,
+          "options": null
+        },
+        {
+          "name": "source",
+          "type": "node",
+          "default_value": null,
+          "description": "Damage source",
+          "required": true,
+          "options": null
+        }
+      ],
+      "default_script": ""
+    },
+    {
+      "name": "on_death",
+      "description": "Called when enemy dies",
+      "parameters": [],
+      "default_script": ""
+    }
+  ],
+  "visual_script_blocks": [],
+  "default_script": "",
+  "tags": [
+    "enemy",
+    "combat",
+    "ai",
+    "character"
+  ],
+  "version": "1.0.0",
+  "author": "",
+  "created_at": "2025-06-04T23:37:52.019583",
+  "modified_at": "2025-06-04T23:37:52.019583",
+  "required_nodes": [],
+  "required_scripts": [],
+  "required_assets": []
+}

@@ -207,6 +207,13 @@ class Control(Node2D):
         control = cls(data.get("name", "Control"))
         cls._apply_node_properties(control, data)
 
+        # Apply Node2D properties (Control inherits from Node2D)
+        control.position = data.get("position", [0.0, 0.0])
+        control.rotation = data.get("rotation", 0.0)
+        control.scale = data.get("scale", [1.0, 1.0])
+        control.z_index = data.get("z_index", 0)
+        control.z_as_relative = data.get("z_as_relative", True)
+
         # Apply Control properties
         control.size = data.get("size", [100.0, 100.0])
         control.follow_viewport = data.get("follow_viewport", True)
