@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+
+"""
+SCons build script for Lupine Engine Editor
+"""
+
+Import("env")
+
+# Editor is only built for editor target
+if not env["editor_build"]:
+    Return()
+
+# Editor source files
+editor_sources = [
+    "editor_main.cpp",
+    "editor_interface.cpp",
+]
+
+# Add editor sources to the environment
+env.add_source_files(env.editor_sources, editor_sources)

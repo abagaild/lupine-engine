@@ -1,0 +1,65 @@
+[application]
+
+config/name="Lupine Engine C++ Demo"
+config/description="C++ version of the Lupine Engine with Python scripting support"
+config/version="1.0.0"
+config/main_scene="scenes/main.scene"
+config/icon="icon.png"
+
+[display]
+
+window/size/width=1280
+window/size/height=720
+window/size/resizable=true
+window/size/fullscreen=false
+window/stretch/mode="stretch"
+window/stretch/aspect="keep"
+
+[rendering]
+
+renderer/name="OpenGL3"
+textures/canvas_textures/default_texture_filter="linear"
+environment/default_clear_color=Color(0.1, 0.1, 0.15, 1.0)
+
+[audio]
+
+driver/enable_input=true
+driver/output_latency=15
+
+[physics]
+
+common/enable_pause_aware_picking=true
+2d/default_gravity=980
+2d/default_gravity_vector=Vector2(0, 1)
+
+[input]
+
+ui_accept={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"alt":false,"shift":false,"ctrl":false,"meta":false,"pressed":false,"keycode":4194309,"physical_keycode":0,"unicode":0,"echo":false,"script":null)
+, Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"alt":false,"shift":false,"ctrl":false,"meta":false,"pressed":false,"keycode":32,"physical_keycode":0,"unicode":0,"echo":false,"script":null)
+]
+}
+ui_cancel={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"alt":false,"shift":false,"ctrl":false,"meta":false,"pressed":false,"keycode":4194305,"physical_keycode":0,"unicode":0,"echo":false,"script":null)
+]
+}
+
+[python]
+
+runtime/enabled=true
+runtime/version="3.11"
+runtime/search_paths=["scripts", "addons"]
+runtime/auto_reload=true
+
+[editor]
+
+version_control/plugin_name=""
+version_control/autoload_on_startup=false
+
+[debug]
+
+settings/crash_handler/message="Please include this when reporting the bug on https://github.com/abagaild/lupine-engine"
+settings/stdout/print_fps=false
+settings/stdout/verbose_stdout=false

@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+
+"""
+SCons build script for Lupine Engine Core
+"""
+
+Import("env")
+
+# Core source files
+core_sources = [
+    "lupine_engine.cpp",
+    "core_types.cpp",
+    "platform/platform.cpp",
+]
+
+# Scene system
+core_sources += [
+    "scene/node.cpp",
+    "scene/scene.cpp",
+]
+
+# Rendering system
+core_sources += [
+    "rendering/renderer.cpp",
+    "rendering/texture.cpp",
+    "rendering/font.cpp",
+    "rendering/sprite.cpp",
+]
+
+# Audio system
+core_sources += [
+    "audio/audio_system.cpp",
+    "audio/audio_source.cpp",
+    "audio/audio_buffer.cpp",
+]
+
+# Physics system
+core_sources += [
+    "physics/physics_world.cpp",
+    "physics/physics_body.cpp",
+    "physics/collision_shape.cpp",
+]
+
+# Input system
+core_sources += [
+    "input/input_manager.cpp",
+    "input/input_event.cpp",
+    "input/input_map.cpp",
+]
+
+# Scripting system (only if Python is enabled)
+if env["python_enabled"] == "yes":
+    core_sources += [
+        "scripting/script_runtime.cpp",
+        "scripting/script_instance.cpp",
+        "scripting/python_bindings.cpp",
+    ]
+
+# Add all core sources to the environment
+env.add_source_files(env.core_sources, core_sources)

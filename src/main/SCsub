@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+
+"""
+SCons build script for Lupine Engine Main
+"""
+
+Import("env")
+
+# Main executable source files
+main_sources = [
+    "main.cpp",
+]
+
+# Add main sources to the environment
+env.add_source_files(env.main_sources, main_sources)

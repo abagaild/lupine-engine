@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+
+"""
+SCons build script for Lupine Engine Windows Platform
+"""
+
+Import("env")
+
+# Only build for Windows platform
+if env["platform"] != "windows":
+    Return()
+
+# Windows platform source files
+platform_sources = [
+    "platform_windows.cpp",
+    "platform_windows_wndproc.cpp",
+    "platform_windows_opengl.cpp"
+]
+
+# Add Windows-specific libraries
+env.Append(LIBS=[
+    "opengl32",
+    "glu32",
+    "gdi32",
+    "user32",
+    "kernel32",
+    "shell32",
+    "ole32",
+    "oleaut32",
+    "uuid",
+    "comdlg32",
+    "advapi32",
+    "psapi",  # For memory usage
+    "shlwapi" # For path functions
+])
+
+# Add Windows-specific defines
+env.Append(CPPDEFINES=[
+    "WINDOWS_ENABLED",
+    "_WIN32_WINNT=0x0601",  # Windows 7+
+    "NOMINMAX",             # Prevent min/max macro conflicts
+    "WIN32_LEAN_AND_MEAN"   # Reduce Windows header bloat
+])
+
+# Add platform sources to core sources
+for source in platform_sources:
+    env.core_sources.append(env.Object(source))
+
+print(f"  Platform: Windows ({len(platform_sources)} sources)")
