@@ -5,6 +5,7 @@ Manages all game systems and provides a clean interface for game execution
 
 import pygame
 import json
+import time
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Set, Tuple
 from pygame.locals import *
@@ -106,36 +107,83 @@ class GameSystemManager:
         self._initialize_systems()
     
     def _initialize_systems(self):
-        """Initialize all game systems"""
+        """Initialize all game systems with improved error handling and performance"""
+        initialization_start = time.time()
+        initialization_errors = []
+
         try:
-            # Renderer (required)
-            self.renderer = SharedRenderer(self.width, self.height, str(self.project_path), auto_setup_gl=True, scaling_filter=self.scaling_filter)
+            # Renderer (required) - Initialize first as other systems may depend on it
+            print("[INIT] Initializing renderer...")
+            self.renderer = SharedRenderer(
+                self.width, self.height, str(self.project_path),
+                auto_setup_gl=True, scaling_filter=self.scaling_filter
+            )
             print("[OK] Renderer initialized")
 
-            # Audio system
-            self.audio_system = OpenALAudioSystem()
-            print("[OK] Audio system initialized")
+            # Audio system - Initialize early for better performance
+            print("[INIT] Initializing audio system...")
+            try:
+                self.audio_system = OpenALAudioSystem()
+                print("[OK] Audio system initialized")
+            except Exception as e:
+                error_msg = f"Audio system initialization failed: {e}"
+                print(f"[WARN] {error_msg}")
+                initialization_errors.append(error_msg)
 
-            # Input manager
+            # Input manager - Only if available
             if INPUT_MANAGER_AVAILABLE:
-                self.input_manager = InputManager(self.project_path)
-                print("[OK] Input manager initialized")
+                print("[INIT] Initializing input manager...")
+                try:
+                    self.input_manager = InputManager(self.project_path)
+                    print("[OK] Input manager initialized")
+                except Exception as e:
+                    error_msg = f"Input manager initialization failed: {e}"
+                    print(f"[WARN] {error_msg}")
+                    initialization_errors.append(error_msg)
+            else:
+                print("[WARN] Input manager not available")
 
-            # Physics world
+            # Physics world - Only if available
             if PHYSICS_AVAILABLE:
-                self.physics_world = PhysicsWorld()
-                print("[OK] Physics world initialized")
+                print("[INIT] Initializing physics world...")
+                try:
+                    self.physics_world = PhysicsWorld()
+                    print("[OK] Physics world initialized")
+                except Exception as e:
+                    error_msg = f"Physics world initialization failed: {e}"
+                    print(f"[WARN] {error_msg}")
+                    initialization_errors.append(error_msg)
+            else:
+                print("[WARN] Physics system not available")
 
-            # Python runtime
+            # Python runtime - Initialize last as it may use other systems
             if PYTHON_RUNTIME_AVAILABLE:
-                self.python_runtime = PythonScriptRuntime(game_runtime=None)  # Will be set by game engine
-                print("[OK] Python runtime initialized")
-            
+                print("[INIT] Initializing Python runtime...")
+                try:
+                    self.python_runtime = PythonScriptRuntime(game_runtime=None)  # Will be set by game engine
+                    print("[OK] Python runtime initialized")
+                except Exception as e:
+                    error_msg = f"Python runtime initialization failed: {e}"
+                    print(f"[WARN] {error_msg}")
+                    initialization_errors.append(error_msg)
+            else:
+                print("[WARN] Python runtime not available")
+
             # Load project settings
             self._load_project_settings()
-            
+
+            initialization_time = time.time() - initialization_start
+            if initialization_errors:
+                print(f"[WARN] Systems initialized in {initialization_time:.3f}s with {len(initialization_errors)} errors")
+                for error in initialization_errors:
+                    print(f"  - {error}")
+            else:
+                print(f"[OK] All systems initialized successfully in {initialization_time:.3f}s")
+
         except Exception as e:
-            print(f"Error initializing game systems: {e}")
+            print(f"[ERROR] Critical error initializing game systems: {e}")
+            import traceback
+            traceback.print_exc()
             raise
     
     def _load_project_settings(self):
@@ -733,37 +781,54 @@ class LupineGameEngine:
                 self._render_node_hierarchy(root_node)
 
     def _setup_unified_projection(self):
-        """Setup unified projection matrix like scene view"""
+        """Setup unified projection matrix exactly like scene view"""
         try:
             import OpenGL.GL as gl
 
             # Set viewport to window size
             gl.glViewport(0, 0, self.width, self.height)
 
-            # Setup projection matrix
+            # Setup projection matrix exactly like scene view
             gl.glMatrixMode(gl.GL_PROJECTION)
             gl.glLoadIdentity()
+
+            # Calculate aspect ratio
+            aspect = self.width / self.height if self.height > 0 else 1.0
 
             if self.camera:
                 # Use camera-based projection like scene view
                 cam_pos = self.camera.get_position()
                 zoom = self.camera.get_zoom()
 
-                # Calculate view bounds based on camera
-                view_width = self.width / zoom[0]
-                view_height = self.height / zoom[1]
+                # Use game bounds for view calculation like scene view
+                view_half_width = (self.systems.game_bounds_width / 2) / zoom
+                view_half_height = (self.systems.game_bounds_height / 2) / zoom
 
-                left = cam_pos[0] - view_width / 2
-                right = cam_pos[0] + view_width / 2
-                bottom = cam_pos[1] - view_height / 2
-                top = cam_pos[1] + view_height / 2
+                # Adjust for aspect ratio like scene view
+                if aspect > 1.0:
+                    view_half_width *= aspect
+                else:
+                    view_half_height /= aspect
+
+                # Apply camera position offset
+                left = -view_half_width + cam_pos[0]
+                right = view_half_width + cam_pos[0]
+                bottom = -view_half_height + cam_pos[1]
+                top = view_half_height + cam_pos[1]
 
                 gl.glOrtho(left, right, bottom, top, -1, 1)
             else:
                 # Use game bounds for projection (centered at origin like scene view)
-                half_width = self.systems.game_bounds_width / 2
-                half_height = self.systems.game_bounds_height / 2
-                gl.glOrtho(-half_width, half_width, -half_height, half_height, -1, 1)
+                view_half_width = self.systems.game_bounds_width / 2
+                view_half_height = self.systems.game_bounds_height / 2
+
+                # Adjust for aspect ratio like scene view
+                if aspect > 1.0:
+                    view_half_width *= aspect
+                else:
+                    view_half_height /= aspect
+
+                gl.glOrtho(-view_half_width, view_half_width, -view_half_height, view_half_height, -1, 1)
 
             gl.glMatrixMode(gl.GL_MODELVIEW)
             gl.glLoadIdentity()
@@ -775,12 +840,13 @@ class LupineGameEngine:
             print(f"Error setting up unified projection: {e}")
 
     def _render_node_hierarchy(self, node: Node):
-        """Render a node and its children using SharedRenderer like scene view"""
+        """Render a node and its children using OpenGL directly like scene view"""
         if not node or not getattr(node, 'visible', True):
             return
 
-        # Use SharedRenderer's matrix stack for transformations
-        self.systems.renderer.push_matrix()
+        # Use OpenGL matrix stack for transformations like scene view
+        import OpenGL.GL as gl
+        gl.glPushMatrix()
 
         try:
             # Apply node transformation
@@ -789,15 +855,15 @@ class LupineGameEngine:
             scale = getattr(node, 'scale', [1, 1])
 
             # Translate to node position
-            self.systems.renderer.translate(position[0], position[1], 0)
+            gl.glTranslatef(position[0], position[1], 0)
 
             # Apply rotation if any
             if rotation != 0:
-                self.systems.renderer.rotate(rotation, 0, 0, 1)
+                gl.glRotatef(rotation, 0, 0, 1)
 
             # Apply scale if not default
             if scale != [1, 1]:
-                self.systems.renderer.scale(scale[0], scale[1], 1)
+                gl.glScalef(scale[0], scale[1], 1)
 
             # Convert node to dict-like structure for rendering methods
             node_data = self._node_to_dict(node)
@@ -809,7 +875,7 @@ class LupineGameEngine:
                 self._render_node_hierarchy(child)
 
         finally:
-            self.systems.renderer.pop_matrix()
+            gl.glPopMatrix()
 
     def _node_to_dict(self, node: Node) -> Dict[str, Any]:
         """Convert a Node object to a dictionary for rendering compatibility"""
@@ -888,35 +954,93 @@ class LupineGameEngine:
         # Add more node types as needed
 
     def _render_sprite_node(self, node: Dict[str, Any]):
-        """Render a sprite node using SharedRenderer"""
+        """Render a sprite node using OpenGL directly like scene view"""
         texture = node.get('texture', '')
-        if not texture:
-            return
 
         # Get sprite properties
         centered = node.get('centered', True)
         offset = node.get('offset', [0.0, 0.0])
         flip_h = node.get('flip_h', False)
         flip_v = node.get('flip_v', False)
-        modulate = node.get('modulate', [1, 1, 1, 1])
+        hframes = node.get('hframes', 1)
+        vframes = node.get('vframes', 1)
+        frame = node.get('frame', 0)
 
-        # Calculate size (use texture size or default)
-        width = node.get('width', 64)
-        height = node.get('height', 64)
+        # Calculate frame size (default 64x64 if no texture)
+        base_size = [64, 64]
+        frame_width = base_size[0] / hframes
+        frame_height = base_size[1] / vframes
 
-        # Apply offset
-        x = offset[0]
-        y = offset[1]
+        # Calculate position
+        pos_x = offset[0]
+        pos_y = offset[1]
 
-        # Center the sprite if needed
         if centered:
-            x -= width / 2
-            y -= height / 2
+            pos_x -= frame_width / 2
+            pos_y -= frame_height / 2
 
-        # Draw the sprite
-        self.systems.renderer.draw_sprite(
-            texture, x, y, width, height, 0, modulate[3]
-        )
+        # Calculate coordinates
+        left = pos_x
+        right = pos_x + frame_width
+        bottom = pos_y
+        top = pos_y + frame_height
+
+        if flip_h:
+            left, right = right, left
+        if flip_v:
+            bottom, top = top, bottom
+
+        # Draw sprite
+        if texture:
+            # Try to load and render texture using SharedRenderer
+            if self.systems.renderer:
+                texture_info = self.systems.renderer.load_texture(texture)
+                if texture_info:
+                    texture_id, tex_width, tex_height = texture_info
+
+                    # Use actual texture size instead of default 64x64
+                    frame_width = tex_width / hframes
+                    frame_height = tex_height / vframes
+
+                    # Recalculate position with actual texture size
+                    pos_x = offset[0]
+                    pos_y = offset[1]
+
+                    if centered:
+                        pos_x -= frame_width / 2
+                        pos_y -= frame_height / 2
+
+                    # Recalculate coordinates with actual size
+                    left = pos_x
+                    right = pos_x + frame_width
+                    bottom = pos_y
+                    top = pos_y + frame_height
+
+                    if flip_h:
+                        left, right = right, left
+                    if flip_v:
+                        bottom, top = top, bottom
+
+                    # Calculate texture coordinates for frame
+                    frame_x = frame % hframes
+                    frame_y = frame // hframes
+                    tex_left = frame_x / hframes
+                    tex_right = (frame_x + 1) / hframes
+                    tex_bottom = frame_y / vframes
+                    tex_top = (frame_y + 1) / vframes
+
+                    # Draw textured quad like scene view
+                    self._draw_textured_quad(texture_id, left, bottom, right, top,
+                                           tex_left, tex_bottom, tex_right, tex_top)
+                else:
+                    # Fallback to wireframe if texture loading failed
+                    self._draw_wireframe_rect(left, bottom, right, top, (1.0, 0.0, 0.0))
+            else:
+                # Fallback to wireframe if no renderer
+                self._draw_wireframe_rect(left, bottom, right, top, (1.0, 0.0, 0.0))
+        else:
+            # Draw wireframe for sprites without texture
+            self._draw_wireframe_rect(left, bottom, right, top, (0.8, 0.8, 0.2))
 
     def _render_ui_node(self, node: Dict[str, Any]):
         """Render a UI node using SharedRenderer"""
@@ -941,25 +1065,58 @@ class LupineGameEngine:
             self._render_texture_rect_node(node)
 
     def _render_label_node(self, node: Dict[str, Any]):
-        """Render a label node"""
+        """Render a label node using OpenGL like scene view"""
         text = node.get('text', '')
         if not text:
             return
 
         font_size = node.get('font_size', 14)
         color = node.get('color', [1, 1, 1, 1])
+        size = node.get('size', node.get('rect_size', [100, 30]))
+        h_align = node.get('h_align', 'Left')
+        v_align = node.get('v_align', 'Top')
 
-        self.systems.renderer.draw_text(text, 0, 0, None, font_size, tuple(color))
+        # Calculate text position based on alignment (relative to center like scene view)
+        text_x = -size[0]/2 + 5  # Default left alignment
+        if h_align == "Center":
+            text_x = -len(text) * 3  # Approximate centering
+        elif h_align == "Right":
+            text_x = size[0]/2 - len(text) * 6 - 5  # Approximate right align
+
+        text_y = size[1]/2 - 15  # Default top alignment
+        if v_align == "Center":
+            text_y = 0  # Center vertically
+        elif v_align == "Bottom":
+            text_y = -size[1]/2 + 15
+
+        # Draw text using SharedRenderer if available
+        if self.systems.renderer:
+            font_path = node.get("font_path", None)
+            self.systems.renderer.draw_text(text, text_x, text_y, font_path, font_size,
+                                          (color[0], color[1], color[2], color[3]))
+        else:
+            # Fallback to bitmap rendering
+            self._draw_text_bitmap(text, text_x, text_y, color, font_size)
 
     def _render_button_node(self, node: Dict[str, Any]):
-        """Render a button node"""
+        """Render a button node using OpenGL like scene view"""
         size = node.get('size', node.get('rect_size', [100, 30]))
         background_color = node.get('background_color', [0.2, 0.2, 0.2, 0.8])
 
-        # Draw button background
-        self.systems.renderer.draw_rectangle(
-            0, 0, size[0], size[1], tuple(background_color)
-        )
+        # Draw button background using OpenGL
+        import OpenGL.GL as gl
+        gl.glDisable(gl.GL_TEXTURE_2D)
+        gl.glColor4f(background_color[0], background_color[1], background_color[2], background_color[3])
+
+        half_width = size[0] / 2
+        half_height = size[1] / 2
+
+        gl.glBegin(gl.GL_QUADS)
+        gl.glVertex2f(-half_width, -half_height)
+        gl.glVertex2f(half_width, -half_height)
+        gl.glVertex2f(half_width, half_height)
+        gl.glVertex2f(-half_width, half_height)
+        gl.glEnd()
 
         # Draw button text if any
         text = node.get('text', '')
@@ -967,32 +1124,59 @@ class LupineGameEngine:
             font_size = node.get('font_size', 14)
             color = node.get('color', [1, 1, 1, 1])
 
-            # Center text in button
-            text_x = size[0] / 2
-            text_y = size[1] / 2
+            # Calculate text position (centered in button like scene view)
+            text_x = -len(text) * 3  # Approximate centering
+            text_y = -6  # Center vertically
 
-            self.systems.renderer.draw_text(text, text_x, text_y, None, font_size, tuple(color))
+            # Draw text using SharedRenderer if available
+            if self.systems.renderer:
+                font_path = node.get("font_path", None)
+                self.systems.renderer.draw_text(text, text_x, text_y, font_path, font_size,
+                                              (color[0], color[1], color[2], color[3]))
 
     def _render_panel_node(self, node: Dict[str, Any]):
-        """Render a panel node"""
+        """Render a panel node using OpenGL like scene view"""
         size = node.get('size', node.get('rect_size', [100, 30]))
         background_color = node.get('background_color', [0.2, 0.2, 0.2, 0.8])
 
-        self.systems.renderer.draw_rectangle(
-            0, 0, size[0], size[1], tuple(background_color)
-        )
+        # Draw panel background using OpenGL
+        import OpenGL.GL as gl
+        gl.glDisable(gl.GL_TEXTURE_2D)
+        gl.glColor4f(background_color[0], background_color[1], background_color[2], background_color[3])
+
+        half_width = size[0] / 2
+        half_height = size[1] / 2
+
+        gl.glBegin(gl.GL_QUADS)
+        gl.glVertex2f(-half_width, -half_height)
+        gl.glVertex2f(half_width, -half_height)
+        gl.glVertex2f(half_width, half_height)
+        gl.glVertex2f(-half_width, half_height)
+        gl.glEnd()
 
     def _render_texture_rect_node(self, node: Dict[str, Any]):
-        """Render a texture rect node"""
+        """Render a texture rect node using OpenGL like scene view"""
         texture = node.get('texture', '')
         if not texture:
             return
 
         size = node.get('size', node.get('rect_size', [100, 30]))
 
-        self.systems.renderer.draw_sprite(
-            texture, 0, 0, size[0], size[1], 0, 1.0
-        )
+        # Try to load and render texture using SharedRenderer
+        if self.systems.renderer:
+            texture_info = self.systems.renderer.load_texture(texture)
+            if texture_info:
+                texture_id, tex_width, tex_height = texture_info
+
+                half_width = size[0] / 2
+                half_height = size[1] / 2
+
+                # Draw textured quad
+                self._draw_textured_quad(texture_id, -half_width, -half_height, half_width, half_height,
+                                       0.0, 0.0, 1.0, 1.0)
+            else:
+                # Fallback to wireframe if texture loading failed
+                self._draw_wireframe_rect(-size[0]/2, -size[1]/2, size[0]/2, size[1]/2, (1.0, 0.0, 0.0))
 
     def _render_camera_node(self, node: Dict[str, Any]):
         """Render camera node (visual indicator only)"""
@@ -1001,15 +1185,14 @@ class LupineGameEngine:
 
     def _render_collision_node(self, node: Dict[str, Any]):
         """Render collision shape node (debug visualization)"""
-        # Only render collision shapes in debug mode
-        if hasattr(self, 'debug_mode') and self.debug_mode:
+        # Only render collision shapes in debug mode (for now, always render in game for debugging)
+        debug_mode = getattr(self, 'debug_mode', True)  # Default to True for game runner
+        if debug_mode:
             # Draw collision shape outline
             shape_type = node.get('shape_type', 'rectangle')
             if shape_type == 'rectangle':
                 size = node.get('size', [32, 32])
-                self.systems.renderer.draw_rectangle_outline(
-                    -size[0]/2, -size[1]/2, size[0], size[1], (0, 1, 0, 1), 2
-                )
+                self._draw_wireframe_rect(-size[0]/2, -size[1]/2, size[0]/2, size[1]/2, (0, 1, 0))
 
     def _render_physics_body_node(self, node: Dict[str, Any]):
         """Render physics body node (debug visualization)"""
@@ -1084,7 +1267,7 @@ class LupineGameEngine:
         text_height = font_size
 
         # Try to get more accurate text dimensions if renderer supports it
-        if hasattr(self.systems.renderer, 'get_text_size'):
+        if self.systems.renderer and hasattr(self.systems.renderer, 'get_text_size'):
             try:
                 actual_width, actual_height = self.systems.renderer.get_text_size(text, font_path, font_size)
                 text_width = actual_width
@@ -1110,6 +1293,41 @@ class LupineGameEngine:
             text_y = pos[1] + padding
 
         return text_x, text_y
+
+    def _draw_textured_quad(self, texture_id: int, left: float, bottom: float, right: float, top: float,
+                           tex_left: float, tex_bottom: float, tex_right: float, tex_top: float):
+        """Draw a textured quad using OpenGL like scene view"""
+        import OpenGL.GL as gl
+
+        gl.glEnable(gl.GL_TEXTURE_2D)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, texture_id)
+        gl.glColor4f(1.0, 1.0, 1.0, 1.0)
+
+        gl.glBegin(gl.GL_QUADS)
+        gl.glTexCoord2f(tex_left, tex_bottom)
+        gl.glVertex2f(left, bottom)
+        gl.glTexCoord2f(tex_right, tex_bottom)
+        gl.glVertex2f(right, bottom)
+        gl.glTexCoord2f(tex_right, tex_top)
+        gl.glVertex2f(right, top)
+        gl.glTexCoord2f(tex_left, tex_top)
+        gl.glVertex2f(left, top)
+        gl.glEnd()
+
+        gl.glBindTexture(gl.GL_TEXTURE_2D, 0)
+        gl.glDisable(gl.GL_TEXTURE_2D)
+
+    def _draw_wireframe_rect(self, left: float, bottom: float, right: float, top: float, color: tuple):
+        """Draw a wireframe rectangle using OpenGL like scene view"""
+        import OpenGL.GL as gl
+
+        gl.glColor3f(color[0], color[1], color[2])
+        gl.glBegin(gl.GL_LINE_LOOP)
+        gl.glVertex2f(left, bottom)
+        gl.glVertex2f(right, bottom)
+        gl.glVertex2f(right, top)
+        gl.glVertex2f(left, top)
+        gl.glEnd()
 
     def _on_key_press(self, key: int, modifiers: int):
         """Handle key press events"""

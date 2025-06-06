@@ -35,12 +35,19 @@ class SharedRenderer:
         self.project_path = Path(project_path) if project_path else None
         self.scaling_filter = scaling_filter  # "linear" or "nearest"
 
-        # Texture cache
-        self.texture_cache = {}  # path -> (texture_id, width, height)
+        # Enhanced texture cache with metadata
+        self.texture_cache = {}  # path -> (texture_id, width, height, last_used_time)
+        self.texture_cache_max_size = 100  # Maximum number of cached textures
+        self.texture_cache_stats = {"hits": 0, "misses": 0, "evictions": 0}
 
         # Font cache for text rendering
         self.font_cache = {}  # (font_name, size) -> pygame.font.Font
-        self.text_texture_cache = {}  # (text, font_name, size, color) -> (texture_id, width, height)
+        self.text_texture_cache = {}  # (text, font_name, size, color) -> (texture_id, width, height, last_used_time)
+        self.text_cache_max_size = 50  # Maximum number of cached text textures
+
+        # Preloading system
+        self.preload_queue = set()  # Set of texture paths to preload
+        self.preload_in_progress = False
 
         # Initialize OpenGL settings only if requested and context is available
         if auto_setup_gl:
@@ -77,30 +84,42 @@ class SharedRenderer:
         glClear(GL_COLOR_BUFFER_BIT)
     
     def load_texture(self, texture_path: str) -> Optional[Tuple[int, int, int]]:
-        """Load a texture from file and return (texture_id, width, height)"""
+        """Load a texture from file and return (texture_id, width, height) with enhanced caching"""
         if not texture_path:
             return None
-        
-        # Check cache first
+
+        # Check cache first and update access time
         if texture_path in self.texture_cache:
-            return self.texture_cache[texture_path]
-        
+            cached_data = self.texture_cache[texture_path]
+            # Update last used time for LRU eviction
+            import time
+            updated_data = (cached_data[0], cached_data[1], cached_data[2], time.time())
+            self.texture_cache[texture_path] = updated_data
+            self.texture_cache_stats["hits"] += 1
+            return (cached_data[0], cached_data[1], cached_data[2])
+
+        self.texture_cache_stats["misses"] += 1
+
         try:
             # Convert to absolute path
             if not Path(texture_path).is_absolute() and self.project_path:
                 full_path = self.project_path / texture_path
             else:
                 full_path = Path(texture_path)
-            
+
             if not full_path.exists():
                 print(f"Texture file not found: {full_path}")
                 return None
-            
+
+            # Check if cache is full and evict least recently used
+            if len(self.texture_cache) >= self.texture_cache_max_size:
+                self._evict_least_recently_used_texture()
+
             if PIL_AVAILABLE:
                 return self._load_texture_pil(full_path, texture_path)
             else:
                 return self._load_texture_pygame(full_path, texture_path)
-                
+
         except Exception as e:
             print(f"Error loading texture {texture_path}: {e}")
             return None
@@ -141,12 +160,13 @@ class SharedRenderer:
         
         glBindTexture(GL_TEXTURE_2D, 0)
         
-        # Cache the texture with size info
-        texture_info = (texture_id, width, height)
+        # Cache the texture with size info and timestamp
+        import time
+        texture_info = (texture_id, width, height, time.time())
         self.texture_cache[texture_path] = texture_info
-        
+
         print(f"Successfully loaded texture: {texture_path} ({width}x{height})")
-        return texture_info
+        return (texture_id, width, height)
     
     def _load_texture_pygame(self, full_path: Path, texture_path: str) -> Optional[Tuple[int, int, int]]:
         """Load texture using pygame as fallback"""
@@ -179,12 +199,13 @@ class SharedRenderer:
         
         glBindTexture(GL_TEXTURE_2D, 0)
         
-        # Cache the texture with size info
-        texture_info = (texture_id, width, height)
+        # Cache the texture with size info and timestamp
+        import time
+        texture_info = (texture_id, width, height, time.time())
         self.texture_cache[texture_path] = texture_info
-        
+
         print(f"Successfully loaded texture: {texture_path} ({width}x{height})")
-        return texture_info
+        return (texture_id, width, height)
     
     def draw_sprite(self, texture_path: str, x: float, y: float,
                    width: Optional[float] = None, height: Optional[float] = None,
@@ -395,7 +416,32 @@ class SharedRenderer:
         
         glPopMatrix()
         glEnable(GL_TEXTURE_2D)
-    
+
+    def draw_rectangle_outline(self, x: float, y: float, width: float, height: float,
+                              color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
+                              line_width: float = 1.0):
+        """Draw a rectangle outline"""
+        glDisable(GL_TEXTURE_2D)
+        glColor4f(*color)
+        glLineWidth(line_width)
+
+        half_width = width / 2
+        half_height = height / 2
+
+        glPushMatrix()
+        glTranslatef(x, y, 0)
+
+        glBegin(GL_LINE_LOOP)
+        glVertex2f(-half_width, -half_height)
+        glVertex2f(half_width, -half_height)
+        glVertex2f(half_width, half_height)
+        glVertex2f(-half_width, half_height)
+        glEnd()
+
+        glPopMatrix()
+        glLineWidth(1.0)  # Reset line width
+        glEnable(GL_TEXTURE_2D)
+
     def draw_circle(self, x: float, y: float, radius: float,
                    color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
                    filled: bool = True, segments: int = 32):
@@ -869,19 +915,88 @@ class SharedRenderer:
             y = x  # Uniform scaling
         glScalef(x, y, z)
 
+    def _evict_least_recently_used_texture(self):
+        """Evict the least recently used texture from cache"""
+        if not self.texture_cache:
+            return
+
+        # Find the texture with the oldest timestamp
+        oldest_path = None
+        oldest_time = float('inf')
+
+        for path, texture_info in self.texture_cache.items():
+            if len(texture_info) >= 4:  # Has timestamp
+                last_used = texture_info[3]
+                if last_used < oldest_time:
+                    oldest_time = last_used
+                    oldest_path = path
+
+        if oldest_path:
+            # Delete the OpenGL texture
+            texture_info = self.texture_cache[oldest_path]
+            texture_id = texture_info[0]
+            try:
+                from OpenGL.GL import glDeleteTextures
+                glDeleteTextures(1, [texture_id])
+            except:
+                pass  # Ignore OpenGL errors during cleanup
+
+            # Remove from cache
+            del self.texture_cache[oldest_path]
+            self.texture_cache_stats["evictions"] += 1
+            print(f"[CACHE] Evicted texture: {oldest_path}")
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get texture cache statistics"""
+        return {
+            "texture_cache_size": len(self.texture_cache),
+            "texture_cache_max_size": self.texture_cache_max_size,
+            "text_cache_size": len(self.text_texture_cache),
+            "text_cache_max_size": self.text_cache_max_size,
+            "cache_stats": self.texture_cache_stats.copy()
+        }
+
+    def preload_textures(self, texture_paths: List[str]):
+        """Preload a list of textures for better performance"""
+        if self.preload_in_progress:
+            return
+
+        self.preload_in_progress = True
+        loaded_count = 0
+
+        try:
+            for path in texture_paths:
+                if path not in self.texture_cache:
+                    result = self.load_texture(path)
+                    if result:
+                        loaded_count += 1
+
+            print(f"[CACHE] Preloaded {loaded_count}/{len(texture_paths)} textures")
+        finally:
+            self.preload_in_progress = False
+
     def cleanup(self):
         """Clean up OpenGL resources"""
         # Delete textures
         for texture_info in self.texture_cache.values():
             if texture_info:
                 texture_id = texture_info[0]
-                glDeleteTextures(1, [texture_id])
+                try:
+                    from OpenGL.GL import glDeleteTextures
+                    glDeleteTextures(1, [texture_id])
+                except:
+                    pass  # Ignore OpenGL errors during cleanup
 
         for texture_info in self.text_texture_cache.values():
             if texture_info:
                 texture_id = texture_info[0]
-                glDeleteTextures(1, [texture_id])
+                try:
+                    from OpenGL.GL import glDeleteTextures
+                    glDeleteTextures(1, [texture_id])
+                except:
+                    pass  # Ignore OpenGL errors during cleanup
 
         self.texture_cache.clear()
         self.text_texture_cache.clear()
         self.font_cache.clear()
+        print("[OK] Renderer cleanup complete")
