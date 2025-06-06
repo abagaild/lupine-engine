@@ -898,7 +898,7 @@ class LupineGameEngine:
         self._sync_sprite_positions()
 
     def _render(self):
-        """Render the game"""
+        """Render the game using SharedRenderer like scene view"""
         if not self.systems.renderer:
             return
 
@@ -906,18 +906,12 @@ class LupineGameEngine:
         self.systems.renderer.clear()
 
         # Setup viewport and projection based on camera or game bounds
-        self._setup_viewport_and_projection()
+        self._setup_unified_projection()
 
-        # Render sprites (affected by camera)
-        for sprite_data in self.sprites:
-            if sprite_data.get('visible', True):
-                self._render_sprite(sprite_data)
-
-        # Render UI (always in screen space, not affected by camera)
-        self._setup_ui_projection()
-        for ui_data in self.ui_elements:
-            if ui_data.get('visible', True):
-                self._render_ui_element(ui_data)
+        # Render scene nodes directly using SharedRenderer
+        if self.scene and hasattr(self.scene, 'root_nodes'):
+            for root_node in self.scene.root_nodes:
+                self._render_node_hierarchy(root_node)
 
     def _update_node_scripts_recursive(self, node: Node, delta_time: float):
         """Update scripts for a node and its children"""

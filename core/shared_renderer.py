@@ -4,6 +4,7 @@ Provides consistent rendering between editor and game runner
 """
 
 import math
+import os
 from typing import Dict, Any, Optional, Tuple, List
 from pathlib import Path
 from OpenGL.GL import *
@@ -422,6 +423,29 @@ class SharedRenderer:
             glBindTexture(GL_TEXTURE_2D, 0)
             glDisable(GL_TEXTURE_2D)
 
+    def draw_textured_quad(self, texture_id: int, left: float, bottom: float,
+                          right: float, top: float, tex_left: float = 0.0,
+                          tex_bottom: float = 0.0, tex_right: float = 1.0,
+                          tex_top: float = 1.0):
+        """Draw a textured quad with custom texture coordinates"""
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, texture_id)
+        glColor3f(1.0, 1.0, 1.0)  # White to show texture as-is
+
+        glBegin(GL_QUADS)
+        glTexCoord2f(tex_left, tex_bottom)
+        glVertex2f(left, bottom)
+        glTexCoord2f(tex_right, tex_bottom)
+        glVertex2f(right, bottom)
+        glTexCoord2f(tex_right, tex_top)
+        glVertex2f(right, top)
+        glTexCoord2f(tex_left, tex_top)
+        glVertex2f(left, top)
+        glEnd()
+
+        glBindTexture(GL_TEXTURE_2D, 0)
+        glDisable(GL_TEXTURE_2D)
+
     def draw_line(self, x1: float, y1: float, x2: float, y2: float,
                  color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
                  width: float = 1.0):
@@ -437,6 +461,138 @@ class SharedRenderer:
 
         glLineWidth(1.0)
         glEnable(GL_TEXTURE_2D)
+
+    def draw_lines(self, points_list: List[Tuple[float, float]],
+                  color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
+                  width: float = 1.0, connected: bool = True):
+        """Draw multiple line segments. If connected=True, draws a line strip; if False, draws separate lines"""
+        if len(points_list) < 2:
+            return
+
+        glDisable(GL_TEXTURE_2D)
+        glColor4f(*color)
+        glLineWidth(width)
+
+        if connected:
+            glBegin(GL_LINE_STRIP)
+            for point in points_list:
+                glVertex2f(point[0], point[1])
+            glEnd()
+        else:
+            # Draw separate line segments (points should be in pairs)
+            glBegin(GL_LINES)
+            for i in range(0, len(points_list) - 1, 2):
+                if i + 1 < len(points_list):
+                    glVertex2f(points_list[i][0], points_list[i][1])
+                    glVertex2f(points_list[i + 1][0], points_list[i + 1][1])
+            glEnd()
+
+        glLineWidth(1.0)
+        glEnable(GL_TEXTURE_2D)
+
+    def draw_polygon(self, points: List[Tuple[float, float]],
+                    color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
+                    filled: bool = True):
+        """Draw a polygon from a list of points"""
+        if len(points) < 3:
+            return
+
+        glDisable(GL_TEXTURE_2D)
+        glColor4f(*color)
+
+        if filled:
+            # Use triangle fan for filled polygons
+            glBegin(GL_TRIANGLE_FAN)
+            for point in points:
+                glVertex2f(point[0], point[1])
+            glEnd()
+        else:
+            # Use line loop for outlined polygons
+            glBegin(GL_LINE_LOOP)
+            for point in points:
+                glVertex2f(point[0], point[1])
+            glEnd()
+
+        glEnable(GL_TEXTURE_2D)
+
+    def draw_cross(self, x: float, y: float, size: float,
+                  color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
+                  width: float = 1.0):
+        """Draw a cross (+ shape) for node selection indicators"""
+        half_size = size / 2
+
+        glDisable(GL_TEXTURE_2D)
+        glColor4f(*color)
+        glLineWidth(width)
+
+        glBegin(GL_LINES)
+        # Horizontal line
+        glVertex2f(x - half_size, y)
+        glVertex2f(x + half_size, y)
+        # Vertical line
+        glVertex2f(x, y - half_size)
+        glVertex2f(x, y + half_size)
+        glEnd()
+
+        glLineWidth(1.0)
+        glEnable(GL_TEXTURE_2D)
+
+    def draw_grid(self, bounds: Tuple[float, float, float, float], grid_size: float,
+                 color: Tuple[float, float, float, float] = (0.3, 0.3, 0.3, 1.0),
+                 width: float = 1.0):
+        """Draw a grid background for the editor. bounds = (left, top, right, bottom)"""
+        left, top, right, bottom = bounds
+
+        if grid_size <= 0:
+            return
+
+        glDisable(GL_TEXTURE_2D)
+        glColor4f(*color)
+        glLineWidth(width)
+
+        glBegin(GL_LINES)
+
+        # Draw vertical lines
+        x = left - (left % grid_size)  # Align to grid
+        while x <= right:
+            glVertex2f(x, top)
+            glVertex2f(x, bottom)
+            x += grid_size
+
+        # Draw horizontal lines
+        y = top - (top % grid_size)  # Align to grid
+        while y <= bottom:
+            glVertex2f(left, y)
+            glVertex2f(right, y)
+            y += grid_size
+
+        glEnd()
+
+        glLineWidth(1.0)
+        glEnable(GL_TEXTURE_2D)
+
+    # Matrix transformation helpers
+    def push_matrix(self):
+        """Save the current transformation matrix"""
+        glPushMatrix()
+
+    def pop_matrix(self):
+        """Restore the previous transformation matrix"""
+        glPopMatrix()
+
+    def translate(self, x: float, y: float, z: float = 0.0):
+        """Translate the current transformation matrix"""
+        glTranslatef(x, y, z)
+
+    def rotate(self, angle: float, x: float = 0.0, y: float = 0.0, z: float = 1.0):
+        """Rotate the current transformation matrix (angle in degrees)"""
+        glRotatef(angle, x, y, z)
+
+    def scale(self, x: float, y: Optional[float] = None, z: float = 1.0):
+        """Scale the current transformation matrix"""
+        if y is None:
+            y = x  # Uniform scaling
+        glScalef(x, y, z)
 
     def cleanup(self):
         """Clean up OpenGL resources"""
