@@ -67,19 +67,33 @@ import sys
 import os
 from pathlib import Path
 
+print("[RUNNER] Starting game runner script...")
+print(f"[RUNNER] Python executable: {{sys.executable}}")
+print(f"[RUNNER] Python version: {{sys.version}}")
+print(f"[RUNNER] Current working directory: {{os.getcwd()}}")
+
 # Add both the Lupine Engine path and project path to sys.path
 sys.path.insert(0, r"{lupine_engine_path}")
 sys.path.insert(0, r"{project_path}")
 
+print(f"[RUNNER] Added to sys.path:")
+print(f"[RUNNER]   Engine path: {lupine_engine_path}")
+print(f"[RUNNER]   Project path: {project_path}")
+print(f"[RUNNER] Current sys.path: {{sys.path[:5]}}")  # Show first 5 entries
+
 try:
+    print("[RUNNER] Importing simple_game_runner...")
     from core.simple_game_runner import run_game
-    
+    print("[RUNNER] Successfully imported run_game")
+
+    print("[RUNNER] Calling run_game...")
     # Run the game using the new streamlined engine
     exit_code = run_game(r"{project_path}", r"{scene_path}", r"{lupine_engine_path}")
+    print(f"[RUNNER] run_game returned with exit code: {{exit_code}}")
     sys.exit(exit_code)
-    
+
 except Exception as e:
-    print(f"Failed to start game: {{e}}")
+    print(f"[RUNNER] Failed to start game: {{e}}")
     import traceback
     traceback.print_exc()
     sys.exit(1)
@@ -95,14 +109,20 @@ except Exception as e:
     def read_stdout(self):
         """Read stdout from process"""
         if self.process:
-            data = self.process.readAllStandardOutput().data().decode()
-            self.output_received.emit(data)
-    
+            try:
+                data = self.process.readAllStandardOutput().data().decode('utf-8', errors='replace')
+                self.output_received.emit(data)
+            except Exception as e:
+                self.error_received.emit(f"Error reading stdout: {e}")
+
     def read_stderr(self):
         """Read stderr from process"""
         if self.process:
-            data = self.process.readAllStandardError().data().decode()
-            self.error_received.emit(data)
+            try:
+                data = self.process.readAllStandardError().data().decode('utf-8', errors='replace')
+                self.error_received.emit(data)
+            except Exception as e:
+                self.error_received.emit(f"Error reading stderr: {e}")
     
     def on_finished(self, exit_code):
         """Handle process finished"""

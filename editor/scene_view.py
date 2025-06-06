@@ -228,6 +228,9 @@ class SceneViewport(QOpenGLWidget):
     
     def paintGL(self):
         """Render the scene"""
+        # Debug: Track when scene view is being rendered
+        # print(f"[DEBUG] Scene view paintGL called - rendering {len(self.scene_data.get('nodes', [])) if self.scene_data else 0} nodes")
+
         # Clear the screen using shared renderer if available
         if self.renderer:
             self.renderer.clear((0.2, 0.2, 0.2, 1.0))
@@ -613,23 +616,27 @@ class SceneViewport(QOpenGLWidget):
     
     def draw_node(self, node_data: Dict[str, Any]):
         """Draw a single node"""
+        # Check visibility first
+        if not node_data.get("visible", True):
+            return
+
         node_type = node_data.get("type", "Node")
 
-        # All nodes now use the same position property
+        # All nodes start with world space positioning
         position = node_data.get("position", [0, 0])
+        follow_viewport = node_data.get("follow_viewport", False)
 
-        # Store original position for UI nodes
+        # Store original position for reference
         original_position = position.copy() if isinstance(position, list) else [position[0], position[1]]
-
-        # Handle coordinate conversion based on follow_viewport setting
-        follow_viewport = node_data.get("follow_viewport", False)  # Default false for non-UI nodes
-        if follow_viewport:
-            # Convert viewport coordinates to editor world coordinates for rendering
-            position = self._ui_to_world_coords(position)
 
         glPushMatrix()
         try:
-            glTranslatef(position[0], position[1], 0)
+            # In the editor, UI elements should always remain in their world coordinates
+            # regardless of follow_viewport setting. follow_viewport only affects game runtime behavior.
+            final_x = position[0]
+            final_y = position[1]
+
+            glTranslatef(final_x, final_y, 0)
 
             # Store the original position in the node data for hit detection
             node_data["_original_position"] = original_position
@@ -687,6 +694,8 @@ class SceneViewport(QOpenGLWidget):
                         self.draw_pathfollow2d(node_data)
                 elif node_type == "SceneInstance":
                     self.draw_scene_instance(node_data)
+                elif node_type == "YSort":
+                    self.draw_ysort(node_data)
                 else:
                     # Default node representation
                     self.draw_default_node(node_data)
@@ -1541,7 +1550,12 @@ class SceneViewport(QOpenGLWidget):
 
         # Try to load and draw texture if available
         if texture_path and isinstance(texture_path, str):
+            print(f"[DEBUG] Scene view loading texture: {texture_path}")
             texture_info = self.load_texture(texture_path)
+            if texture_info:
+                print(f"[DEBUG] Scene view texture loaded successfully: {texture_info}")
+            else:
+                print(f"[DEBUG] Scene view texture failed to load: {texture_path}")
             if texture_info:
                 texture_id, tex_width, tex_height = texture_info
 
@@ -3078,12 +3092,23 @@ class SceneViewport(QOpenGLWidget):
             glEnd()
 
     def draw_tilemap(self, node_data: Dict[str, Any]):
-        """Draw TileMap node with layer support"""
+        """Draw TileMap node with layer support and proper texture rendering"""
         cell_size = node_data.get("cell_size", [32.0, 32.0])
         tiles = node_data.get("tiles", {})
         layers = node_data.get("layers", [])
+        tilesets = node_data.get("tilesets", [])
         modulate = node_data.get("modulate", [1.0, 1.0, 1.0, 1.0])
         opacity = node_data.get("opacity", 1.0)
+
+        # Load tilesets if not already cached
+        if not hasattr(self, '_tilemap_cache'):
+            self._tilemap_cache = {}
+
+        tilemap_id = id(node_data)
+        if tilemap_id not in self._tilemap_cache:
+            self._tilemap_cache[tilemap_id] = self._load_tilemap_tilesets(tilesets)
+
+        tilemap_tilesets = self._tilemap_cache[tilemap_id]
 
         # Handle both old and new tile data formats
         if isinstance(tiles, dict) and tiles:
@@ -3091,10 +3116,10 @@ class SceneViewport(QOpenGLWidget):
             first_key = next(iter(tiles.keys()))
             if first_key.isdigit():
                 # New layered format
-                self._draw_layered_tilemap(tiles, layers, cell_size, modulate, opacity)
+                self._draw_layered_tilemap(tiles, layers, cell_size, modulate, opacity, tilemap_tilesets)
             else:
                 # Old format - treat as single layer
-                self._draw_single_layer_tilemap(tiles, cell_size, modulate, opacity)
+                self._draw_single_layer_tilemap(tiles, cell_size, modulate, opacity, tilemap_tilesets)
         else:
             # Draw placeholder grid
             glColor3f(modulate[0] * 0.5, modulate[1] * 0.5, modulate[2] * 0.5)
@@ -3105,8 +3130,37 @@ class SceneViewport(QOpenGLWidget):
             glVertex2f(0, cell_size[1] * 3)
             glEnd()
 
+    def _load_tilemap_tilesets(self, tileset_paths: List[str]) -> List[Any]:
+        """Load tilesets for tilemap rendering"""
+        tilesets = []
+
+        if not tileset_paths:
+            return tilesets
+
+        try:
+            from core.tileset import get_tileset_manager
+            tileset_manager = get_tileset_manager()
+
+            # Set project root if we have access to it
+            if hasattr(self, 'project') and self.project:
+                tileset_manager.set_project_root(str(self.project.project_path))
+
+            for tileset_path in tileset_paths:
+                tileset = tileset_manager.load_tileset(tileset_path)
+                if tileset:
+                    tilesets.append(tileset)
+                else:
+                    print(f"Failed to load tileset: {tileset_path}")
+                    tilesets.append(None)
+        except Exception as e:
+            print(f"Error loading tilesets: {e}")
+            import traceback
+            traceback.print_exc()
+
+        return tilesets
+
     def _draw_layered_tilemap(self, tiles: Dict[str, Dict[str, Any]], layers: List[Dict[str, Any]],
-                             cell_size: List[float], modulate: List[float], opacity: float):
+                             cell_size: List[float], modulate: List[float], opacity: float, tilesets: Optional[List[Any]] = None):
         """Draw tilemap with multiple layers"""
         # Draw layers in order (background to foreground)
         for layer_index, layer in enumerate(layers):
@@ -3127,16 +3181,16 @@ class SceneViewport(QOpenGLWidget):
                 modulate[2] * layer_opacity
             ]
 
-            self._draw_tiles_for_layer(layer_tiles, cell_size, layer_color, layer_index)
+            self._draw_tiles_for_layer(layer_tiles, cell_size, layer_color, layer_index, tilesets)
 
     def _draw_single_layer_tilemap(self, tiles: Dict[str, Any], cell_size: List[float],
-                                  modulate: List[float], opacity: float):
+                                  modulate: List[float], opacity: float, tilesets: Optional[List[Any]] = None):
         """Draw tilemap with single layer (legacy format)"""
         color = [modulate[0] * opacity, modulate[1] * opacity, modulate[2] * opacity]
-        self._draw_tiles_for_layer(tiles, cell_size, color, 0)
+        self._draw_tiles_for_layer(tiles, cell_size, color, 0, tilesets)
 
     def _draw_tiles_for_layer(self, layer_tiles: Dict[str, Any], cell_size: List[float],
-                             color: List[float], layer_index: int):
+                             color: List[float], layer_index: int, tilesets: Optional[List[Any]] = None):
         """Draw tiles for a specific layer"""
         if not layer_tiles:
             return
@@ -3428,6 +3482,48 @@ class SceneViewport(QOpenGLWidget):
             # Draw simplified text indicator
             glColor3f(0.8, 0.8, 0.8)
             self.draw_text_opengl(scene_name[:8], -20, -25, None, 10, (0.8, 0.8, 0.8, 1.0))
+
+    def draw_ysort(self, node_data: Dict[str, Any]):
+        """Draw YSort node"""
+        sort_enabled = node_data.get("sort_enabled", True)
+        sort_offset = node_data.get("sort_offset", 0.0)
+
+        # Choose color based on enabled state
+        if sort_enabled:
+            glColor3f(0.2, 0.8, 0.2)  # Green for enabled
+        else:
+            glColor3f(0.5, 0.5, 0.5)  # Gray for disabled
+
+        # Draw YSort icon - arrows pointing up/down to indicate sorting
+        glBegin(GL_LINES)
+
+        # Up arrow
+        glVertex2f(-8, -2)
+        glVertex2f(0, -10)
+        glVertex2f(0, -10)
+        glVertex2f(8, -2)
+
+        # Down arrow
+        glVertex2f(-8, 2)
+        glVertex2f(0, 10)
+        glVertex2f(0, 10)
+        glVertex2f(8, 2)
+
+        # Center line
+        glVertex2f(0, -10)
+        glVertex2f(0, 10)
+
+        glEnd()
+
+        # Draw "Y" text indicator
+        glColor3f(1.0, 1.0, 1.0)
+        self.draw_text_opengl("Y", -3, -15, None, 8, (1.0, 1.0, 1.0, 1.0))
+
+        # Draw sort offset indicator if non-zero
+        if abs(sort_offset) > 0.001:
+            offset_text = f"+{sort_offset:.1f}" if sort_offset > 0 else f"{sort_offset:.1f}"
+            glColor3f(0.8, 0.8, 0.2)  # Yellow for offset
+            self.draw_text_opengl(offset_text, 12, -8, None, 6, (0.8, 0.8, 0.2, 1.0))
 
     def wheelEvent(self, event):
         """Handle mouse wheel for zooming"""
@@ -3991,48 +4087,321 @@ class SceneViewport(QOpenGLWidget):
         local_x = world_x - position[0]
         local_y = world_y - position[1]
 
+        # Calculate hit box based on node type and actual content size
+        hit_box = self._calculate_node_hit_box(node)
+        if hit_box:
+            left, bottom, right, top = hit_box
+            return left <= local_x <= right and bottom <= local_y <= top
+
+        # Fallback for unknown node types
+        return abs(local_x) <= 8 and abs(local_y) <= 8
+
+    def _calculate_node_hit_box(self, node: Dict[str, Any]) -> Optional[Tuple[float, float, float, float]]:
+        """Calculate hit box for a node based on its type and properties.
+        Returns (left, bottom, right, top) relative to node position, or None if no hit box."""
+        node_type = node.get("type", "Node")
+
         if node_type == "Sprite":
-            # Check sprite bounds
-            centered = node.get("centered", True)
-            offset = node.get("offset", [0.0, 0.0])
-
-            # Default sprite size
-            frame_width = 64
-            frame_height = 64
-
-            # Calculate bounds
-            if centered:
-                left = offset[0] - frame_width / 2
-                right = offset[0] + frame_width / 2
-                bottom = offset[1] - frame_height / 2
-                top = offset[1] + frame_height / 2
-            else:
-                left = offset[0]
-                right = offset[0] + frame_width
-                bottom = offset[1]
-                top = offset[1] + frame_height
-
-            return left <= local_x <= right and bottom <= local_y <= top
-
-        elif hasattr(node, 'size') or 'size' in node:
-            # Check node bounds using size property (for UI nodes and others with size)
-            size = node.get("size", [100.0, 30.0])
-
-            # Nodes with size are centered on their position
-            left = -size[0] / 2
-            right = size[0] / 2
-            bottom = -size[1] / 2
-            top = size[1] / 2
-
-            return left <= local_x <= right and bottom <= local_y <= top
-
+            return self._calculate_sprite_hit_box(node)
+        elif node_type in ["Control", "Panel", "Label", "Button", "ColorRect", "TextureRect",
+                          "ProgressBar", "VBoxContainer", "HBoxContainer", "CenterContainer",
+                          "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
+            return self._calculate_ui_node_hit_box(node)
+        elif node_type == "CollisionShape2D":
+            return self._calculate_collision_shape_hit_box(node)
+        elif node_type == "CollisionPolygon2D":
+            return self._calculate_collision_polygon_hit_box(node)
         elif node_type == "Node2D":
-            # Check small area around node center
-            return abs(local_x) <= 10 and abs(local_y) <= 10
-
+            # Small area around node center
+            return (-10, -10, 10, 10)
         else:
             # Default node hit area
-            return abs(local_x) <= 8 and abs(local_y) <= 8
+            return (-8, -8, 8, 8)
+
+    def _calculate_sprite_hit_box(self, node: Dict[str, Any]) -> Tuple[float, float, float, float]:
+        """Calculate hit box for Sprite nodes based on texture size"""
+        centered = node.get("centered", True)
+        offset = node.get("offset", [0.0, 0.0])
+        scale = node.get("scale", [1.0, 1.0])
+
+        # Try to get actual texture size
+        texture_path = node.get("texture") or node.get("texture_path")
+        frame_width = 64  # Default
+        frame_height = 64  # Default
+
+        if texture_path and texture_path in self.texture_cache:
+            texture_info = self.texture_cache[texture_path]
+            if texture_info:
+                _, frame_width, frame_height = texture_info
+
+        # Apply scale
+        frame_width *= abs(scale[0])
+        frame_height *= abs(scale[1])
+
+        # Calculate bounds based on centering
+        if centered:
+            left = offset[0] - frame_width / 2
+            right = offset[0] + frame_width / 2
+            bottom = offset[1] - frame_height / 2
+            top = offset[1] + frame_height / 2
+        else:
+            left = offset[0]
+            right = offset[0] + frame_width
+            bottom = offset[1]
+            top = offset[1] + frame_height
+
+        return (left, bottom, right, top)
+
+    def _calculate_ui_node_hit_box(self, node: Dict[str, Any]) -> Tuple[float, float, float, float]:
+        """Calculate hit box for UI nodes based on their content and size"""
+        node_type = node.get("type", "Control")
+
+        # Start with the explicit size if available
+        size = node.get("size", [100.0, 30.0])
+
+        # For specific UI node types, calculate size based on content
+        if node_type == "Label":
+            size = self._calculate_label_size(node)
+        elif node_type == "Button":
+            size = self._calculate_button_size(node)
+        elif node_type == "TextureRect":
+            size = self._calculate_texture_rect_size(node)
+
+        # UI nodes are centered on their position
+        half_width = size[0] / 2
+        half_height = size[1] / 2
+
+        return (-half_width, -half_height, half_width, half_height)
+
+    def _calculate_label_size(self, node: Dict[str, Any]) -> List[float]:
+        """Calculate size for Label nodes based on text and font"""
+        text = node.get("text", "Label")
+        font_size = node.get("font_size", 14)
+
+        # Use explicit size if available
+        explicit_size = node.get("size")
+        if explicit_size and isinstance(explicit_size, list) and len(explicit_size) >= 2:
+            if explicit_size[0] > 0 and explicit_size[1] > 0:
+                return explicit_size
+
+        # Estimate text size based on font size and character count
+        # This is a rough approximation - in a real implementation you'd measure the actual text
+        char_width = font_size * 0.6  # Approximate character width
+        char_height = font_size * 1.2  # Approximate line height
+
+        lines = text.split('\n')
+        max_line_length = max(len(line) for line in lines) if lines else 0
+
+        estimated_width = max_line_length * char_width
+        estimated_height = len(lines) * char_height
+
+        # Minimum size for clickability
+        estimated_width = max(estimated_width, 20)
+        estimated_height = max(estimated_height, 20)
+
+        return [estimated_width, estimated_height]
+
+    def _calculate_button_size(self, node: Dict[str, Any]) -> List[float]:
+        """Calculate size for Button nodes based on text and padding"""
+        text = node.get("text", "Button")
+        font_size = node.get("font_size", 14)
+
+        # Use explicit size if available
+        explicit_size = node.get("size")
+        if explicit_size and isinstance(explicit_size, list) and len(explicit_size) >= 2:
+            if explicit_size[0] > 0 and explicit_size[1] > 0:
+                return explicit_size
+
+        # Estimate button size with padding
+        char_width = font_size * 0.6
+        char_height = font_size * 1.2
+
+        # Add padding for button appearance
+        padding_x = 20  # Horizontal padding
+        padding_y = 10  # Vertical padding
+
+        estimated_width = len(text) * char_width + padding_x
+        estimated_height = char_height + padding_y
+
+        # Minimum button size
+        estimated_width = max(estimated_width, 60)
+        estimated_height = max(estimated_height, 30)
+
+        return [estimated_width, estimated_height]
+
+    def _calculate_texture_rect_size(self, node: Dict[str, Any]) -> List[float]:
+        """Calculate size for TextureRect nodes based on texture dimensions"""
+        # Use explicit size if available
+        explicit_size = node.get("size")
+        if explicit_size and isinstance(explicit_size, list) and len(explicit_size) >= 2:
+            if explicit_size[0] > 0 and explicit_size[1] > 0:
+                return explicit_size
+
+        # Try to get texture size
+        texture_path = node.get("texture") or node.get("texture_path")
+        if texture_path and texture_path in self.texture_cache:
+            texture_info = self.texture_cache[texture_path]
+            if texture_info:
+                _, width, height = texture_info
+                return [float(width), float(height)]
+
+        # Default size if no texture or size info
+        return [100.0, 100.0]
+
+    def _calculate_collision_shape_hit_box(self, node: Dict[str, Any]) -> Tuple[float, float, float, float]:
+        """Calculate hit box for CollisionShape2D nodes based on shape type"""
+        shape_type = node.get("shape", "rectangle")
+
+        if shape_type == "rectangle":
+            size = node.get("size", [32.0, 32.0])
+            width, height = size[0], size[1]
+            return (-width/2, -height/2, width/2, height/2)
+
+        elif shape_type == "circle":
+            radius = node.get("radius", 16.0)
+            return (-radius, -radius, radius, radius)
+
+        elif shape_type == "capsule":
+            size = node.get("size", [32.0, 32.0])
+            height, width = size[0], size[1]
+            # Capsule extends by radius on each side
+            radius = width / 2
+            return (-radius, -height/2 - radius, radius, height/2 + radius)
+
+        elif shape_type == "polygon":
+            points = node.get("points", [[0, 0], [32, 0], [32, 32], [0, 32]])
+            if len(points) >= 3:
+                # Calculate bounding box of polygon
+                min_x = min(point[0] for point in points if isinstance(point, list) and len(point) >= 2)
+                max_x = max(point[0] for point in points if isinstance(point, list) and len(point) >= 2)
+                min_y = min(point[1] for point in points if isinstance(point, list) and len(point) >= 2)
+                max_y = max(point[1] for point in points if isinstance(point, list) and len(point) >= 2)
+                return (min_x, min_y, max_x, max_y)
+
+        elif shape_type == "line":
+            line_start = node.get("line_start", [0.0, 0.0])
+            line_end = node.get("line_end", [32.0, 0.0])
+            # Create a small hit box around the line
+            min_x = min(line_start[0], line_end[0]) - 3
+            max_x = max(line_start[0], line_end[0]) + 3
+            min_y = min(line_start[1], line_end[1]) - 3
+            max_y = max(line_start[1], line_end[1]) + 3
+            return (min_x, min_y, max_x, max_y)
+
+        # Default fallback
+        return (-16, -16, 16, 16)
+
+    def _calculate_collision_polygon_hit_box(self, node: Dict[str, Any]) -> Tuple[float, float, float, float]:
+        """Calculate hit box for CollisionPolygon2D nodes"""
+        polygon = node.get("polygon", [[0, 0], [32, 0], [32, 32], [0, 32]])
+
+        if len(polygon) >= 3:
+            # Calculate bounding box of polygon
+            min_x = min(vertex[0] for vertex in polygon if isinstance(vertex, list) and len(vertex) >= 2)
+            max_x = max(vertex[0] for vertex in polygon if isinstance(vertex, list) and len(vertex) >= 2)
+            min_y = min(vertex[1] for vertex in polygon if isinstance(vertex, list) and len(vertex) >= 2)
+            max_y = max(vertex[1] for vertex in polygon if isinstance(vertex, list) and len(vertex) >= 2)
+            return (min_x, min_y, max_x, max_y)
+
+        # Default fallback
+        return (-16, -16, 16, 16)
+
+    def _is_point_in_collision_shape(self, node: Dict[str, Any], local_x: float, local_y: float) -> bool:
+        """Check if a point is inside a collision shape's bounds"""
+        shape_type = node.get("shape", "rectangle")
+
+        if shape_type == "rectangle":
+            size = node.get("size", [32.0, 32.0])
+            width, height = size[0], size[1]
+            return abs(local_x) <= width/2 and abs(local_y) <= height/2
+
+        elif shape_type == "circle":
+            radius = node.get("radius", 16.0)
+            distance = math.sqrt(local_x**2 + local_y**2)
+            return distance <= radius
+
+        elif shape_type == "capsule":
+            size = node.get("size", [32.0, 32.0])
+            height = node.get("height", 32.0)
+            width = size[0]
+
+            # Capsule is a rectangle with rounded ends
+            # Check if point is in the rectangular middle section
+            if abs(local_x) <= width/2 and abs(local_y) <= height/2:
+                return True
+
+            # Check if point is in the circular end caps
+            if abs(local_y) > height/2:
+                # Check distance from the center of the appropriate end cap
+                cap_center_y = height/2 if local_y > 0 else -height/2
+                distance = math.sqrt(local_x**2 + (local_y - cap_center_y)**2)
+                return distance <= width/2
+
+            return False
+
+        elif shape_type == "polygon":
+            points = node.get("points", [[0, 0], [32, 0], [32, 32], [0, 32]])
+            return self._point_in_polygon(local_x, local_y, points)
+
+        elif shape_type == "line":
+            line_start = node.get("line_start", [0.0, 0.0])
+            line_end = node.get("line_end", [32.0, 0.0])
+
+            # Check if point is close to the line (within 3 pixels)
+            distance = self._point_to_line_distance(local_x, local_y, line_start, line_end)
+            return distance <= 3.0
+
+        # Default fallback
+        return abs(local_x) <= 16 and abs(local_y) <= 16
+
+    def _is_point_in_collision_polygon(self, node: Dict[str, Any], local_x: float, local_y: float) -> bool:
+        """Check if a point is inside a collision polygon's bounds"""
+        polygon = node.get("polygon", [[0, 0], [32, 0], [32, 32], [0, 32]])
+        return self._point_in_polygon(local_x, local_y, polygon)
+
+    def _point_in_polygon(self, x: float, y: float, polygon: List[List[float]]) -> bool:
+        """Check if a point is inside a polygon using ray casting algorithm"""
+        if len(polygon) < 3:
+            return False
+
+        inside = False
+        j = len(polygon) - 1
+
+        for i in range(len(polygon)):
+            if len(polygon[i]) < 2 or len(polygon[j]) < 2:
+                j = i
+                continue
+
+            xi, yi = polygon[i][0], polygon[i][1]
+            xj, yj = polygon[j][0], polygon[j][1]
+
+            if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+                inside = not inside
+            j = i
+
+        return inside
+
+    def _point_to_line_distance(self, px: float, py: float, line_start: List[float], line_end: List[float]) -> float:
+        """Calculate the distance from a point to a line segment"""
+        x1, y1 = line_start[0], line_start[1]
+        x2, y2 = line_end[0], line_end[1]
+
+        # Calculate the squared length of the line segment
+        line_length_sq = (x2 - x1)**2 + (y2 - y1)**2
+
+        if line_length_sq == 0:
+            # Line is actually a point
+            return math.sqrt((px - x1)**2 + (py - y1)**2)
+
+        # Calculate the parameter t for the closest point on the line
+        t = max(0, min(1, ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / line_length_sq))
+
+        # Calculate the closest point on the line
+        closest_x = x1 + t * (x2 - x1)
+        closest_y = y1 + t * (y2 - y1)
+
+        # Return the distance from the point to the closest point on the line
+        return math.sqrt((px - closest_x)**2 + (py - closest_y)**2)
 
     def _is_ui_node(self, node_type: str) -> bool:
         """Check if a node type is a UI node - dynamic detection"""
@@ -4112,14 +4481,8 @@ class SceneViewport(QOpenGLWidget):
         if not self.selected_node:
             return
 
-        # All nodes use the same position property now
+        # All nodes use the same position property - no special UI handling
         position = self.selected_node.get("position", [0, 0])
-
-        # Handle coordinate conversion based on follow_viewport setting
-        follow_viewport = self.selected_node.get("follow_viewport", False)
-        if follow_viewport:
-            # Convert viewport coordinates to world coordinates for drawing
-            position = self._ui_to_world_coords(position)
 
         glPushMatrix()
         try:
@@ -4156,6 +4519,12 @@ class SceneViewport(QOpenGLWidget):
                 glVertex2f(right, top)
                 glVertex2f(left, top)
                 glEnd()
+            elif node_type == "CollisionShape2D":
+                # Draw around collision shape bounds based on shape type
+                self._draw_collision_shape_selection_outline()
+            elif node_type == "CollisionPolygon2D":
+                # Draw around collision polygon bounds
+                self._draw_collision_polygon_selection_outline()
             elif node_type in ["Button", "Panel", "Label", "ColorRect", "TextureRect", "ProgressBar", "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
                 # Draw around UI node bounds
                 size = self.selected_node.get("size", [100.0, 30.0])
@@ -4249,8 +4618,133 @@ class SceneViewport(QOpenGLWidget):
     def update_node_property(self, node: Dict[str, Any], property_name: str, value):
         """Update a node property from inspector changes"""
         if node and property_name in node:
+            # Check if this is a texture-related property change
+            if property_name in ["texture", "texture_path", "icon", "normal_texture", "pressed_texture", "hover_texture"]:
+                # Invalidate texture cache for the old value
+                old_value = node.get(property_name)
+                if old_value and old_value in self.texture_cache:
+                    print(f"[DEBUG] Invalidating texture cache for: {old_value}")
+                    del self.texture_cache[old_value]
+
+                # Also invalidate the new value in case it was cached with different data
+                if value and value in self.texture_cache:
+                    print(f"[DEBUG] Invalidating texture cache for new value: {value}")
+                    del self.texture_cache[value]
+
             node[property_name] = value
             self.update()
+            print(f"[DEBUG] Updated node property {property_name} = {value}, scene view refreshed")
+
+    def clear_texture_cache(self, texture_path: Optional[str] = None):
+        """Clear texture cache for a specific path or all textures"""
+        if texture_path:
+            if texture_path in self.texture_cache:
+                print(f"[DEBUG] Clearing texture cache for: {texture_path}")
+                del self.texture_cache[texture_path]
+        else:
+            print(f"[DEBUG] Clearing entire texture cache ({len(self.texture_cache)} textures)")
+            self.texture_cache.clear()
+
+    def refresh_scene_data(self, new_scene_data: Dict[str, Any]):
+        """Refresh the scene data and update the view"""
+        self.scene_data = new_scene_data
+        # Clear texture cache to ensure textures are reloaded
+        self.clear_texture_cache()
+        self.update()
+        print(f"[DEBUG] Scene data refreshed, view updated")
+
+    def _draw_collision_shape_selection_outline(self):
+        """Draw selection outline for CollisionShape2D based on shape type"""
+        if not self.selected_node:
+            return
+        shape_type = self.selected_node.get("shape", "rectangle")
+
+        if shape_type == "rectangle":
+            size = self.selected_node.get("size", [32.0, 32.0])
+            width, height = size[0], size[1]
+
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(-width/2, -height/2)
+            glVertex2f(width/2, -height/2)
+            glVertex2f(width/2, height/2)
+            glVertex2f(-width/2, height/2)
+            glEnd()
+
+        elif shape_type == "circle":
+            radius = self.selected_node.get("radius", 16.0)
+            segments = 32
+
+            glBegin(GL_LINE_LOOP)
+            for i in range(segments):
+                angle = 2 * math.pi * i / segments
+                x = radius * math.cos(angle)
+                y = radius * math.sin(angle)
+                glVertex2f(x, y)
+            glEnd()
+
+        elif shape_type == "capsule":
+            size = self.selected_node.get("size", [32.0, 32.0])
+            height = self.selected_node.get("height", 32.0)
+            width = size[0]
+
+            # Draw the capsule as a rectangle with rounded ends
+            glBegin(GL_LINE_STRIP)
+            # Top line
+            glVertex2f(-width/2, height/2)
+            glVertex2f(width/2, height/2)
+
+            # Right semicircle (top half)
+            segments = 16
+            for i in range(segments + 1):
+                angle = math.pi * i / segments
+                x = width/2 + (width/2) * math.cos(angle)
+                y = height/2 + (width/2) * math.sin(angle)
+                glVertex2f(x, y)
+
+            # Bottom line
+            glVertex2f(width/2, -height/2)
+            glVertex2f(-width/2, -height/2)
+
+            # Left semicircle (bottom half)
+            for i in range(segments + 1):
+                angle = math.pi + math.pi * i / segments
+                x = -width/2 + (width/2) * math.cos(angle)
+                y = -height/2 + (width/2) * math.sin(angle)
+                glVertex2f(x, y)
+
+            glEnd()
+
+        elif shape_type == "polygon":
+            points = self.selected_node.get("points", [[0, 0], [32, 0], [32, 32], [0, 32]])
+
+            if len(points) >= 3:
+                glBegin(GL_LINE_LOOP)
+                for point in points:
+                    if isinstance(point, list) and len(point) >= 2:
+                        glVertex2f(point[0], point[1])
+                glEnd()
+
+        elif shape_type == "line":
+            line_start = self.selected_node.get("line_start", [0.0, 0.0])
+            line_end = self.selected_node.get("line_end", [32.0, 0.0])
+
+            glBegin(GL_LINES)
+            glVertex2f(line_start[0], line_start[1])
+            glVertex2f(line_end[0], line_end[1])
+            glEnd()
+
+    def _draw_collision_polygon_selection_outline(self):
+        """Draw selection outline for CollisionPolygon2D"""
+        if not self.selected_node:
+            return
+        polygon = self.selected_node.get("polygon", [[0, 0], [32, 0], [32, 32], [0, 32]])
+
+        if len(polygon) >= 3:
+            glBegin(GL_LINE_LOOP)
+            for vertex in polygon:
+                if isinstance(vertex, list) and len(vertex) >= 2:
+                    glVertex2f(vertex[0], vertex[1])
+            glEnd()
 
     def set_selected_node(self, node: Optional[Dict[str, Any]]):
         """Set the selected node from external source (like scene tree)"""

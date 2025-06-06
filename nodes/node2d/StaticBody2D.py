@@ -82,9 +82,16 @@ class StaticBody2D(Node2D):
         body.one_way_collision_enabled = data.get("one_way_collision_enabled", False)
         body.one_way_collision_margin = data.get("one_way_collision_margin", 0.0)
 
-        # Re-create children
+        # Re-create children using proper scene loading
         for child_data in data.get("children", []):
-            from nodes.base.Node import Node
-            child = Node.from_dict(child_data)
-            body.add_child(child)
+            try:
+                # Use the scene manager's node creation method for proper type handling
+                from core.scene.scene_manager import Scene
+                child = Scene._create_node_from_dict(child_data)
+                body.add_child(child)
+            except ImportError:
+                # Fallback to base Node
+                from nodes.base.Node import Node
+                child = Node.from_dict(child_data)
+                body.add_child(child)
         return body

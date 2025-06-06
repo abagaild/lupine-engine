@@ -79,8 +79,7 @@ class Button(Control):
             "font_size": {
                 "type": "int",
                 "value": 14,
-                "min": 6,
-                "max": 72,
+                "min": 1,
                 "description": "Font size in pixels"
             },
             "font_color": {

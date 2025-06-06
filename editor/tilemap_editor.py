@@ -300,7 +300,7 @@ class TilemapCanvas(QWidget):
                 # Draw tile from texture
                 tile_rect = tile_def.texture_rect
                 source_rect = QRect(tile_rect[0], tile_rect[1], tile_rect[2], tile_rect[3])
-                target_rect = QRect(world_x, world_y, tile_w, tile_h)
+                target_rect = QRect(int(world_x), int(world_y), int(tile_w), int(tile_h))
                 painter.drawPixmap(target_rect, texture, source_rect)
                 return
 
@@ -318,8 +318,65 @@ class TilemapCanvas(QWidget):
     
     def draw_collision_shapes(self, painter: QPainter):
         """Draw collision shapes for tiles"""
-        # TODO: Implement collision shape visualization
-        pass
+        if not self.tilemap_node or not self.tilesets:
+            return
+
+        painter.setPen(QPen(QColor(255, 0, 0, 180), 2))
+        painter.setBrush(QBrush(QColor(255, 0, 0, 64)))
+
+        # Get cell size and scale
+        cell_size = self.tilemap_node.get("cell_size", [32, 32])
+        scale = self.tilemap_node.get("scale", [1.0, 1.0])
+
+        # Draw collision shapes for all visible tiles
+        tiles = self.tilemap_node.get("tiles", {})
+        for layer_key, layer_tiles in tiles.items():
+            for pos_key, tile_data in layer_tiles.items():
+                if not tile_data:
+                    continue
+
+                tile_id = tile_data.get("tile_id", -1)
+                tileset_index = tile_data.get("tileset", 0)
+
+                if tile_id < 0 or tileset_index >= len(self.tilesets):
+                    continue
+
+                tileset = self.tilesets[tileset_index]
+                tile_def = tileset.get_tile(tile_id)
+                if not tile_def or not tile_def.collision_shapes:
+                    continue
+
+                # Parse position
+                try:
+                    x, y = map(int, pos_key.split(','))
+                except ValueError:
+                    continue
+
+                # Calculate world position
+                world_x = x * cell_size[0] * scale[0] * self.zoom + self.offset.x()
+                world_y = y * cell_size[1] * scale[1] * self.zoom + self.offset.y()
+
+                # Draw collision shapes for this tile
+                for shape in tile_def.collision_shapes:
+                    if shape.get("type") == "rect":
+                        shape_rect = shape.get("rect", [0, 0, 32, 32])
+                        painter.drawRect(
+                            world_x + shape_rect[0] * scale[0] * self.zoom,
+                            world_y + shape_rect[1] * scale[1] * self.zoom,
+                            shape_rect[2] * scale[0] * self.zoom,
+                            shape_rect[3] * scale[1] * self.zoom
+                        )
+                    elif shape.get("type") == "polygon":
+                        points = shape.get("points", [])
+                        if len(points) >= 3:
+                            from PyQt6.QtGui import QPolygon
+                            polygon = QPolygon()
+                            for point in points:
+                                polygon.append(QPoint(
+                                    int(world_x + point[0] * scale[0] * self.zoom),
+                                    int(world_y + point[1] * scale[1] * self.zoom)
+                                ))
+                            painter.drawPolygon(polygon)
     
     def mousePressEvent(self, event: QMouseEvent):
         """Handle mouse press events"""
@@ -528,17 +585,22 @@ class TilemapCanvas(QWidget):
 class TilemapEditorWindow(QMainWindow):
     """Main tilemap editor window"""
     
-    def __init__(self, project: LupineProject, tilemap_node: Dict[str, Any], parent=None):
+    def __init__(self, project: LupineProject, tilemap_node: Dict[str, Any], parent=None, scene_editor=None):
         super().__init__(parent)
         self.project = project
         self.tilemap_node = tilemap_node
         self.current_tileset = None
-        
+        self.scene_editor = scene_editor  # Reference to scene editor for saving
+
+        # Initialize tileset manager with project root
+        from core.tileset import set_tileset_manager_project_root
+        set_tileset_manager_project_root(str(project.project_path))
+
         self.setup_ui()
         self.setup_menus()
         self.setup_toolbar()
         self.setup_status_bar()
-        
+
         # Load tileset if specified
         self.load_tileset()
     
@@ -866,19 +928,53 @@ class TilemapEditorWindow(QMainWindow):
                 tilesets = [tileset_path]
 
         if tilesets:
-            tileset_path = tilesets[0]  # Use first tileset for now
-            self.tileset_path_edit.setText(tileset_path)
+            # Load all tilesets
+            self.canvas.tilesets.clear()
+            self.canvas.tileset_textures.clear()
 
-            # Load tileset
-            tileset_manager = get_tileset_manager()
-            full_path = self.project.project_path / tileset_path
-            self.current_tileset = tileset_manager.load_tileset(str(full_path))
+            for i, tileset_path in enumerate(tilesets):
+                # Convert .tres to .json if needed
+                if tileset_path.endswith('.tres'):
+                    json_path = tileset_path.replace('.tres', '.json')
+                    print(f"Converting tileset path from {tileset_path} to {json_path}")
+                    tileset_path = json_path
+                    # Update the tilesets list with JSON path
+                    tilesets[i] = json_path
 
-            if self.current_tileset:
+                # Load tileset using improved path resolution
+                tileset_manager = get_tileset_manager()
+                tileset_manager.set_project_root(str(self.project.project_path))
+
+                tileset = tileset_manager.load_tileset(tileset_path)
+                if tileset:
+                    self.canvas.tilesets.append(tileset)
+
+                    # Load and cache texture
+                    if tileset.texture_path:
+                        texture_path = tileset_manager.resolve_path(tileset.texture_path)
+                        if texture_path.exists():
+                            from PyQt6.QtGui import QPixmap
+                            self.canvas.tileset_textures[i] = QPixmap(str(texture_path))
+                else:
+                    self.status_bar.showMessage(f"Failed to load tileset: {tileset_path}")
+
+            # Set first tileset as current if available
+            if self.canvas.tilesets:
+                self.current_tileset = self.canvas.tilesets[0]
                 self.canvas.set_current_tileset(self.current_tileset)
+                self.canvas.current_tileset_index = 0
+
+                # Update UI elements
+                if hasattr(self, 'tileset_path_edit'):
+                    self.tileset_path_edit.setText(tilesets[0])
+
+                self.update_tileset_combo()
                 self.update_tile_palette()
+
+                print(f"Loaded {len(self.canvas.tilesets)} tilesets, current: {self.current_tileset.name}")
             else:
-                self.status_bar.showMessage(f"Failed to load tileset: {tileset_path}")
+                self.current_tileset = None
+                print("No tilesets loaded")
 
     def add_tileset(self):
         """Add a new tileset to the tilemap"""
@@ -938,9 +1034,12 @@ class TilemapEditorWindow(QMainWindow):
     def on_tileset_changed(self, index: int):
         """Handle tileset selection change"""
         if 0 <= index < len(self.canvas.tilesets):
-            self.canvas.current_tileset = self.canvas.tilesets[index]
+            self.current_tileset = self.canvas.tilesets[index]
+            self.canvas.current_tileset = self.current_tileset
             self.canvas.current_tileset_index = index
+            self.canvas.set_current_tileset(self.current_tileset)
             self.update_tile_palette()
+            print(f"Switched to tileset {index}: {self.current_tileset.name}")
 
     def update_tileset_combo(self):
         """Update the tileset combo box"""
@@ -957,19 +1056,26 @@ class TilemapEditorWindow(QMainWindow):
         """Update the tile palette with tiles from current tileset"""
         self.tile_palette.clear()
 
-        if not self.current_tileset:
+        # Use canvas current tileset if available, fallback to self.current_tileset
+        current_tileset = None
+        if hasattr(self.canvas, 'current_tileset') and self.canvas.current_tileset:
+            current_tileset = self.canvas.current_tileset
+        elif self.current_tileset:
+            current_tileset = self.current_tileset
+
+        if not current_tileset:
+            print("No current tileset available for tile palette")
             return
 
-        # Load tileset texture for previews
+        # Get cached texture for current tileset
         tileset_texture = None
-        if self.current_tileset.texture_path:
-            from PyQt6.QtGui import QPixmap
-            texture_path = self.project.project_path / self.current_tileset.texture_path
-            if texture_path.exists():
-                tileset_texture = QPixmap(str(texture_path))
+        current_index = getattr(self.canvas, 'current_tileset_index', 0)
+        if current_index in self.canvas.tileset_textures:
+            tileset_texture = self.canvas.tileset_textures[current_index]
 
         # Sort tiles by ID for consistent ordering
-        sorted_tiles = sorted(self.current_tileset.tiles.items())
+        sorted_tiles = sorted(current_tileset.tiles.items())
+        print(f"Updating tile palette with {len(sorted_tiles)} tiles from tileset: {current_tileset.name}")
 
         for tile_id, tile_def in sorted_tiles:
             # Create item with no text (image only)
@@ -1148,46 +1254,69 @@ class TilemapEditorWindow(QMainWindow):
 
     # Tileset management
     def browse_tileset(self):
-        """Browse for a tileset file"""
+        """Browse for a tileset file (JSON only)"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Select Tileset",
             str(self.project.project_path / "assets"),
-            "Tileset Files (*.tres *.json);;All Files (*)"
+            "Tileset Files (*.json);;All Files (*)"
         )
 
         if file_path:
-            # Convert to relative path
+            # Convert to relative path if possible, otherwise use absolute
             try:
                 relative_path = Path(file_path).relative_to(self.project.project_path)
-                self.tileset_path_edit.setText(str(relative_path))
-
-                # Update tilemap node
-                tilesets = self.tilemap_node.setdefault("tilesets", [])
-                if str(relative_path) not in tilesets:
-                    tilesets.clear()  # For now, only support one tileset
-                    tilesets.append(str(relative_path))
-
-                # Load the tileset
-                self.load_tileset()
-
+                tileset_path = str(relative_path)
             except ValueError:
-                QMessageBox.warning(self, "Warning", "Please select a tileset within the project folder.")
+                # Use absolute path if not within project
+                tileset_path = file_path
+                QMessageBox.information(
+                    self, "Info",
+                    "Using absolute path since tileset is outside project folder."
+                )
+
+            self.tileset_path_edit.setText(tileset_path)
+
+            # Update tilemap node
+            tilesets = self.tilemap_node.setdefault("tilesets", [])
+            if tileset_path not in tilesets:
+                tilesets.append(tileset_path)
+
+            # Load all tilesets
+            self.load_tileset()
 
     def open_tileset_editor(self):
-        """Open the tileset editor"""
+        """Open the tileset editor with current tileset"""
         try:
-            # Get the main editor window
-            main_window = self.parent()
-            while main_window and not hasattr(main_window, 'open_tileset_editor'):
-                main_window = main_window.parent()
+            if not self.current_tileset:
+                QMessageBox.warning(self, "Warning", "No tileset selected. Please select a tileset first.")
+                return
 
-            if main_window:
-                main_window.open_tileset_editor()
-            else:
-                QMessageBox.information(self, "Info", "Tileset editor not available from this context.")
+            # Import here to avoid circular imports
+            from editor.tileset_editor import TilesetEditorWindow
+
+            # Create tileset editor window with current tileset
+            tileset_editor = TilesetEditorWindow(self.project, self)
+
+            # Load the current tileset into the editor
+            if hasattr(self, 'current_tileset') and self.current_tileset:
+                tileset_editor.current_tileset = self.current_tileset
+                tileset_editor.canvas.set_tileset(self.current_tileset)
+                tileset_editor.update_ui_from_tileset()
+
+                # Set the file path if we have it
+                tilesets = self.tilemap_node.get("tilesets", [])
+                if self.canvas.current_tileset_index < len(tilesets):
+                    current_tileset_path = tilesets[self.canvas.current_tileset_index]
+                    tileset_editor.current_file_path = str(self.project.project_path / current_tileset_path)
+
+            tileset_editor.show()
+            tileset_editor.raise_()
+            tileset_editor.activateWindow()
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open tileset editor: {e}")
+            import traceback
+            traceback.print_exc()
 
     # Map property updates
     def update_cell_size(self):
@@ -1292,11 +1421,141 @@ class TilemapEditorWindow(QMainWindow):
         self.canvas.update()
 
     def save_tilemap(self):
-        """Save the tilemap changes"""
-        # In a full implementation, this would save the tilemap node back to the scene
-        # For now, just show a message
-        self.status_bar.showMessage("Tilemap saved (changes applied to node)")
-        QMessageBox.information(self, "Save", "Tilemap changes have been applied to the node.")
+        """Save the tilemap changes back to the node"""
+        try:
+            # Apply all tilemap editor data back to the node
+            self.apply_changes_to_node()
+
+            # Save the scene if we have access to it
+            if hasattr(self, 'scene_editor') and self.scene_editor:
+                self.scene_editor.save_scene()
+
+            self.status_bar.showMessage("Tilemap saved successfully")
+            QMessageBox.information(self, "Save", "Tilemap changes have been applied to the node and scene.")
+
+        except Exception as e:
+            self.status_bar.showMessage(f"Error saving tilemap: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to save tilemap: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def apply_changes_to_node(self):
+        """Apply all tilemap editor changes back to the node"""
+        if not self.tilemap_node:
+            return
+
+        # Update basic properties - get cell_size from tilemap_node since canvas doesn't store it
+        current_cell_size = self.tilemap_node.get("cell_size", [32, 32])
+        self.tilemap_node["cell_size"] = current_cell_size
+        self.tilemap_node["modulate"] = [1.0, 1.0, 1.0, 1.0]  # Default modulate
+        self.tilemap_node["opacity"] = 1.0  # Default opacity
+
+        # Update tileset information - ensure JSON format
+        if self.canvas.tilesets:
+            tileset_paths = []
+            for i, tileset in enumerate(self.canvas.tilesets):
+                # Get the original tileset path from the tilesets list
+                if i < len(self.tilemap_node.get("tilesets", [])):
+                    original_path = self.tilemap_node["tilesets"][i]
+                    # Convert .tres to .json if needed
+                    if original_path.endswith('.tres'):
+                        json_path = original_path.replace('.tres', '.json')
+                        tileset_paths.append(json_path)
+                    else:
+                        tileset_paths.append(original_path)
+                else:
+                    # Fallback to a default JSON path
+                    tileset_paths.append(f"assets/tileset_{i}.json")
+
+            self.tilemap_node["tilesets"] = tileset_paths
+
+            # Also update legacy tileset property for compatibility
+            if tileset_paths:
+                self.tilemap_node["tileset"] = tileset_paths[0]
+
+        # Update layer information - get from tilemap_node since canvas might not have all layer data
+        current_layers = self.tilemap_node.get("layers", [{"name": "Layer 0", "visible": True, "opacity": 1.0, "z_index": 0}])
+        self.tilemap_node["layers"] = current_layers
+        self.tilemap_node["current_layer"] = getattr(self.canvas, 'current_layer', 0)
+
+        # Update map size configuration
+        self.tilemap_node["map_size_mode"] = self.tilemap_node.get("map_size_mode", "infinite")
+        self.tilemap_node["fixed_map_size"] = self.tilemap_node.get("fixed_map_size", [100, 100])
+
+        # Update tile data - get from tilemap_node since canvas stores it there
+        current_tiles = self.tilemap_node.get("tiles", {})
+        self.tilemap_node["tiles"] = current_tiles
+
+        # Also update the internal _tiles format for the node
+        if "_tiles" not in self.tilemap_node:
+            self.tilemap_node["_tiles"] = {}
+
+        # Convert current tiles to node _tiles format
+        self.tilemap_node["_tiles"] = self.convert_current_tiles_to_node_format()
+
+        print(f"Applied tilemap changes to node: {len(self.tilemap_node.get('tiles', {}))} tiles")
+
+    def convert_current_tiles_to_node_format(self):
+        """Convert current tilemap tiles to node internal format"""
+        node_tiles = {}
+
+        # Get current tiles from tilemap_node
+        current_tiles = self.tilemap_node.get("tiles", {})
+
+        # Initialize layers
+        layers = self.tilemap_node.get("layers", [])
+        for i in range(len(layers)):
+            node_tiles[str(i)] = {}
+
+        # Convert tiles from current format to node format
+        for layer_key, layer_tiles in current_tiles.items():
+            if layer_key not in node_tiles:
+                node_tiles[layer_key] = {}
+
+            for pos_key, tile_data in layer_tiles.items():
+                if not tile_data:
+                    continue
+
+                # Store tile data in node format
+                node_tiles[layer_key][pos_key] = {
+                    "tile_id": tile_data.get("tile_id", -1),
+                    "tileset": tile_data.get("tileset", 0),
+                    "flip_h": tile_data.get("flip_h", False),
+                    "flip_v": tile_data.get("flip_v", False),
+                    "transpose": tile_data.get("transpose", False)
+                }
+
+        return node_tiles
+
+    def convert_canvas_tiles_to_node_format(self):
+        """Convert canvas tile format to node internal format"""
+        node_tiles = {}
+
+        # Initialize layers
+        for i in range(len(self.canvas.layers)):
+            node_tiles[str(i)] = {}
+
+        # Convert tiles from canvas format to node format
+        for pos_key, tile_data in self.canvas.tiles.items():
+            if not tile_data:
+                continue
+
+            layer = tile_data.get("layer", 0)
+            layer_key = str(layer)
+
+            if layer_key not in node_tiles:
+                node_tiles[layer_key] = {}
+
+            # Store tile data in node format
+            node_tiles[layer_key][pos_key] = {
+                "tile_id": tile_data.get("tile_id", -1),
+                "tileset": tile_data.get("tileset", 0),
+                "flip_h": tile_data.get("flip_h", False),
+                "flip_v": tile_data.get("flip_v", False),
+                "transpose": tile_data.get("transpose", False)
+            }
+
+        return node_tiles
 
     def closeEvent(self, event):
         """Handle window close event"""

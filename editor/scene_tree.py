@@ -7,13 +7,14 @@ import json
 from typing import Dict, Any, Optional
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QTreeWidget, QTreeWidgetItem,
-    QHeaderView, QMenu, QMessageBox, QPushButton, QHBoxLayout
+    QHeaderView, QMenu, QMessageBox, QPushButton, QHBoxLayout, QCheckBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction
 
 from core.project import LupineProject
 from core.node_registry import get_node_registry
+from core.global_editor_system import get_global_editor_system, setup_editor_shortcuts
 from .add_node_dialog import AddNodeDialog
 
 
@@ -28,6 +29,16 @@ class SceneTreeWidget(QWidget):
         self.project = project
         self.current_scene_data = None
         self.current_scene_path = None
+
+        # Setup global editor shortcuts
+        setup_editor_shortcuts(self)
+
+        # Register clipboard callbacks
+        global_system = get_global_editor_system()
+        global_system.register_copy_callback("SceneTreeWidget", self._copy_selected_node)
+        global_system.register_paste_callback("SceneTreeWidget", self._paste_node)
+        global_system.register_cut_callback("SceneTreeWidget", self._cut_selected_node)
+
         self.setup_ui()
     
     def setup_ui(self):
@@ -46,11 +57,15 @@ class SceneTreeWidget(QWidget):
         
         # Tree widget
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabel("Scene")
+        self.tree.setHeaderLabels(["Scene", "Visible"])
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_context_menu)
         self.tree.itemSelectionChanged.connect(self.on_selection_changed)
         self.tree.itemChanged.connect(self.on_item_changed)
+
+        # Set column widths
+        self.tree.setColumnWidth(0, 200)  # Scene name column
+        self.tree.setColumnWidth(1, 60)   # Visibility column
         
         # Enable drag and drop for reordering
         self.tree.setDragDropMode(QTreeWidget.DragDropMode.InternalMove)
@@ -79,6 +94,48 @@ class SceneTreeWidget(QWidget):
             self.current_scene_data = None
             self.tree.clear()
 
+    def _validate_and_fix_node_names(self, scene_data: dict) -> dict:
+        """Validate and fix node names to ensure uniqueness"""
+        if not scene_data:
+            return scene_data
+
+        used_names = set()
+
+        def fix_node_names(node_data: dict):
+            """Recursively fix node names to ensure uniqueness"""
+            if not isinstance(node_data, dict):
+                return
+
+            # Get current name
+            current_name = node_data.get("name", "Node")
+
+            # Generate unique name if needed
+            if current_name in used_names:
+                counter = 1
+                base_name = current_name
+                while f"{base_name}_{counter}" in used_names:
+                    counter += 1
+                current_name = f"{base_name}_{counter}"
+                node_data["name"] = current_name
+
+            used_names.add(current_name)
+
+            # Process children
+            children = node_data.get("children", [])
+            for child in children:
+                fix_node_names(child)
+
+        # Create a copy to avoid modifying the original
+        import copy
+        fixed_data = copy.deepcopy(scene_data)
+
+        # Fix names in all root nodes
+        root_nodes = fixed_data.get("nodes", [])
+        for node in root_nodes:
+            fix_node_names(node)
+
+        return fixed_data
+
     def set_scene_data(self, scene_data: dict):
         """Set scene data directly (for syncing with main editor)"""
         # Store the currently selected node name to restore selection after refresh
@@ -89,7 +146,8 @@ class SceneTreeWidget(QWidget):
             if selected_node_data:
                 selected_node_name = selected_node_data.get("name", "")
 
-        self.current_scene_data = scene_data
+        # Validate and fix node names before setting
+        self.current_scene_data = self._validate_and_fix_node_names(scene_data)
         self.refresh_tree()
 
         # Restore selection if we had one
@@ -118,7 +176,7 @@ class SceneTreeWidget(QWidget):
             item = QTreeWidgetItem(parent_item)
         else:
             item = QTreeWidgetItem(self.tree)
-        
+
         # Set node name and type
         node_name = node_data.get("name", "Unnamed")
         node_type = node_data.get("type", "Node")
@@ -133,20 +191,60 @@ class SceneTreeWidget(QWidget):
                 item.setText(0, f"📁 {node_name} (No Scene)")
         else:
             item.setText(0, f"{node_name} ({node_type})")
-        
+
         # Store node data
         item.setData(0, Qt.ItemDataRole.UserRole, node_data)
-        
+
         # Make item editable
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-        
+
+        # Add visibility toggle button
+        self._add_visibility_toggle(item, node_data)
+
         # Add children
         children = node_data.get("children", [])
         for child_data in children:
             self.add_node_to_tree(child_data, item)
-        
+
         return item
-    
+
+    def _add_visibility_toggle(self, item: QTreeWidgetItem, node_data: Dict[str, Any]):
+        """Add visibility toggle button to tree item"""
+        # Create visibility checkbox
+        visibility_checkbox = QCheckBox()
+        visibility_checkbox.setChecked(node_data.get("visible", True))
+        visibility_checkbox.setToolTip("Toggle node visibility")
+
+        # Connect to visibility change handler
+        visibility_checkbox.stateChanged.connect(
+            lambda state, item=item: self._on_visibility_changed(item, state == Qt.CheckState.Checked.value)
+        )
+
+        # Set the checkbox as a widget for the tree item
+        self.tree.setItemWidget(item, 1, visibility_checkbox)
+
+    def _on_visibility_changed(self, item: QTreeWidgetItem, visible: bool):
+        """Handle visibility toggle"""
+        node_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if node_data:
+            node_data["visible"] = visible
+
+            # Update visual appearance of the item
+            font = item.font(0)
+            if visible:
+                font.setStrikeOut(False)
+                item.setForeground(0, self.palette().color(self.palette().ColorRole.Text))
+            else:
+                font.setStrikeOut(True)
+                item.setForeground(0, self.palette().color(self.palette().ColorRole.PlaceholderText))
+            item.setFont(0, font)
+
+            # Synchronize to scene data
+            self.sync_tree_to_scene_data()
+
+            # Emit change signal
+            self.node_changed.emit(node_data)
+
     def on_selection_changed(self):
         """Handle tree selection change"""
         selected_items = self.tree.selectedItems()
@@ -178,10 +276,20 @@ class SceneTreeWidget(QWidget):
             if node_data:
                 old_name = node_data.get("name", "")
                 if new_name != old_name:
+                    # Check for name uniqueness
+                    unique_name = self._ensure_unique_name(new_name, exclude_item=item)
+                    if unique_name != new_name:
+                        # Name was changed to ensure uniqueness
+                        new_name = unique_name
+                        QMessageBox.information(
+                            self,
+                            "Name Changed",
+                            f"Name was changed to '{new_name}' to ensure uniqueness."
+                        )
+
                     node_data["name"] = new_name
-                    # Update display text to include type
-                    node_type = node_data.get("type", "Node")
-                    item.setText(0, f"{new_name} ({node_type})")
+                    # Refresh the display text using the helper method
+                    self.refresh_node_display(item)
 
                     # Synchronize to scene data
                     self.sync_tree_to_scene_data()
@@ -272,12 +380,63 @@ class SceneTreeWidget(QWidget):
         dialog.node_selected.connect(lambda node_type, node_name: self.add_child_node(node_type, node_name, parent_item))
         dialog.exec()
 
+    def _ensure_unique_name(self, base_name: str, exclude_item: Optional[QTreeWidgetItem] = None) -> str:
+        """Ensure a node name is unique within the scene"""
+        existing_names = set()
+
+        # Collect all existing names from the tree
+        def collect_names(item: QTreeWidgetItem):
+            if item != exclude_item:  # Don't include the item we're renaming
+                node_data = item.data(0, Qt.ItemDataRole.UserRole)
+                if node_data:
+                    existing_names.add(node_data.get("name", ""))
+
+            # Recursively check children
+            for i in range(item.childCount()):
+                collect_names(item.child(i))
+
+        # Start from root items
+        for i in range(self.tree.topLevelItemCount()):
+            collect_names(self.tree.topLevelItem(i))
+
+        # If the base name is unique, return it
+        if base_name not in existing_names:
+            return base_name
+
+        # Generate a unique name by appending a number
+        counter = 1
+        while f"{base_name}_{counter}" in existing_names:
+            counter += 1
+
+        return f"{base_name}_{counter}"
+
+    def refresh_node_display(self, item: QTreeWidgetItem):
+        """Refresh the display text of a node to ensure consistency"""
+        node_data = item.data(0, Qt.ItemDataRole.UserRole)
+        if node_data:
+            node_name = node_data.get("name", "Unnamed")
+            node_type = node_data.get("type", "Node")
+
+            # Special handling for scene instances
+            if node_type == "SceneInstance":
+                scene_path = node_data.get("scene_path", "")
+                if scene_path:
+                    scene_name = scene_path.split("/")[-1].replace(".scene", "")
+                    item.setText(0, f"📁 {node_name} ({scene_name})")
+                else:
+                    item.setText(0, f"📁 {node_name} (No Scene)")
+            else:
+                item.setText(0, f"{node_name} ({node_type})")
+
     def add_child_node(self, node_type: str, node_name: str, parent_item: Optional[QTreeWidgetItem]):
         """Add a child node of specified type"""
         try:
+            # Ensure the name is unique
+            unique_name = self._ensure_unique_name(node_name)
+
             # Create node using registry
             registry = get_node_registry()
-            new_node_instance = registry.create_node_instance(node_type, node_name)
+            new_node_instance = registry.create_node_instance(node_type, unique_name)
 
             if new_node_instance is None:
                 raise Exception(f"Failed to create node instance for {node_type}")
@@ -312,7 +471,11 @@ class SceneTreeWidget(QWidget):
         # Create copy of node data
         import copy
         new_node = copy.deepcopy(node_data)
-        new_node["name"] = f"{new_node['name']}_copy"
+
+        # Generate unique name for the duplicate
+        base_name = f"{new_node['name']}_copy"
+        unique_name = self._ensure_unique_name(base_name)
+        new_node["name"] = unique_name
 
         # Add to tree first
         parent_item = item.parent()
@@ -483,6 +646,14 @@ class SceneTreeWidget(QWidget):
 
             # Create a copy of the node data
             result = dict(node_data)
+
+            # Ensure the name in the data matches what's displayed in the tree
+            display_text = item.text(0)
+            if "(" in display_text:
+                tree_name = display_text.split("(")[0].strip()
+                # Only update if the name actually changed
+                if tree_name != result.get("name", ""):
+                    result["name"] = tree_name
 
             # Rebuild children from tree structure
             children = []
@@ -768,5 +939,53 @@ class SceneTreeWidget(QWidget):
 
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to break scene instance: {e}")
+
+    def _copy_selected_node(self) -> Optional[Dict[str, Any]]:
+        """Copy selected node to clipboard"""
+        selected_items = self.tree.selectedItems()
+        if selected_items:
+            node_data = selected_items[0].data(0, Qt.ItemDataRole.UserRole)
+            if node_data:
+                import copy
+                return copy.deepcopy(node_data)
+        return None
+
+    def _cut_selected_node(self) -> Optional[Dict[str, Any]]:
+        """Cut selected node to clipboard"""
+        selected_items = self.tree.selectedItems()
+        if selected_items:
+            node_data = selected_items[0].data(0, Qt.ItemDataRole.UserRole)
+            if node_data:
+                import copy
+                copied_data = copy.deepcopy(node_data)
+                # Delete the node after copying
+                self.delete_node(selected_items[0])
+                return copied_data
+        return None
+
+    def _paste_node(self, node_data: Dict[str, Any]):
+        """Paste node from clipboard"""
+        if node_data:
+            selected_items = self.tree.selectedItems()
+            parent_item = selected_items[0] if selected_items else None
+
+            # Ensure unique name
+            import copy
+            new_node = copy.deepcopy(node_data)
+            base_name = new_node.get("name", "Node")
+            unique_name = self._ensure_unique_name(f"{base_name}_paste")
+            new_node["name"] = unique_name
+
+            # Add to tree
+            tree_item = self.add_node_to_tree(new_node, parent_item)
+
+            # Synchronize to scene data
+            self.sync_tree_to_scene_data()
+
+            # Select the new item
+            self.tree.setCurrentItem(tree_item)
+
+            # Emit change signal
+            self.node_changed.emit(new_node)
 
 

@@ -15,6 +15,7 @@ from PyQt6.QtGui import QAction, QIcon, QKeySequence
 
 from core.project import LupineProject
 from core.node_registry import set_project_path
+from core.global_editor_system import get_global_editor_system, setup_editor_shortcuts
 from .scene_tree import SceneTreeWidget
 from .scene_view import SceneViewWidget
 from .inspector import InspectorWidget
@@ -47,6 +48,9 @@ class MainEditor(QMainWindow):
         self.setup_toolbars()
         self.setup_docks()
         self.setup_status_bar()
+
+        # Setup global editor shortcuts
+        setup_editor_shortcuts(self)
         
         # Load main scene if available
         main_scene = self.project.get_main_scene()
@@ -56,7 +60,6 @@ class MainEditor(QMainWindow):
     def setup_ui(self):
         """Setup the main user interface"""
         self.setWindowTitle(f"Lupine Engine - {self.project.get_project_name()}")
-        self.setMinimumSize(1200, 800)
         self.resize(1600, 1000)
         
         # Set window icon
@@ -137,16 +140,37 @@ class MainEditor(QMainWindow):
         # Edit menu
         edit_menu = menubar.addMenu("Edit")
         
-        # Undo/Redo (placeholder)
+        # Undo action
         undo_action = QAction("Undo", self)
         undo_action.setShortcut(QKeySequence.StandardKey.Undo)
-        undo_action.setEnabled(False)
+        undo_action.triggered.connect(lambda: get_global_editor_system().undo())
         edit_menu.addAction(undo_action)
-        
+
+        # Redo action
         redo_action = QAction("Redo", self)
         redo_action.setShortcut(QKeySequence.StandardKey.Redo)
-        redo_action.setEnabled(False)
+        redo_action.triggered.connect(lambda: get_global_editor_system().redo())
         edit_menu.addAction(redo_action)
+
+        edit_menu.addSeparator()
+
+        # Copy action
+        copy_action = QAction("Copy", self)
+        copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        copy_action.triggered.connect(lambda: get_global_editor_system().copy(self.focusWidget() or self))
+        edit_menu.addAction(copy_action)
+
+        # Cut action
+        cut_action = QAction("Cut", self)
+        cut_action.setShortcut(QKeySequence.StandardKey.Cut)
+        cut_action.triggered.connect(lambda: get_global_editor_system().cut(self.focusWidget() or self))
+        edit_menu.addAction(cut_action)
+
+        # Paste action
+        paste_action = QAction("Paste", self)
+        paste_action.setShortcut(QKeySequence.StandardKey.Paste)
+        paste_action.triggered.connect(lambda: get_global_editor_system().paste(self.focusWidget() or self))
+        edit_menu.addAction(paste_action)
         
         # View menu
         view_menu = menubar.addMenu("View")
@@ -334,7 +358,8 @@ class MainEditor(QMainWindow):
         self.inspector = InspectorWidget(self.project)
         self.inspector.property_changed.connect(self.on_inspector_property_changed)
         self.inspector_dock.setWidget(self.inspector)
-        self.inspector_dock.setMinimumWidth(300)  # Make inspector wider
+        self.inspector_dock.setMinimumWidth(220)  # Reduced minimum width for compactness
+        self.inspector_dock.setMaximumWidth(350)  # Set maximum width to prevent excessive expansion
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.inspector_dock)
         
         # File Browser
@@ -674,6 +699,18 @@ class MainEditor(QMainWindow):
             if node_data:
                 self.inspector.set_node(node_data)
 
+            # CRITICAL FIX: Update scene view when nodes are added/removed/changed
+            current_scene_widget = self.get_current_scene_widget()
+            if current_scene_widget and hasattr(current_scene_widget, 'viewport'):
+                # Sync the scene data to ensure the scene view has the latest data
+                if self.scene_tree.current_scene_data:
+                    # Use the new refresh method to properly update scene data and clear caches
+                    current_scene_widget.viewport.refresh_scene_data(self.scene_tree.current_scene_data)
+                else:
+                    # Fallback to simple update
+                    current_scene_widget.viewport.update()
+                print(f"[DEBUG] Scene view updated after node change: {node_data.get('name', 'Unknown') if node_data else 'Node removed'}")
+
         except Exception as e:
             print(f"Error in on_scene_node_changed: {e}")
             import traceback
@@ -754,6 +791,13 @@ class MainEditor(QMainWindow):
         # Update scene view rendering
         current_scene_widget = self.get_current_scene_widget()
         if current_scene_widget and hasattr(current_scene_widget, 'viewport'):
+            # Check if this is a texture-related property and clear cache if needed
+            texture_properties = ["texture", "texture_path", "icon", "normal_texture", "pressed_texture", "hover_texture"]
+            if property_name in texture_properties:
+                # Clear texture cache for this specific texture
+                current_scene_widget.viewport.clear_texture_cache(str(value) if value else None)
+                print(f"[DEBUG] Cleared texture cache for property {property_name} = {value}")
+
             current_scene_widget.viewport.update()
 
         # Mark scene as modified
