@@ -107,13 +107,9 @@ class Control(Node2D):
 
     def get_global_rect(self) -> List[float]:
         """Get the global rectangle"""
-        if self.follow_viewport:
-            # For viewport-following controls, position is already in screen space
-            return self.position + self.size
-        else:
-            # For world-space controls, get global position
-            global_pos = self.get_global_position()
-            return global_pos + self.size
+        # Simplified - always use global position
+        global_pos = self.get_global_position()
+        return global_pos + self.size
     
     def set_follow_viewport(self, follow: bool):
         """Set whether this control follows the viewport"""

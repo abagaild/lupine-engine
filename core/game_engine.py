@@ -188,9 +188,7 @@ class LupineGameEngine:
         self.clock = pygame.time.Clock()
         self.running = True
 
-        # Rendering data
-        self.sprites: List[Dict[str, Any]] = []
-        self.ui_elements: List[Dict[str, Any]] = []
+        # Rendering data - removed old sprite/UI lists, now using direct node rendering
 
         # Input state
         self.pressed_keys: Set[int] = set()
@@ -333,11 +331,7 @@ class LupineGameEngine:
         if not self.scene:
             return
         
-        # Clear previous data
-        self.sprites.clear()
-        self.ui_elements.clear()
-        
-        # Setup all nodes
+        # Setup all nodes (scripts, physics, etc.)
         for root_node in self.scene.root_nodes:
             self._setup_node_recursive(root_node)
             self._find_cameras_recursive(root_node)
@@ -454,19 +448,11 @@ class LupineGameEngine:
 
         node_type = node.type
 
-        # Sprite nodes
-        if node_type in ["Sprite", "AnimatedSprite"]:
-            self._setup_sprite_node(node)
-
-        # UI nodes
-        elif node_type in ["TextureRect", "Panel", "Button", "Label", "ColorRect", "Control", "ProgressBar",
-                          "NinePatchRect", "VBoxContainer", "HBoxContainer", "CenterContainer", "GridContainer",
-                          "PanelContainer", "LineEdit", "CheckBox", "Slider", "ScrollContainer", "HSeparator",
-                          "VSeparator", "RichTextLabel", "ItemList"]:
-            self._setup_ui_node(node)
+        # Sprite and UI nodes are now handled directly in rendering
+        # No setup needed for rendering - just scripts and physics
 
         # Audio nodes
-        elif node_type == "AudioStreamPlayer":
+        if node_type == "AudioStreamPlayer":
             self._setup_audio_node(node)
 
         # Animation nodes
@@ -500,175 +486,9 @@ class LupineGameEngine:
         elif node_type in ["Path2D", "PathFollow2D"]:
             self._setup_path_node(node)
 
-    def _setup_sprite_node(self, node: Node):
-        """Setup a sprite node for rendering"""
-        try:
-            # Handle both 'texture' and 'texture_path' properties
-            # Check multiple possible texture property names
-            texture_path = (
-                getattr(node, 'texture_path', '') or
-                getattr(node, 'texture', '') or
-                node.properties.get('texture', '') or
-                node.properties.get('texture_path', '')
-            )
 
-            # Debug: Only warn if no texture found
-            if not texture_path:
-                print(f"[DEBUG] Sprite {node.name} has no texture path")
 
-            sprite_data = {
-                'lupine_node': node,
-                'texture_path': texture_path,
-                'position': list(node.position) if hasattr(node, 'position') else [0, 0],
-                'scale': list(getattr(node, 'scale', [1, 1])),
-                'rotation': getattr(node, 'rotation', 0),
-                'modulate': list(getattr(node, 'modulate', [1, 1, 1, 1])),
-                'visible': getattr(node, 'visible', True),
-            }
-            self.sprites.append(sprite_data)
-            print(f"[OK] Sprite node setup: {node.name} (texture: {texture_path})")
 
-            # Also recursively setup any child sprites
-            self._setup_child_sprites_recursive(node)
-
-        except Exception as e:
-            print(f"Error setting up sprite node {node.name}: {e}")
-
-    def _setup_child_sprites_recursive(self, node: Node):
-        """Recursively setup sprite nodes in children"""
-        try:
-            for child in node.children:
-                if hasattr(child, 'type') and child.type == "Sprite":
-                    # Setup child sprite
-                    self._setup_sprite_node(child)
-                else:
-                    # Continue recursively for non-sprite children
-                    self._setup_child_sprites_recursive(child)
-        except Exception as e:
-            print(f"Error setting up child sprites for {node.name}: {e}")
-
-    def _setup_ui_node(self, node: Node):
-        """Setup a UI node for rendering"""
-        try:
-            # UI nodes use position and size (simplified positioning)
-            position = list(getattr(node, 'position', [0, 0]))
-            size = list(getattr(node, 'size', [100, 100]))
-            follow_viewport = getattr(node, 'follow_viewport', True)
-
-            ui_data = {
-                'lupine_node': node,
-                'type': node.type,
-                'position': position,
-                'size': size,
-                'follow_viewport': follow_viewport,
-                'visible': getattr(node, 'visible', True),
-                'modulate': list(getattr(node, 'modulate', [1, 1, 1, 1])),
-            }
-
-            # Type-specific properties
-            if node.type == "TextureRect":
-                ui_data['texture_path'] = getattr(node, 'texture_path', '')
-            elif node.type == "Label":
-                ui_data['text'] = getattr(node, 'text', '')
-                ui_data['font_path'] = getattr(node, 'font_path', '')
-                ui_data['font_size'] = getattr(node, 'font_size', 14)
-                ui_data['font_color'] = list(getattr(node, 'font_color', [1, 1, 1, 1]))
-                ui_data['align'] = getattr(node, 'align', 'left')
-                ui_data['valign'] = getattr(node, 'valign', 'top')
-            elif node.type == "Button":
-                ui_data['text'] = getattr(node, 'text', 'Button')
-                ui_data['font_path'] = getattr(node, 'font_path', '')
-                ui_data['font_size'] = getattr(node, 'font_size', 14)
-                ui_data['font_color'] = list(getattr(node, 'font_color', [1, 1, 1, 1]))
-                ui_data['font_color_hover'] = list(getattr(node, 'font_color_hover', [0.9, 0.9, 0.9, 1]))
-                ui_data['font_color_pressed'] = list(getattr(node, 'font_color_pressed', [0.8, 0.8, 0.8, 1]))
-                ui_data['font_color_disabled'] = list(getattr(node, 'font_color_disabled', [0.5, 0.5, 0.5, 1]))
-                ui_data['bg_color'] = list(getattr(node, 'bg_color', [0.3, 0.3, 0.3, 1]))
-                ui_data['bg_color_hover'] = list(getattr(node, 'bg_color_hover', [0.4, 0.4, 0.4, 1]))
-                ui_data['bg_color_pressed'] = list(getattr(node, 'bg_color_pressed', [0.2, 0.2, 0.2, 1]))
-                ui_data['bg_color_disabled'] = list(getattr(node, 'bg_color_disabled', [0.15, 0.15, 0.15, 1]))
-                ui_data['border_width'] = getattr(node, 'border_width', 1.0)
-                ui_data['border_color'] = list(getattr(node, 'border_color', [0.6, 0.6, 0.6, 1]))
-                ui_data['border_radius'] = getattr(node, 'border_radius', 4.0)
-                ui_data['flat'] = getattr(node, 'flat', False)
-                ui_data['disabled'] = getattr(node, 'disabled', False)
-                ui_data['text_align'] = getattr(node, 'text_align', 'center')
-                # Include visual state for rendering
-                ui_data['_is_hovered'] = getattr(node, '_is_hovered', False)
-                ui_data['_is_pressed'] = getattr(node, '_is_pressed', False)
-            elif node.type == "ColorRect":
-                ui_data['color'] = list(getattr(node, 'color', [1, 1, 1, 1]))
-                ui_data['gradient_enabled'] = getattr(node, 'gradient_enabled', False)
-                ui_data['border_enabled'] = getattr(node, 'border_enabled', False)
-                ui_data['corner_radius'] = getattr(node, 'corner_radius', 0.0)
-            elif node.type == "Panel":
-                ui_data['background_color'] = list(getattr(node, 'background_color', [0.2, 0.2, 0.2, 0.8]))
-                ui_data['border_width'] = getattr(node, 'border_width', 1.0)
-                ui_data['border_color'] = list(getattr(node, 'border_color', [0.5, 0.5, 0.5, 1.0]))
-                ui_data['corner_radius'] = getattr(node, 'corner_radius', 4.0)
-                ui_data['padding_left'] = getattr(node, 'padding_left', 8.0)
-                ui_data['padding_top'] = getattr(node, 'padding_top', 8.0)
-                ui_data['padding_right'] = getattr(node, 'padding_right', 8.0)
-                ui_data['padding_bottom'] = getattr(node, 'padding_bottom', 8.0)
-            elif node.type == "TextureRect":
-                ui_data['texture_path'] = getattr(node, 'texture_path', None)
-                ui_data['stretch_mode'] = getattr(node, 'stretch_mode', 'stretch')
-                ui_data['modulate_color'] = list(getattr(node, 'modulate_color', [1, 1, 1, 1]))
-                ui_data['uv_offset'] = list(getattr(node, 'uv_offset', [0, 0]))
-                ui_data['uv_scale'] = list(getattr(node, 'uv_scale', [1, 1]))
-            elif node.type == "NinePatchRect":
-                ui_data['texture_path'] = getattr(node, 'texture_path', None)
-                ui_data['patch_margin_left'] = getattr(node, 'patch_margin_left', 0)
-                ui_data['patch_margin_top'] = getattr(node, 'patch_margin_top', 0)
-                ui_data['patch_margin_right'] = getattr(node, 'patch_margin_right', 0)
-                ui_data['patch_margin_bottom'] = getattr(node, 'patch_margin_bottom', 0)
-                ui_data['draw_center'] = getattr(node, 'draw_center', True)
-            elif node.type in ["VBoxContainer", "HBoxContainer"]:
-                ui_data['separation'] = getattr(node, 'separation', 4.0)
-                ui_data['alignment'] = getattr(node, 'alignment', 'top' if node.type == "VBoxContainer" else 'left')
-                ui_data['padding_left'] = getattr(node, 'padding_left', 0.0)
-                ui_data['padding_top'] = getattr(node, 'padding_top', 0.0)
-                ui_data['padding_right'] = getattr(node, 'padding_right', 0.0)
-                ui_data['padding_bottom'] = getattr(node, 'padding_bottom', 0.0)
-            elif node.type == "CenterContainer":
-                ui_data['use_top_left'] = getattr(node, 'use_top_left', False)
-                ui_data['padding_left'] = getattr(node, 'padding_left', 0.0)
-                ui_data['padding_top'] = getattr(node, 'padding_top', 0.0)
-                ui_data['padding_right'] = getattr(node, 'padding_right', 0.0)
-                ui_data['padding_bottom'] = getattr(node, 'padding_bottom', 0.0)
-            elif node.type == "LineEdit":
-                ui_data['text'] = getattr(node, 'text', '')
-                ui_data['placeholder_text'] = getattr(node, 'placeholder_text', 'Enter text...')
-                ui_data['secret'] = getattr(node, 'secret', False)
-                ui_data['editable'] = getattr(node, 'editable', True)
-                ui_data['font_size'] = getattr(node, 'font_size', 14)
-                ui_data['text_color'] = list(getattr(node, 'text_color', [0.9, 0.9, 0.9, 1.0]))
-                ui_data['background_color'] = list(getattr(node, 'background_color', [0.1, 0.1, 0.1, 1.0]))
-                ui_data['border_color'] = list(getattr(node, 'border_color', [0.4, 0.4, 0.4, 1.0]))
-                ui_data['cursor_position'] = getattr(node, 'cursor_position', 0)
-            elif node.type == "CheckBox":
-                ui_data['button_pressed'] = getattr(node, 'button_pressed', False)
-                ui_data['disabled'] = getattr(node, 'disabled', False)
-                ui_data['text'] = getattr(node, 'text', 'CheckBox')
-                ui_data['font_size'] = getattr(node, 'font_size', 14)
-                ui_data['text_color'] = list(getattr(node, 'text_color', [0.9, 0.9, 0.9, 1.0]))
-                ui_data['checkbox_size'] = getattr(node, 'checkbox_size', 16.0)
-                ui_data['check_color'] = list(getattr(node, 'check_color', [0.2, 0.8, 0.2, 1.0]))
-                ui_data['_is_hovered'] = getattr(node, '_is_hovered', False)
-                ui_data['_is_pressed'] = getattr(node, '_is_pressed', False)
-
-            self.ui_elements.append(ui_data)
-
-            # Store a reference to the UI data in the node for dynamic updates
-            # This allows nodes like Button to update their visual state in real-time
-            if hasattr(node, '_update_visual_state'):
-                node._ui_data_ref = ui_data
-
-            print(f"[OK] UI node setup: {node.name} ({node.type}) at {position} size {size}")
-        except Exception as e:
-            print(f"Error setting up UI node {node.name}: {e}")
-            import traceback
-            traceback.print_exc()
 
     def _setup_audio_node(self, node: Node):
         """Setup an audio node"""
@@ -894,8 +714,7 @@ class LupineGameEngine:
         if self.systems.physics_world:
             self.systems.physics_world.step(delta_time)
 
-        # Sync sprite positions
-        self._sync_sprite_positions()
+        # Sprite positions are now handled directly in rendering
 
     def _render(self):
         """Render the game using SharedRenderer like scene view"""
@@ -912,6 +731,290 @@ class LupineGameEngine:
         if self.scene and hasattr(self.scene, 'root_nodes'):
             for root_node in self.scene.root_nodes:
                 self._render_node_hierarchy(root_node)
+
+    def _setup_unified_projection(self):
+        """Setup unified projection matrix like scene view"""
+        try:
+            import OpenGL.GL as gl
+
+            # Set viewport to window size
+            gl.glViewport(0, 0, self.width, self.height)
+
+            # Setup projection matrix
+            gl.glMatrixMode(gl.GL_PROJECTION)
+            gl.glLoadIdentity()
+
+            if self.camera:
+                # Use camera-based projection like scene view
+                cam_pos = self.camera.get_position()
+                zoom = self.camera.get_zoom()
+
+                # Calculate view bounds based on camera
+                view_width = self.width / zoom[0]
+                view_height = self.height / zoom[1]
+
+                left = cam_pos[0] - view_width / 2
+                right = cam_pos[0] + view_width / 2
+                bottom = cam_pos[1] - view_height / 2
+                top = cam_pos[1] + view_height / 2
+
+                gl.glOrtho(left, right, bottom, top, -1, 1)
+            else:
+                # Use game bounds for projection (centered at origin like scene view)
+                half_width = self.systems.game_bounds_width / 2
+                half_height = self.systems.game_bounds_height / 2
+                gl.glOrtho(-half_width, half_width, -half_height, half_height, -1, 1)
+
+            gl.glMatrixMode(gl.GL_MODELVIEW)
+            gl.glLoadIdentity()
+
+        except ImportError:
+            # Fallback if OpenGL not available
+            pass
+        except Exception as e:
+            print(f"Error setting up unified projection: {e}")
+
+    def _render_node_hierarchy(self, node: Node):
+        """Render a node and its children using SharedRenderer like scene view"""
+        if not node or not getattr(node, 'visible', True):
+            return
+
+        # Use SharedRenderer's matrix stack for transformations
+        self.systems.renderer.push_matrix()
+
+        try:
+            # Apply node transformation
+            position = getattr(node, 'position', [0, 0])
+            rotation = getattr(node, 'rotation', 0)
+            scale = getattr(node, 'scale', [1, 1])
+
+            # Translate to node position
+            self.systems.renderer.translate(position[0], position[1], 0)
+
+            # Apply rotation if any
+            if rotation != 0:
+                self.systems.renderer.rotate(rotation, 0, 0, 1)
+
+            # Apply scale if not default
+            if scale != [1, 1]:
+                self.systems.renderer.scale(scale[0], scale[1], 1)
+
+            # Convert node to dict-like structure for rendering methods
+            node_data = self._node_to_dict(node)
+            self._render_node_by_type(node_data)
+
+            # Render children
+            children = getattr(node, 'children', [])
+            for child in children:
+                self._render_node_hierarchy(child)
+
+        finally:
+            self.systems.renderer.pop_matrix()
+
+    def _node_to_dict(self, node: Node) -> Dict[str, Any]:
+        """Convert a Node object to a dictionary for rendering compatibility"""
+        node_dict = {
+            'type': getattr(node, 'type', 'Node'),
+            'name': getattr(node, 'name', ''),
+            'position': getattr(node, 'position', [0, 0]),
+            'rotation': getattr(node, 'rotation', 0),
+            'scale': getattr(node, 'scale', [1, 1]),
+            'visible': getattr(node, 'visible', True),
+            'modulate': getattr(node, 'modulate', [1, 1, 1, 1]),
+            'children': getattr(node, 'children', [])
+        }
+
+        # Add type-specific properties
+        node_type = node_dict['type']
+        if node_type in ['Sprite', 'AnimatedSprite']:
+            node_dict.update({
+                'texture': getattr(node, 'texture', ''),
+                'centered': getattr(node, 'centered', True),
+                'offset': getattr(node, 'offset', [0.0, 0.0]),
+                'flip_h': getattr(node, 'flip_h', False),
+                'flip_v': getattr(node, 'flip_v', False),
+                'hframes': getattr(node, 'hframes', 1),
+                'vframes': getattr(node, 'vframes', 1),
+                'frame': getattr(node, 'frame', 0)
+            })
+        elif node_type in ['Control', 'Panel', 'Label', 'Button', 'ColorRect', 'TextureRect']:
+            node_dict.update({
+                'size': getattr(node, 'size', getattr(node, 'rect_size', [100, 30])),
+                'background_color': getattr(node, 'background_color', [0.2, 0.2, 0.2, 0.8]),
+                'border_color': getattr(node, 'border_color', [0.5, 0.5, 0.5, 1.0]),
+                'border_width': getattr(node, 'border_width', 1.0),
+                'follow_viewport': getattr(node, 'follow_viewport', False)
+            })
+            if node_type == 'Label':
+                node_dict.update({
+                    'text': getattr(node, 'text', ''),
+                    'font_size': getattr(node, 'font_size', 14),
+                    'color': getattr(node, 'color', [1, 1, 1, 1])
+                })
+            elif node_type == 'Button':
+                node_dict.update({
+                    'text': getattr(node, 'text', ''),
+                    'font_size': getattr(node, 'font_size', 14),
+                    'color': getattr(node, 'color', [1, 1, 1, 1])
+                })
+            elif node_type == 'TextureRect':
+                node_dict.update({
+                    'texture': getattr(node, 'texture', '')
+                })
+        elif node_type == 'Camera2D':
+            node_dict.update({
+                'current': getattr(node, 'current', False),
+                'enabled': getattr(node, 'enabled', True),
+                'zoom': getattr(node, 'zoom', [1.0, 1.0]),
+                'offset': getattr(node, 'offset', [0.0, 0.0])
+            })
+
+        return node_dict
+
+    def _render_node_by_type(self, node: Dict[str, Any]):
+        """Render a node based on its type using SharedRenderer methods"""
+        node_type = node.get('type', 'Node')
+
+        if node_type == 'Sprite' or node_type == 'AnimatedSprite':
+            self._render_sprite_node(node)
+        elif node_type in ['Control', 'Panel', 'Label', 'Button', 'ColorRect', 'TextureRect']:
+            self._render_ui_node(node)
+        elif node_type == 'Camera2D':
+            self._render_camera_node(node)
+        elif node_type in ['CollisionShape2D', 'CollisionPolygon2D']:
+            self._render_collision_node(node)
+        elif node_type in ['Area2D', 'RigidBody2D', 'StaticBody2D', 'KinematicBody2D']:
+            self._render_physics_body_node(node)
+        # Add more node types as needed
+
+    def _render_sprite_node(self, node: Dict[str, Any]):
+        """Render a sprite node using SharedRenderer"""
+        texture = node.get('texture', '')
+        if not texture:
+            return
+
+        # Get sprite properties
+        centered = node.get('centered', True)
+        offset = node.get('offset', [0.0, 0.0])
+        flip_h = node.get('flip_h', False)
+        flip_v = node.get('flip_v', False)
+        modulate = node.get('modulate', [1, 1, 1, 1])
+
+        # Calculate size (use texture size or default)
+        width = node.get('width', 64)
+        height = node.get('height', 64)
+
+        # Apply offset
+        x = offset[0]
+        y = offset[1]
+
+        # Center the sprite if needed
+        if centered:
+            x -= width / 2
+            y -= height / 2
+
+        # Draw the sprite
+        self.systems.renderer.draw_sprite(
+            texture, x, y, width, height, 0, modulate[3]
+        )
+
+    def _render_ui_node(self, node: Dict[str, Any]):
+        """Render a UI node using SharedRenderer"""
+        node_type = node.get('type', 'Control')
+        size = node.get('size', node.get('rect_size', [100, 30]))
+
+        # Handle follow_viewport for UI positioning
+        follow_viewport = node.get('follow_viewport', False)
+        if follow_viewport:
+            # UI elements with follow_viewport use screen space positioning
+            # This is handled by the projection setup
+            pass
+
+        # Render based on UI node type
+        if node_type == 'Label':
+            self._render_label_node(node)
+        elif node_type == 'Button':
+            self._render_button_node(node)
+        elif node_type in ['Panel', 'ColorRect']:
+            self._render_panel_node(node)
+        elif node_type == 'TextureRect':
+            self._render_texture_rect_node(node)
+
+    def _render_label_node(self, node: Dict[str, Any]):
+        """Render a label node"""
+        text = node.get('text', '')
+        if not text:
+            return
+
+        font_size = node.get('font_size', 14)
+        color = node.get('color', [1, 1, 1, 1])
+
+        self.systems.renderer.draw_text(text, 0, 0, None, font_size, tuple(color))
+
+    def _render_button_node(self, node: Dict[str, Any]):
+        """Render a button node"""
+        size = node.get('size', node.get('rect_size', [100, 30]))
+        background_color = node.get('background_color', [0.2, 0.2, 0.2, 0.8])
+
+        # Draw button background
+        self.systems.renderer.draw_rectangle(
+            0, 0, size[0], size[1], tuple(background_color)
+        )
+
+        # Draw button text if any
+        text = node.get('text', '')
+        if text:
+            font_size = node.get('font_size', 14)
+            color = node.get('color', [1, 1, 1, 1])
+
+            # Center text in button
+            text_x = size[0] / 2
+            text_y = size[1] / 2
+
+            self.systems.renderer.draw_text(text, text_x, text_y, None, font_size, tuple(color))
+
+    def _render_panel_node(self, node: Dict[str, Any]):
+        """Render a panel node"""
+        size = node.get('size', node.get('rect_size', [100, 30]))
+        background_color = node.get('background_color', [0.2, 0.2, 0.2, 0.8])
+
+        self.systems.renderer.draw_rectangle(
+            0, 0, size[0], size[1], tuple(background_color)
+        )
+
+    def _render_texture_rect_node(self, node: Dict[str, Any]):
+        """Render a texture rect node"""
+        texture = node.get('texture', '')
+        if not texture:
+            return
+
+        size = node.get('size', node.get('rect_size', [100, 30]))
+
+        self.systems.renderer.draw_sprite(
+            texture, 0, 0, size[0], size[1], 0, 1.0
+        )
+
+    def _render_camera_node(self, node: Dict[str, Any]):
+        """Render camera node (visual indicator only)"""
+        # Cameras don't render visually in game, only in editor
+        pass
+
+    def _render_collision_node(self, node: Dict[str, Any]):
+        """Render collision shape node (debug visualization)"""
+        # Only render collision shapes in debug mode
+        if hasattr(self, 'debug_mode') and self.debug_mode:
+            # Draw collision shape outline
+            shape_type = node.get('shape_type', 'rectangle')
+            if shape_type == 'rectangle':
+                size = node.get('size', [32, 32])
+                self.systems.renderer.draw_rectangle_outline(
+                    -size[0]/2, -size[1]/2, size[0], size[1], (0, 1, 0, 1), 2
+                )
+
+    def _render_physics_body_node(self, node: Dict[str, Any]):
+        """Render physics body node (debug visualization)"""
+        # Physics bodies don't render visually, only their collision shapes do
+        pass
 
     def _update_node_scripts_recursive(self, node: Node, delta_time: float):
         """Update scripts for a node and its children"""
@@ -965,319 +1068,13 @@ class LupineGameEngine:
         except Exception as e:
             print(f"Error updating scripts for node {getattr(node, 'name', 'Unknown')}: {e}")
 
-    def _sync_sprite_positions(self):
-        """Synchronize sprite positions with their nodes"""
-        for sprite_data in self.sprites:
-            if 'lupine_node' in sprite_data:
-                node = sprite_data['lupine_node']
-                if hasattr(node, 'position'):
-                    # Calculate global position for child sprites
-                    global_position = self._get_global_position(node)
-                    sprite_data['position'] = list(global_position)
 
-                    # Also sync other properties that might have changed
-                    sprite_data['scale'] = list(getattr(node, 'scale', [1, 1]))
-                    sprite_data['rotation'] = getattr(node, 'rotation', 0)
-                    sprite_data['modulate'] = list(getattr(node, 'modulate', [1, 1, 1, 1]))
-                    sprite_data['visible'] = getattr(node, 'visible', True)
 
-    def _get_global_position(self, node):
-        """Get the global position of a node (including parent transforms)"""
-        if not hasattr(node, 'position'):
-            return [0, 0]
 
-        position = list(node.position)
 
-        # Walk up the parent chain to accumulate transforms
-        current_parent = getattr(node, 'parent', None)
-        while current_parent and hasattr(current_parent, 'position'):
-            parent_pos = current_parent.position
-            position[0] += parent_pos[0]
-            position[1] += parent_pos[1]
-            current_parent = getattr(current_parent, 'parent', None)
 
-        return position
 
-    def _render_sprite(self, sprite_data: Dict[str, Any]):
-        """Render a single sprite"""
-        if not self.systems.renderer:
-            return
 
-        try:
-            texture_path = sprite_data.get('texture_path', '')
-            position = sprite_data.get('position', [0, 0])
-            scale = sprite_data.get('scale', [1, 1])
-            rotation = sprite_data.get('rotation', 0)
-            modulate = sprite_data.get('modulate', [1, 1, 1, 1])
-
-            # Debug output for empty textures
-            if not texture_path:
-                print(f"Warning: Sprite at {position} has no texture path")
-
-            # Calculate size based on scale
-            # For now, use default size if not specified
-            width = 64 * scale[0]
-            height = 64 * scale[1]
-
-            self.systems.renderer.draw_sprite(
-                texture_path, position[0], position[1],
-                width, height, rotation, modulate[3]
-            )
-        except Exception as e:
-            print(f"Error rendering sprite: {e}")
-
-    def _render_ui_element(self, ui_data: Dict[str, Any]):
-        """Render a single UI element with proper scaling"""
-        if not self.systems.renderer:
-            return
-
-        try:
-            ui_type = ui_data.get('type', '')
-            position = ui_data.get('position', [0, 0])
-            size = ui_data.get('size', [100, 100])
-            follow_viewport = ui_data.get('follow_viewport', True)
-            modulate = ui_data.get('modulate', [1, 1, 1, 1])
-
-            # Handle positioning based on follow_viewport setting
-            if follow_viewport:
-                # Scale UI elements from game bounds to actual window size (viewport-relative)
-                scaled_pos = self._scale_ui_position(position)
-                scaled_size = self._scale_ui_size(size)
-            else:
-                # Use world coordinates (affected by camera)
-                if self.camera:
-                    # Apply camera transform to world-space UI elements
-                    camera_x, camera_y = self.camera.get_position()
-                    zoom = self.camera.get_zoom()
-                    scaled_pos = [(position[0] - camera_x) * zoom + self.width / 2,
-                                  (position[1] - camera_y) * zoom + self.height / 2]
-                    scaled_size = [size[0] * zoom, size[1] * zoom]
-                else:
-                    # No camera, use position as-is
-                    scaled_pos = position
-                    scaled_size = size
-
-            if ui_type == "TextureRect":
-                texture_path = ui_data.get('texture_path', '')
-                # Convert top-left position to center position for SharedRenderer
-                center_x = scaled_pos[0] + scaled_size[0] / 2
-                center_y = scaled_pos[1] + scaled_size[1] / 2
-                self.systems.renderer.draw_sprite(
-                    texture_path, center_x, center_y,
-                    scaled_size[0], scaled_size[1], 0, modulate[3]
-                )
-            elif ui_type == "ColorRect":
-                color = ui_data.get('color', [1, 1, 1, 1])
-                # Convert top-left position to center position for SharedRenderer
-                center_x = scaled_pos[0] + scaled_size[0] / 2
-                center_y = scaled_pos[1] + scaled_size[1] / 2
-                self.systems.renderer.draw_rectangle(
-                    center_x, center_y, scaled_size[0], scaled_size[1], color
-                )
-            elif ui_type == "Label":
-                text = ui_data.get('text', '')
-                font_path = ui_data.get('font_path', '')
-                font_size = ui_data.get('font_size', 14)
-                font_color = ui_data.get('font_color', modulate)
-                align = ui_data.get('align', 'left')
-                valign = ui_data.get('valign', 'top')
-                scaled_font_size = self._scale_ui_font_size(font_size)
-
-                # Calculate text position based on alignment
-                text_x, text_y = self._calculate_text_position(
-                    text, scaled_pos, scaled_size, align, valign, font_path, scaled_font_size
-                )
-
-                self.systems.renderer.draw_text(
-                    text, text_x, text_y, font_path, scaled_font_size, font_color
-                )
-            elif ui_type == "Button":
-                # Get button state for visual feedback
-                is_hovered = ui_data.get('_is_hovered', False)
-                is_pressed = ui_data.get('_is_pressed', False)
-                disabled = ui_data.get('disabled', False)
-                flat = ui_data.get('flat', False)
-
-                # Choose colors based on state
-                if disabled:
-                    bg_color = ui_data.get('bg_color_disabled', [0.15, 0.15, 0.15, 1])
-                    font_color = ui_data.get('font_color_disabled', [0.5, 0.5, 0.5, 1])
-                elif is_pressed:
-                    bg_color = ui_data.get('bg_color_pressed', [0.2, 0.2, 0.2, 1])
-                    font_color = ui_data.get('font_color_pressed', [0.8, 0.8, 0.8, 1])
-                elif is_hovered:
-                    bg_color = ui_data.get('bg_color_hover', [0.4, 0.4, 0.4, 1])
-                    font_color = ui_data.get('font_color_hover', [0.9, 0.9, 0.9, 1])
-                else:
-                    bg_color = ui_data.get('bg_color', [0.3, 0.3, 0.3, 1])
-                    font_color = ui_data.get('font_color', [1, 1, 1, 1])
-
-                # Render button background (unless flat)
-                if not flat:
-                    # Convert top-left position to center position for SharedRenderer
-                    center_x = scaled_pos[0] + scaled_size[0] / 2
-                    center_y = scaled_pos[1] + scaled_size[1] / 2
-                    self.systems.renderer.draw_rectangle(
-                        center_x, center_y, scaled_size[0], scaled_size[1], bg_color
-                    )
-
-                    # Draw border
-                    border_width = ui_data.get('border_width', 1.0)
-                    border_color = ui_data.get('border_color', [0.6, 0.6, 0.6, 1])
-                    if border_width > 0:
-                        # Draw border as outline with center-based positioning
-                        # Top border
-                        top_center_x = scaled_pos[0] + scaled_size[0] / 2
-                        top_center_y = scaled_pos[1] + border_width / 2
-                        self.systems.renderer.draw_rectangle(
-                            top_center_x, top_center_y, scaled_size[0], border_width, border_color
-                        )
-                        # Bottom border
-                        bottom_center_x = scaled_pos[0] + scaled_size[0] / 2
-                        bottom_center_y = scaled_pos[1] + scaled_size[1] - border_width / 2
-                        self.systems.renderer.draw_rectangle(
-                            bottom_center_x, bottom_center_y, scaled_size[0], border_width, border_color
-                        )
-                        # Left border
-                        left_center_x = scaled_pos[0] + border_width / 2
-                        left_center_y = scaled_pos[1] + scaled_size[1] / 2
-                        self.systems.renderer.draw_rectangle(
-                            left_center_x, left_center_y, border_width, scaled_size[1], border_color
-                        )
-                        # Right border
-                        right_center_x = scaled_pos[0] + scaled_size[0] - border_width / 2
-                        right_center_y = scaled_pos[1] + scaled_size[1] / 2
-                        self.systems.renderer.draw_rectangle(
-                            right_center_x, right_center_y, border_width, scaled_size[1], border_color
-                        )
-
-                # Render button text
-                text = ui_data.get('text', 'Button')
-                font_path = ui_data.get('font_path', '')
-                font_size = ui_data.get('font_size', 14)
-                text_align = ui_data.get('text_align', 'center')
-                scaled_font_size = self._scale_ui_font_size(font_size)
-
-                # Calculate text position based on alignment
-                text_x, text_y = self._calculate_text_position(
-                    text, scaled_pos, scaled_size, text_align, 'center', font_path, scaled_font_size
-                )
-
-                self.systems.renderer.draw_text(
-                    text, text_x, text_y, font_path, scaled_font_size, font_color
-                )
-        except Exception as e:
-            print(f"Error rendering UI element ({ui_type}): {e}")
-            import traceback
-            traceback.print_exc()
-
-    def _setup_viewport_and_projection(self):
-        """Setup viewport and projection matrix based on camera or game bounds"""
-        try:
-            import OpenGL.GL as gl
-
-            # Set viewport to window size
-            gl.glViewport(0, 0, self.width, self.height)
-
-            # Setup projection matrix
-            gl.glMatrixMode(gl.GL_PROJECTION)
-            gl.glLoadIdentity()
-
-            if self.camera:
-                # Use camera-based projection
-                cam_pos = self.camera.get_position()
-                zoom = self.camera.get_zoom()
-
-                # Calculate view bounds based on camera
-                view_width = self.width / zoom
-                view_height = self.height / zoom
-
-                left = cam_pos[0] - view_width / 2
-                right = cam_pos[0] + view_width / 2
-                bottom = cam_pos[1] - view_height / 2
-                top = cam_pos[1] + view_height / 2
-
-                gl.glOrtho(left, right, bottom, top, -1, 1)
-            else:
-                # Use game bounds for projection (centered at origin)
-                half_width = self.width / 2
-                half_height = self.height / 2
-                gl.glOrtho(-half_width, half_width, -half_height, half_height, -1, 1)
-
-            gl.glMatrixMode(gl.GL_MODELVIEW)
-            gl.glLoadIdentity()
-
-        except ImportError:
-            # Fallback if OpenGL not available
-            pass
-        except Exception as e:
-            print(f"Error setting up viewport: {e}")
-
-    def _setup_ui_projection(self):
-        """Setup projection matrix for UI rendering (screen space)"""
-        try:
-            import OpenGL.GL as gl
-
-            # UI always uses screen space coordinates
-            gl.glMatrixMode(gl.GL_PROJECTION)
-            gl.glLoadIdentity()
-
-            # Screen space: (0,0) at top-left, (width, height) at bottom-right
-            gl.glOrtho(0, self.width, self.height, 0, -1, 1)
-
-            gl.glMatrixMode(gl.GL_MODELVIEW)
-            gl.glLoadIdentity()
-
-        except ImportError:
-            # Fallback if OpenGL not available
-            pass
-        except Exception as e:
-            print(f"Error setting up UI projection: {e}")
-
-    def _scale_ui_position(self, position: List[float]) -> List[float]:
-        """Scale UI position from game bounds coordinates to actual window coordinates"""
-        # Get game bounds from project settings
-        game_bounds_width = self.systems.game_bounds_width
-        game_bounds_height = self.systems.game_bounds_height
-
-        # Calculate scale factors
-        scale_x = self.width / game_bounds_width
-        scale_y = self.height / game_bounds_height
-
-        # Scale position - UI coordinates are top-left origin, so no Y flip needed
-        scaled_x = position[0] * scale_x
-        scaled_y = position[1] * scale_y
-
-        return [scaled_x, scaled_y]
-
-    def _scale_ui_size(self, size: List[float]) -> List[float]:
-        """Scale UI size from game bounds coordinates to actual window coordinates"""
-        # Get game bounds from project settings
-        game_bounds_width = self.systems.game_bounds_width
-        game_bounds_height = self.systems.game_bounds_height
-
-        # Calculate scale factors
-        scale_x = self.width / game_bounds_width
-        scale_y = self.height / game_bounds_height
-
-        # Scale size
-        scaled_width = size[0] * scale_x
-        scaled_height = size[1] * scale_y
-
-        return [scaled_width, scaled_height]
-
-    def _scale_ui_font_size(self, font_size: int) -> int:
-        """Scale UI font size based on window scaling"""
-        # Get game bounds from project settings
-        game_bounds_height = self.systems.game_bounds_height
-
-        # Calculate scale factor based on height (more consistent for text)
-        scale_y = self.height / game_bounds_height
-
-        # Scale font size
-        scaled_font_size = int(font_size * scale_y)
-
-        return max(1, scaled_font_size)  # Ensure minimum font size of 1
 
     def _calculate_text_position(self, text: str, pos: list, size: list,
                                align: str, valign: str, font_path: str, font_size: int) -> tuple:

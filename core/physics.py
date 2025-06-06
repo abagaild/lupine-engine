@@ -89,6 +89,7 @@ class PhysicsBody:
         """Add a collision shape to this body"""
         # Use duck typing instead of isinstance
         shape_type = getattr(shape_node, 'type', None)
+        print(f"[PHYSICS] Adding collision shape to {self.node.name}: {shape_type}")
         if shape_type == "CollisionShape2D":
             self._add_collision_shape_2d(shape_node)
         elif shape_type == "CollisionPolygon2D":
@@ -97,6 +98,7 @@ class PhysicsBody:
     def _add_collision_shape_2d(self, shape_node: Node2D):
         """Add CollisionShape2D to body"""
         shape_type = getattr(shape_node, 'shape', 'rectangle')
+        print(f"[PHYSICS] Creating {shape_type} collision shape for {self.node.name}")
 
         # Get shape position relative to body (collision shape offset)
         shape_position = getattr(shape_node, 'position', [0.0, 0.0])
@@ -104,6 +106,8 @@ class PhysicsBody:
             shape_position = [0.0, 0.0]
 
         shape_offset = (float(shape_position[0]), float(shape_position[1]))
+        print(f"[PHYSICS] Shape offset: {shape_offset}")
+        print(f"[PHYSICS] Parent body position: {getattr(self.node, 'position', [0.0, 0.0])}")
 
         if shape_type == 'rectangle':
             size = getattr(shape_node, 'size', [32, 32])
@@ -125,6 +129,8 @@ class PhysicsBody:
                 except (ValueError, TypeError):
                     width, height = 32.0, 32.0
 
+                print(f"[PHYSICS] Rectangle shape size: {width}x{height}")
+
                 # Create box vertices manually to apply offset
                 half_width = width / 2.0
                 half_height = height / 2.0
@@ -134,6 +140,7 @@ class PhysicsBody:
                     (shape_offset[0] + half_width, shape_offset[1] + half_height),  # top-right
                     (shape_offset[0] - half_width, shape_offset[1] + half_height)   # top-left
                 ]
+                print(f"[PHYSICS] Rectangle vertices: {vertices}")
                 shape = pymunk.Poly(self.pymunk_body, vertices)
             else:
                 # Default box with offset
@@ -284,6 +291,9 @@ class PhysicsBody:
         if not self.pymunk_body:
             return
 
+        # Store old position for change detection
+        old_position = getattr(self.node, 'position', [0, 0]).copy() if hasattr(self.node, 'position') else [0, 0]
+
         # Update position
         if hasattr(self.node, 'position'):
             pos = self.pymunk_body.position
@@ -292,6 +302,14 @@ class PhysicsBody:
         # Update rotation
         if hasattr(self.node, 'rotation'):
             self.node.rotation = self.pymunk_body.angle
+
+        # Check if position changed significantly and mark transform dirty
+        new_position = getattr(self.node, 'position', [0, 0])
+        if (abs(new_position[0] - old_position[0]) > 0.1 or
+            abs(new_position[1] - old_position[1]) > 0.1):
+            # Position changed - mark transform as dirty for redrawing
+            if hasattr(self.node, '_mark_transform_dirty'):
+                self.node._mark_transform_dirty()
 
     def update_physics_from_node(self):
         """Update physics body from node"""
@@ -342,7 +360,7 @@ class PhysicsWorld:
     
     def __init__(self):
         self.space = pymunk.Space()
-        self.space.gravity = (0, -981)  # Default gravity (pixels/s²)
+        self.space.gravity = (0, 981)  # Default gravity (pixels/s²) - positive Y is downward in screen coordinates
         
         # Physics bodies
         self.bodies: Dict[str, PhysicsBody] = {}
@@ -494,6 +512,26 @@ class PhysicsWorld:
             elif body_type == "area":
                 return self._add_area(node)
 
+        # Check for inheritance from physics body types (for script-based physics nodes)
+        try:
+            # Import physics body classes to check inheritance
+            from nodes.node2d.KinematicBody2D import KinematicBody2D
+            from nodes.node2d.StaticBody2D import StaticBody2D
+            from nodes.node2d.Rigidbody2D import RigidBody2D
+            from nodes.node2d.Area2D import Area2D
+
+            # Check if the node inherits from any physics body type
+            if isinstance(node, KinematicBody2D):
+                return self._add_kinematic_body(node)
+            elif isinstance(node, StaticBody2D):
+                return self._add_static_body(node)
+            elif isinstance(node, RigidBody2D):
+                return self._add_rigid_body(node)
+            elif isinstance(node, Area2D):
+                return self._add_area(node)
+        except Exception as e:
+            print(f"[WARNING] Error checking physics inheritance for {node.name}: {e}")
+
         return None
     
     def _add_rigid_body(self, node: Node2D) -> PhysicsBody:
@@ -522,46 +560,70 @@ class PhysicsWorld:
     
     def _add_static_body(self, node: Node2D) -> PhysicsBody:
         """Add StaticBody2D to physics world"""
+        print(f"[PHYSICS] Adding static body: {node.name}")
         body = PhysicsBody(node, PhysicsBodyType.STATIC)
-        
+
         body.collision_layer = getattr(node, 'collision_layer', 1)
         body.collision_mask = getattr(node, 'collision_mask', 1)
-        
+        print(f"[PHYSICS] Static body collision layer: {body.collision_layer}, mask: {body.collision_mask}")
+
         # Add collision shapes from children
+        collision_shapes_found = 0
+        print(f"[PHYSICS] Static body has {len(node.children)} children:")
         for child in node.children:
+            child_type = getattr(child, 'type', 'NO_TYPE')
+            print(f"[PHYSICS]   Child: {child.name} (type: {child_type})")
             if hasattr(child, 'type') and child.type in ["CollisionShape2D", "CollisionPolygon2D"]:
+                print(f"[PHYSICS] Found collision shape child: {child.name} ({child.type})")
                 body.add_collision_shape(child)
-        
+                collision_shapes_found += 1
+
+        print(f"[PHYSICS] Total collision shapes added: {collision_shapes_found}")
+
         # Add to space
         self.space.add(body.pymunk_body)
         for shape in body.pymunk_shapes:
             self.space.add(shape)
-        
+            print(f"[PHYSICS] Added shape to physics space")
+
         # Use unique key to avoid name collisions
         unique_key = f"{node.name}_{id(node)}"
         self.bodies[unique_key] = body
+        print(f"[PHYSICS] Static body registered with key: {unique_key}")
         return body
     
     def _add_kinematic_body(self, node: Node2D) -> PhysicsBody:
         """Add KinematicBody2D to physics world"""
+        print(f"[PHYSICS] Adding kinematic body: {node.name}")
         body = PhysicsBody(node, PhysicsBodyType.KINEMATIC)
-        
+
         body.collision_layer = getattr(node, 'collision_layer', 1)
         body.collision_mask = getattr(node, 'collision_mask', 1)
-        
+        print(f"[PHYSICS] Kinematic body collision layer: {body.collision_layer}, mask: {body.collision_mask}")
+
         # Add collision shapes from children
+        collision_shapes_found = 0
+        print(f"[PHYSICS] Kinematic body has {len(node.children)} children:")
         for child in node.children:
+            child_type = getattr(child, 'type', 'NO_TYPE')
+            print(f"[PHYSICS]   Child: {child.name} (type: {child_type})")
             if hasattr(child, 'type') and child.type in ["CollisionShape2D", "CollisionPolygon2D"]:
+                print(f"[PHYSICS] Found collision shape child: {child.name} ({child.type})")
                 body.add_collision_shape(child)
-        
+                collision_shapes_found += 1
+
+        print(f"[PHYSICS] Total collision shapes added: {collision_shapes_found}")
+
         # Add to space
         self.space.add(body.pymunk_body)
         for shape in body.pymunk_shapes:
             self.space.add(shape)
-        
+            print(f"[PHYSICS] Added shape to physics space")
+
         # Use unique key to avoid name collisions
         unique_key = f"{node.name}_{id(node)}"
         self.bodies[unique_key] = body
+        print(f"[PHYSICS] Kinematic body registered with key: {unique_key}")
         return body
     
     def _add_area(self, node: Node2D):
@@ -611,6 +673,15 @@ class PhysicsWorld:
     
     def step(self, dt: float):
         """Step the physics simulation"""
+        # Debug: Print body count every 300 frames (5 seconds at 60fps) - less verbose
+        if hasattr(self, '_debug_frame_count'):
+            self._debug_frame_count += 1
+        else:
+            self._debug_frame_count = 0
+
+        if self._debug_frame_count % 300 == 0:
+            print(f"[PHYSICS] Step: {len(self.bodies)} bodies, {len(self.space.shapes)} shapes in space")
+
         self.space.step(dt)
 
         # Update nodes from physics (but not kinematic bodies - they control themselves)
@@ -634,6 +705,13 @@ class PhysicsWorld:
         """Get physics body by node reference"""
         for body in self.bodies.values():
             if body.node == node:
+                return body
+        return None
+
+    def get_body_by_pymunk_shape(self, pymunk_shape) -> Optional[PhysicsBody]:
+        """Get physics body associated with a pymunk shape"""
+        for body in self.bodies.values():
+            if pymunk_shape in body.pymunk_shapes:
                 return body
         return None
     
@@ -692,34 +770,557 @@ class PhysicsWorld:
 
     def shape_cast(self, shape_type: str, size: Tuple[float, float],
                    start: Tuple[float, float], end: Tuple[float, float],
-                   collision_mask: int = 0xFFFFFFFF) -> Optional[Dict]:
-        """Cast a shape and return first hit"""
-        # Create a temporary body and shape for casting
+                   collision_mask: int = 0xFFFFFFFF, exclude_body: Optional[PhysicsBody] = None) -> Optional[Dict]:
+        """
+        Cast a shape along a path and return first hit with proper swept collision detection.
+
+        Args:
+            shape_type: "circle" or "rectangle"
+            size: (radius,) for circle or (width, height) for rectangle
+            start: Starting position (x, y)
+            end: Ending position (x, y)
+            collision_mask: Collision mask for filtering
+            exclude_body: Physics body to exclude from collision (e.g., the casting body itself)
+
+        Returns:
+            Dict with collision info or None if no collision:
+            {
+                'body': PhysicsBody that was hit,
+                'point': (x, y) collision point,
+                'normal': (x, y) collision normal,
+                'distance': 0.0-1.0 distance along path where collision occurred
+            }
+        """
+        import math
+
+        # Calculate movement vector
+        move_vector = (end[0] - start[0], end[1] - start[1])
+        move_distance = math.sqrt(move_vector[0]**2 + move_vector[1]**2)
+
+        # Handle zero movement
+        if move_distance < 0.001:
+            return self._check_shape_overlap(shape_type, size, start, collision_mask, exclude_body)
+
+        # Normalize movement vector
+        move_dir = (move_vector[0] / move_distance, move_vector[1] / move_distance)
+
+        # Create temporary body and shape for casting
         temp_body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
         temp_body.position = start
 
         if shape_type == "circle":
-            temp_shape = pymunk.Circle(temp_body, size[0])
+            # For circles, use the first element as radius (size should be (diameter, diameter))
+            radius = size[0] / 2.0
+            temp_shape = pymunk.Circle(temp_body, radius)
         else:  # rectangle
             temp_shape = pymunk.Poly.create_box(temp_body, size)
 
         temp_shape.filter = pymunk.ShapeFilter(mask=collision_mask)
+        temp_shape.sensor = True  # Make it a sensor so it doesn't affect physics
 
-        # Perform shape cast (this is a simplified version)
-        # In a full implementation, you'd move the shape along the path
-        # and check for intersections at each step
+        # Add to space temporarily for collision detection
+        self.space.add(temp_body, temp_shape)
 
-        # For now, just do a point query at the end position
-        temp_body.position = end
-        point_query = self.space.point_query_nearest(end, 0, pymunk.ShapeFilter(mask=collision_mask))
+        try:
+            # Perform swept collision detection
+            result = self._perform_swept_collision(
+                temp_body, temp_shape, start, end, move_dir, move_distance,
+                collision_mask, exclude_body
+            )
+            return result
+        finally:
+            # Always remove temporary shape from space
+            self.space.remove(temp_body, temp_shape)
 
-        if point_query:
-            body = point_query.shape.user_data if point_query.shape.user_data else None
-            return {
-                'body': body,
-                'point': (point_query.point.x, point_query.point.y),
-                'normal': (0, 1),  # Simplified normal
-                'distance': point_query.distance
-            }
+    def _check_shape_overlap(self, shape_type: str, size: Tuple[float, float],
+                           position: Tuple[float, float], collision_mask: int,
+                           exclude_body: Optional[PhysicsBody] = None) -> Optional[Dict]:
+        """Check if shape overlaps with any existing shapes at given position"""
+        # Create temporary body and shape
+        temp_body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
+        temp_body.position = position
+
+        if shape_type == "circle":
+            radius = size[0] / 2.0
+            temp_shape = pymunk.Circle(temp_body, radius)
+        else:  # rectangle
+            temp_shape = pymunk.Poly.create_box(temp_body, size)
+
+        temp_shape.filter = pymunk.ShapeFilter(mask=collision_mask)
+        temp_shape.sensor = True
+
+        # Add to space temporarily
+        self.space.add(temp_body, temp_shape)
+
+        try:
+            # Query for overlapping shapes using more precise collision detection
+            for shape in self.space.shapes:
+                if shape == temp_shape:
+                    continue
+
+                # Skip if this is the excluded body
+                if exclude_body and hasattr(shape, 'user_data') and shape.user_data == exclude_body:
+                    continue
+
+                # Skip sensors
+                if hasattr(shape, 'sensor') and shape.sensor:
+                    continue
+
+                # Check for overlap using pymunk's collision detection
+                if self._shapes_colliding(temp_shape, shape):
+                    body = shape.user_data if hasattr(shape, 'user_data') and shape.user_data else None
+                    if body:
+                        # Calculate a better collision normal for overlap
+                        normal = self._calculate_overlap_normal(temp_shape, shape, position)
+
+                        return {
+                            'body': body,
+                            'point': position,
+                            'normal': normal,
+                            'distance': 0.0
+                        }
+
+            return None
+
+        finally:
+            self.space.remove(temp_body, temp_shape)
+
+    def _calculate_overlap_normal(self, shape1, shape2, position: Tuple[float, float]) -> Tuple[float, float]:
+        """Calculate the best normal direction to resolve an overlap"""
+        import math
+
+        try:
+            # Try to get contact points from collision
+            contact_set = shape1.shapes_collide(shape2)
+            if contact_set.points:
+                # Use the normal from the first contact point
+                normal = contact_set.normal
+                # Ensure the normal points away from shape2 towards shape1
+                return (normal.x, normal.y)
+        except Exception as e:
+            print(f"[PHYSICS] Error getting contact normal: {e}")
+
+        # Fallback: calculate normal based on shape centers and edges
+        try:
+            center1 = shape1.body.position
+            center2 = shape2.body.position
+
+            # Calculate direction from shape2 to shape1 (direction to push shape1)
+            dx = center1.x - center2.x
+            dy = center1.y - center2.y
+
+            # If centers are too close, try to find the best separation direction
+            # by looking at the shape edges
+            length = math.sqrt(dx*dx + dy*dy)
+            if length < 0.001:
+                # Centers are at same position, try to find edge-based normal
+                normal = self._calculate_edge_based_normal(shape1, shape2)
+                if normal:
+                    return normal
+                # If that fails, use a default direction
+                return (1.0, 0.0)  # Push to the right
+            else:
+                return (dx/length, dy/length)
+        except Exception as e:
+            print(f"[PHYSICS] Error calculating center-based normal: {e}")
+
+        # Final fallback: use upward normal
+        return (0.0, -1.0)
+
+    def _calculate_edge_based_normal(self, shape1, shape2) -> Optional[Tuple[float, float]]:
+        """Calculate normal based on shape edges when centers overlap"""
+        import math
+
+        try:
+            # Get bounding boxes
+            bb1 = shape1.bb
+            bb2 = shape2.bb
+
+            # Calculate overlap amounts in each direction
+            overlap_left = bb1.right - bb2.left
+            overlap_right = bb2.right - bb1.left
+            overlap_top = bb1.bottom - bb2.top
+            overlap_bottom = bb2.bottom - bb1.bottom
+
+            # Find the direction with minimum overlap (easiest escape route)
+            min_overlap = min(overlap_left, overlap_right, overlap_top, overlap_bottom)
+
+            if min_overlap == overlap_left:
+                return (-1.0, 0.0)  # Push left
+            elif min_overlap == overlap_right:
+                return (1.0, 0.0)   # Push right
+            elif min_overlap == overlap_top:
+                return (0.0, 1.0)   # Push up
+            else:
+                return (0.0, -1.0)  # Push down
+
+        except Exception as e:
+            print(f"[PHYSICS] Error calculating edge-based normal: {e}")
+            return None
+
+    def _perform_swept_collision(self, temp_body, temp_shape, start: Tuple[float, float],
+                               end: Tuple[float, float], move_dir: Tuple[float, float],
+                               move_distance: float, collision_mask: int,
+                               exclude_body: Optional[PhysicsBody] = None) -> Optional[Dict]:
+        """
+        Perform swept collision detection by stepping along the movement path.
+        This handles large movement deltas and provides accurate collision detection.
+        """
+        import math
+
+        # Calculate step size - smaller steps for more accuracy, but balance performance
+        # Use shape size to determine appropriate step size
+        if hasattr(temp_shape, 'radius'):
+            # Circle shape
+            shape_size = temp_shape.radius * 2
+        else:
+            # Rectangle shape - use smaller dimension
+            bb = temp_shape.bb
+            shape_size = min(bb.right - bb.left, bb.top - bb.bottom)
+
+        # Step size should be a fraction of the shape size, but not too small
+        step_size = max(shape_size * 0.25, 2.0)  # At least 2 pixels
+        num_steps = max(int(move_distance / step_size), 1)
+        actual_step_size = move_distance / num_steps
+
+        # Step along the path
+        for step in range(num_steps + 1):
+            # Calculate current position
+            t = step / num_steps if num_steps > 0 else 1.0
+            current_pos = (
+                start[0] + move_dir[0] * move_distance * t,
+                start[1] + move_dir[1] * move_distance * t
+            )
+
+            # Move temp body to current position
+            temp_body.position = current_pos
+
+            # Check for collisions at this position
+            collision_info = self._check_collision_at_position(
+                temp_shape, current_pos, collision_mask, exclude_body
+            )
+
+            if collision_info:
+                # Found collision, calculate accurate collision info
+                collision_info['distance'] = t  # Distance along path (0.0 to 1.0)
+                return collision_info
 
         return None
+
+    def _check_collision_at_position(self, temp_shape, position: Tuple[float, float],
+                                   collision_mask: int, exclude_body: Optional[PhysicsBody] = None) -> Optional[Dict]:
+        """Check for collision at a specific position and return detailed collision info"""
+        # Query for shapes at this position
+        point_queries = self.space.point_query(position, 0, pymunk.ShapeFilter(mask=collision_mask))
+
+        for query in point_queries:
+            shape = query.shape
+
+            # Skip if this is the temp shape itself
+            if shape == temp_shape:
+                continue
+
+            # Skip if this is the excluded body
+            if exclude_body and hasattr(shape, 'user_data') and shape.user_data == exclude_body:
+                continue
+
+            # Skip sensors unless we want to detect them
+            if hasattr(shape, 'sensor') and shape.sensor:
+                continue
+
+            body = shape.user_data if hasattr(shape, 'user_data') and shape.user_data else None
+            if body:
+                # Calculate collision normal
+                normal = self._calculate_collision_normal(temp_shape, shape, position)
+
+                return {
+                    'body': body,
+                    'point': position,
+                    'normal': normal,
+                    'distance': 0.0  # Will be set by caller
+                }
+
+        # Also check for shape-to-shape collision using more precise method
+        for shape in self.space.shapes:
+            if shape == temp_shape:
+                continue
+
+            # Skip if this is the excluded body
+            if exclude_body and hasattr(shape, 'user_data') and shape.user_data == exclude_body:
+                continue
+
+            # Skip sensors
+            if hasattr(shape, 'sensor') and shape.sensor:
+                continue
+
+            # Check if shapes are colliding using pymunk's collision detection
+            if self._shapes_colliding(temp_shape, shape):
+                body = shape.user_data if hasattr(shape, 'user_data') and shape.user_data else None
+                if body:
+                    normal = self._calculate_collision_normal(temp_shape, shape, position)
+
+                    return {
+                        'body': body,
+                        'point': position,
+                        'normal': normal,
+                        'distance': 0.0  # Will be set by caller
+                    }
+
+        return None
+
+    def _shapes_colliding(self, shape1, shape2) -> bool:
+        """Check if two shapes are colliding using pymunk collision detection"""
+        try:
+            # Use pymunk's collision detection
+            contact_set = shape1.shapes_collide(shape2)
+            return len(contact_set.points) > 0
+        except:
+            # Fallback to bounding box check
+            bb1 = shape1.bb
+            bb2 = shape2.bb
+            return not (bb1.right < bb2.left or bb1.left > bb2.right or
+                       bb1.top < bb2.bottom or bb1.bottom > bb2.top)
+
+    def _calculate_collision_normal(self, temp_shape, colliding_shape, position: Tuple[float, float]) -> Tuple[float, float]:
+        """Calculate the collision normal between two shapes using pre-calculated edge normals"""
+        import math
+
+        try:
+            # First try to use the collision shape's pre-calculated edge normals
+            # Get the collision shape node from the colliding body
+            colliding_body = self.get_body_by_pymunk_shape(colliding_shape)
+            if colliding_body and hasattr(colliding_body, 'node'):
+                colliding_node = colliding_body.node
+
+                # Find the CollisionShape2D child
+                collision_shape_node = None
+                for child in colliding_node.children:
+                    if hasattr(child, 'type') and child.type == "CollisionShape2D":
+                        collision_shape_node = child
+                        break
+
+                if collision_shape_node and hasattr(collision_shape_node, 'get_best_collision_normal'):
+                    # Use the collision shape's improved normal calculation
+                    temp_center = [temp_shape.body.position.x, temp_shape.body.position.y]
+                    collision_point = [position[0], position[1]]
+
+                    normal = collision_shape_node.get_best_collision_normal(collision_point, temp_center)
+                    print(f"[PHYSICS] Using collision shape edge normal: {normal}")
+                    return (normal[0], normal[1])
+        except Exception as e:
+            print(f"[PHYSICS] Error using collision shape normals: {e}")
+
+        try:
+            # Try to get contact points and normal from pymunk
+            contact_set = temp_shape.shapes_collide(colliding_shape)
+            if contact_set.points:
+                # Use the normal from the first contact point
+                normal = contact_set.normal
+                # The normal from pymunk should point from colliding_shape towards temp_shape
+                # which is the direction to push temp_shape to resolve the collision
+                print(f"[PHYSICS] Using pymunk contact normal: {(normal.x, normal.y)}")
+                return (normal.x, normal.y)
+        except Exception as e:
+            print(f"[PHYSICS] Error getting collision normal: {e}")
+
+        # Fallback: Use edge-based calculation first for better accuracy
+        try:
+            edge_normal = self._calculate_edge_based_normal(temp_shape, colliding_shape)
+            if edge_normal:
+                print(f"[PHYSICS] Using edge-based normal: {edge_normal}")
+                return edge_normal
+        except Exception as e:
+            print(f"[PHYSICS] Error calculating edge-based normal: {e}")
+
+        # Final fallback: calculate normal based on shape centers
+        try:
+            temp_center = temp_shape.body.position
+            colliding_center = colliding_shape.body.position
+
+            # Vector from colliding shape to temp shape
+            dx = temp_center.x - colliding_center.x
+            dy = temp_center.y - colliding_center.y
+
+            # Normalize
+            length = math.sqrt(dx*dx + dy*dy)
+            if length > 0.001:
+                normal = (dx / length, dy / length)
+                print(f"[PHYSICS] Using center-based normal: {normal}")
+                return normal
+            else:
+                # If centers are at same position, default to pushing upward
+                print(f"[PHYSICS] Using default upward normal: (0.0, 1.0)")
+                return (0.0, 1.0)
+        except Exception as e:
+            print(f"[PHYSICS] Error calculating fallback normal: {e}")
+            return (0.0, 1.0)
+
+    def shape_cast_all(self, shape_type: str, size: Tuple[float, float],
+                      start: Tuple[float, float], end: Tuple[float, float],
+                      collision_mask: int = 0xFFFFFFFF, exclude_body: Optional[PhysicsBody] = None) -> List[Dict]:
+        """
+        Cast a shape and return all hits along the path, sorted by distance.
+
+        Returns:
+            List of collision dicts sorted by distance along path
+        """
+        import math
+
+        # Calculate movement vector
+        move_vector = (end[0] - start[0], end[1] - start[1])
+        move_distance = math.sqrt(move_vector[0]**2 + move_vector[1]**2)
+
+        # Handle zero movement
+        if move_distance < 0.001:
+            overlap = self._check_shape_overlap(shape_type, size, start, collision_mask, exclude_body)
+            return [overlap] if overlap else []
+
+        # Normalize movement vector
+        move_dir = (move_vector[0] / move_distance, move_vector[1] / move_distance)
+
+        # Create temporary body and shape for casting
+        temp_body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
+        temp_body.position = start
+
+        if shape_type == "circle":
+            radius = size[0] / 2.0
+            temp_shape = pymunk.Circle(temp_body, radius)
+        else:  # rectangle
+            temp_shape = pymunk.Poly.create_box(temp_body, size)
+
+        temp_shape.filter = pymunk.ShapeFilter(mask=collision_mask)
+        temp_shape.sensor = True
+
+        # Add to space temporarily
+        self.space.add(temp_body, temp_shape)
+
+        try:
+            # Collect all collisions along the path
+            collisions = self._collect_all_collisions_along_path(
+                temp_body, temp_shape, start, end, move_dir, move_distance,
+                collision_mask, exclude_body
+            )
+
+            # Sort by distance
+            collisions.sort(key=lambda x: x['distance'])
+            return collisions
+
+        finally:
+            self.space.remove(temp_body, temp_shape)
+
+    def _collect_all_collisions_along_path(self, temp_body, temp_shape, start: Tuple[float, float],
+                                         end: Tuple[float, float], move_dir: Tuple[float, float],
+                                         move_distance: float, collision_mask: int,
+                                         exclude_body: Optional[PhysicsBody] = None) -> List[Dict]:
+        """Collect all collisions along the movement path"""
+        collisions = []
+        bodies_hit = set()  # Track bodies we've already hit to avoid duplicates
+
+        # Calculate step size
+        if hasattr(temp_shape, 'radius'):
+            shape_size = temp_shape.radius * 2
+        else:
+            bb = temp_shape.bb
+            shape_size = min(bb.right - bb.left, bb.top - bb.bottom)
+
+        step_size = max(shape_size * 0.25, 2.0)
+        num_steps = max(int(move_distance / step_size), 1)
+
+        # Step along the path
+        for step in range(num_steps + 1):
+            t = step / num_steps if num_steps > 0 else 1.0
+            current_pos = (
+                start[0] + move_dir[0] * move_distance * t,
+                start[1] + move_dir[1] * move_distance * t
+            )
+
+            temp_body.position = current_pos
+
+            # Check for collisions at this position
+            collision_info = self._check_collision_at_position(
+                temp_shape, current_pos, collision_mask, exclude_body
+            )
+
+            if collision_info and collision_info['body'] not in bodies_hit:
+                collision_info['distance'] = t
+                collisions.append(collision_info)
+                bodies_hit.add(collision_info['body'])
+
+        return collisions
+
+    def test_move(self, body: PhysicsBody, move_delta: Tuple[float, float]) -> Optional[Dict]:
+        """
+        Test if a body can move by the given delta without collision.
+        Returns collision info if collision would occur, None if movement is safe.
+        """
+        if not body or not body.pymunk_body:
+            return None
+
+        # Get current position
+        current_pos = body.pymunk_body.position
+        target_pos = (current_pos[0] + move_delta[0], current_pos[1] + move_delta[1])
+
+        # Determine shape type and size
+        shape_type = "rectangle"
+        shape_size = (32.0, 32.0)
+
+        if body.pymunk_shapes:
+            shape = body.pymunk_shapes[0]
+            if hasattr(shape, 'radius'):
+                shape_type = "circle"
+                shape_size = (shape.radius * 2, shape.radius * 2)  # Diameter for both dimensions
+            elif hasattr(shape, 'get_vertices'):
+                vertices = shape.get_vertices()
+                if vertices:
+                    min_x = min(v.x for v in vertices)
+                    max_x = max(v.x for v in vertices)
+                    min_y = min(v.y for v in vertices)
+                    max_y = max(v.y for v in vertices)
+                    shape_size = (max_x - min_x, max_y - min_y)
+
+        # Use shape cast to test movement
+        return self.shape_cast(
+            shape_type,
+            shape_size,
+            (current_pos[0], current_pos[1]),
+            target_pos,
+            collision_mask=body.collision_mask,
+            exclude_body=body
+        )
+
+    def get_overlapping_bodies(self, body: PhysicsBody) -> List[PhysicsBody]:
+        """Get all bodies currently overlapping with the given body"""
+        if not body or not body.pymunk_body:
+            return []
+
+        overlapping = []
+        current_pos = body.pymunk_body.position
+
+        # Determine shape type and size
+        shape_type = "rectangle"
+        shape_size = (32.0, 32.0)
+
+        if body.pymunk_shapes:
+            shape = body.pymunk_shapes[0]
+            if hasattr(shape, 'radius'):
+                shape_type = "circle"
+                shape_size = (shape.radius * 2, shape.radius * 2)  # Diameter for both dimensions
+            elif hasattr(shape, 'get_vertices'):
+                vertices = shape.get_vertices()
+                if vertices:
+                    min_x = min(v.x for v in vertices)
+                    max_x = max(v.x for v in vertices)
+                    min_y = min(v.y for v in vertices)
+                    max_y = max(v.y for v in vertices)
+                    shape_size = (max_x - min_x, max_y - min_y)
+
+        # Check for overlaps at current position
+        overlap_info = self._check_shape_overlap(
+            shape_type, shape_size, (current_pos[0], current_pos[1]),
+            body.collision_mask, exclude_body=body
+        )
+
+        if overlap_info and overlap_info['body']:
+            overlapping.append(overlap_info['body'])
+
+        return overlapping

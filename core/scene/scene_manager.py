@@ -205,6 +205,24 @@ class Scene:
             elif node_type == "SceneInstance":
                 from .scene_instance import SceneInstance
                 return SceneInstance.from_dict(data)
+            elif node_type == "CollisionShape2D":
+                from nodes.node2d.CollisionShape2D import CollisionShape2D
+                return CollisionShape2D.from_dict(data)
+            elif node_type == "CollisionPolygon2D":
+                from nodes.node2d.CollisionPolygon2D import CollisionPolygon2D
+                return CollisionPolygon2D.from_dict(data)
+            elif node_type == "StaticBody2D":
+                from nodes.node2d.StaticBody2D import StaticBody2D
+                return StaticBody2D.from_dict(data)
+            elif node_type == "KinematicBody2D":
+                from nodes.node2d.KinematicBody2D import KinematicBody2D
+                return KinematicBody2D.from_dict(data)
+            elif node_type == "RigidBody2D":
+                from nodes.node2d.Rigidbody2D import RigidBody2D
+                return RigidBody2D.from_dict(data)
+            elif node_type == "Area2D":
+                from nodes.node2d.Area2D import Area2D
+                return Area2D.from_dict(data)
             # Add more node types as needed
             else:
                 # Fallback to base Node class

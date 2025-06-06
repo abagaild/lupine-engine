@@ -185,23 +185,57 @@ class TileSet:
 
 class TileSetManager:
     """Manager for loading and caching tilesets"""
-    
-    def __init__(self):
+
+    def __init__(self, project_root: Optional[str] = None):
         self._cache = {}  # Dict[str, TileSet]
-    
+        self.project_root = Path(project_root) if project_root else None
+
+    def set_project_root(self, project_root: str):
+        """Set the project root directory for relative path resolution"""
+        self.project_root = Path(project_root)
+
+    def resolve_path(self, file_path: str) -> Path:
+        """Resolve a file path, supporting both absolute and relative paths"""
+        path = Path(file_path)
+
+        # If it's already absolute, return as-is
+        if path.is_absolute():
+            return path
+
+        # If we have a project root, resolve relative to it
+        if self.project_root:
+            return self.project_root / path
+
+        # Fallback to current working directory
+        return Path.cwd() / path
+
     def load_tileset(self, file_path: str) -> Optional[TileSet]:
         """Load a tileset, using cache if available"""
-        if file_path in self._cache:
-            return self._cache[file_path]
-        
+        # Use original path as cache key to avoid duplicate entries
+        cache_key = file_path
+
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
         try:
-            if Path(file_path).exists():
-                tileset = TileSet.load_from_file(file_path)
-                self._cache[file_path] = tileset
+            resolved_path = self.resolve_path(file_path)
+            if resolved_path.exists():
+                tileset = TileSet.load_from_file(str(resolved_path))
+
+                # Resolve texture path relative to project root if needed
+                if tileset and tileset.texture_path and not Path(tileset.texture_path).is_absolute():
+                    if self.project_root:
+                        tileset.texture_path = str(self.project_root / tileset.texture_path)
+
+                self._cache[cache_key] = tileset
                 return tileset
+            else:
+                print(f"Tileset file not found: {resolved_path}")
         except Exception as e:
             print(f"Error loading tileset {file_path}: {e}")
-        
+            import traceback
+            traceback.print_exc()
+
         return None
     
     def clear_cache(self):
@@ -221,3 +255,7 @@ _tileset_manager = TileSetManager()
 def get_tileset_manager() -> TileSetManager:
     """Get the global tileset manager"""
     return _tileset_manager
+
+def set_tileset_manager_project_root(project_root: str):
+    """Set the project root for the global tileset manager"""
+    _tileset_manager.set_project_root(project_root)

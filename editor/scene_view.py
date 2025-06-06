@@ -142,6 +142,13 @@ class SceneViewport(QOpenGLWidget):
         # Shared renderer for consistent rendering with game runner
         self.renderer = None  # Will be initialized in initializeGL
 
+        # Texture cache (legacy - will be replaced by shared renderer)
+        self.texture_cache = {}  # path -> texture_id
+
+        # Font cache for text rendering (legacy - will be replaced by shared renderer)
+        self.font_cache = {}  # (font_name, size) -> pygame.font.Font
+        self.text_texture_cache = {}  # (text, font_name, size, color) -> texture_id
+
         # Enable mouse tracking
         self.setMouseTracking(True)
 
@@ -252,8 +259,8 @@ class SceneViewport(QOpenGLWidget):
     
     def draw_grid(self):
         """Draw background grid"""
-        if not self.renderer:
-            return
+        glColor3f(0.25, 0.25, 0.25)  # Slightly darker grid
+        glBegin(GL_LINES)
 
         # Calculate grid spacing based on zoom - larger base spacing
         base_spacing = 100  # Larger base grid
@@ -276,9 +283,23 @@ class SceneViewport(QOpenGLWidget):
         bottom = -view_half_height + self.pan_y - margin
         top = view_half_height + self.pan_y + margin
 
-        # Use SharedRenderer to draw grid
-        bounds = (left, top, right, bottom)
-        self.renderer.draw_grid(bounds, spacing, (0.25, 0.25, 0.25, 1.0), 1.0)
+        # Vertical lines
+        start_x = int(left / spacing) * spacing
+        x = start_x
+        while x <= right:
+            glVertex2f(x, bottom)
+            glVertex2f(x, top)
+            x += spacing
+
+        # Horizontal lines
+        start_y = int(bottom / spacing) * spacing
+        y = start_y
+        while y <= top:
+            glVertex2f(left, y)
+            glVertex2f(right, y)
+            y += spacing
+
+        glEnd()
 
         # Draw major grid lines (every 5th line)
         glColor3f(0.35, 0.35, 0.35)  # Slightly brighter for major lines
@@ -306,57 +327,283 @@ class SceneViewport(QOpenGLWidget):
     
     def draw_game_bounds(self):
         """Draw game screen bounds"""
-        if not self.renderer:
-            return
-
+        glColor3f(0.8, 0.5, 0.2)  # Orange color
+        glLineWidth(2.0)
+        glBegin(GL_LINE_LOOP)
+        
         half_width = self.game_width / 2
         half_height = self.game_height / 2
-
-        # Create rectangle points for game bounds
-        points = [
-            (-half_width, -half_height),
-            (half_width, -half_height),
-            (half_width, half_height),
-            (-half_width, half_height)
-        ]
-
-        # Use SharedRenderer to draw the bounds
-        self.renderer.draw_polygon(points, (0.8, 0.5, 0.2, 1.0), filled=False)
+        
+        glVertex2f(-half_width, -half_height)
+        glVertex2f(half_width, -half_height)
+        glVertex2f(half_width, half_height)
+        glVertex2f(-half_width, half_height)
+        
+        glEnd()
+        glLineWidth(1.0)
     
     def draw_origin(self):
         """Draw coordinate system origin"""
-        if not self.renderer:
-            return
-
+        glLineWidth(2.0)
+        
         # X axis (red)
-        self.renderer.draw_line(0, 0, 50, 0, (1.0, 0.0, 0.0, 1.0), 2.0)
-
+        glColor3f(1.0, 0.0, 0.0)
+        glBegin(GL_LINES)
+        glVertex2f(0, 0)
+        glVertex2f(50, 0)
+        glEnd()
+        
         # Y axis (green)
-        self.renderer.draw_line(0, 0, 0, 50, (0.0, 1.0, 0.0, 1.0), 2.0)
+        glColor3f(0.0, 1.0, 0.0)
+        glBegin(GL_LINES)
+        glVertex2f(0, 0)
+        glVertex2f(0, 50)
+        glEnd()
+        
+        glLineWidth(1.0)
+
+    def get_font(self, font_name: Optional[str] = None, font_size: int = 14):
+        """Get a pygame font for text rendering"""
+        if not PYGAME_AVAILABLE:
+            return None
+
+        font_key = (font_name, font_size)
+        if font_key not in self.font_cache:
+            try:
+                if font_name:
+                    font = pygame.font.Font(font_name, font_size)
+                else:
+                    font = pygame.font.Font(None, font_size)
+                self.font_cache[font_key] = font
+            except Exception as e:
+                print(f"Error loading font {font_name}: {e}")
+                # Fallback to default font
+                font = pygame.font.Font(None, font_size)
+                self.font_cache[font_key] = font
+
+        return self.font_cache[font_key]
+
+    def create_text_texture(self, text: str, font, color: tuple) -> Optional[int]:
+        """Create an OpenGL texture from text using pygame font"""
+        if not PYGAME_AVAILABLE or not font:
+            return None
+
+        try:
+            # Render text to pygame surface
+            text_surface = font.render(text, True, color[:3])  # RGB only for pygame
+
+            # Convert to RGBA format
+            text_data = pygame.image.tostring(text_surface, 'RGBA', True)
+            text_width, text_height = text_surface.get_size()
+
+            # Create OpenGL texture
+            texture_id = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, texture_id)
+
+            # Set texture parameters
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+
+            # Upload texture data
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, text_width, text_height,
+                        0, GL_RGBA, GL_UNSIGNED_BYTE, text_data)
+
+            glBindTexture(GL_TEXTURE_2D, 0)
+
+            return texture_id
+
+        except Exception as e:
+            print(f"Error creating text texture: {e}")
+            return None
 
     def draw_text_opengl(self, text: str, x: float, y: float, font_name: Optional[str] = None,
                         font_size: int = 14, color: tuple = (1.0, 1.0, 1.0, 1.0)):
-        """Draw text using shared renderer"""
-        if self.renderer:
-            self.renderer.draw_text(text, x, y, font_name, font_size, color)
-        else:
+        """Draw text using OpenGL with pygame font rendering"""
+        if not text or not PYGAME_AVAILABLE:
             # Fallback to bitmap rendering
             self.draw_text_bitmap(text, x, y, list(color[:3]), font_size)
+            return
+
+        # Create cache key
+        pygame_color = (int(color[0] * 255), int(color[1] * 255),
+                       int(color[2] * 255), int(color[3] * 255))
+        text_key = (text, font_name, font_size, pygame_color)
+
+        # Check cache
+        if text_key not in self.text_texture_cache:
+            font = self.get_font(font_name, font_size)
+            if font:
+                texture_id = self.create_text_texture(text, font, pygame_color)
+                if texture_id:
+                    # Get text dimensions
+                    text_width, text_height = font.size(text)
+                    self.text_texture_cache[text_key] = (texture_id, text_width, text_height)
+
+        # Draw cached text texture
+        if text_key in self.text_texture_cache:
+            texture_id, text_width, text_height = self.text_texture_cache[text_key]
+
+            # Draw textured quad
+            glEnable(GL_TEXTURE_2D)
+            glBindTexture(GL_TEXTURE_2D, texture_id)
+            glColor4f(1.0, 1.0, 1.0, color[3])  # Use alpha from color
+
+            glBegin(GL_QUADS)
+            glTexCoord2f(0.0, 0.0)
+            glVertex2f(x, y)
+            glTexCoord2f(1.0, 0.0)
+            glVertex2f(x + text_width, y)
+            glTexCoord2f(1.0, 1.0)
+            glVertex2f(x + text_width, y + text_height)
+            glTexCoord2f(0.0, 1.0)
+            glVertex2f(x, y + text_height)
+            glEnd()
+
+            glBindTexture(GL_TEXTURE_2D, 0)
+            glDisable(GL_TEXTURE_2D)
 
     def load_texture(self, texture_path: str) -> Optional[Tuple[int, int, int]]:
-        """Load a texture using shared renderer"""
-        if self.renderer:
-            return self.renderer.load_texture(texture_path)
-        return None
+        """Load a texture from file and return (texture_id, width, height)"""
+        if not texture_path:
+            return None
+
+        # Check cache first
+        if texture_path in self.texture_cache:
+            return self.texture_cache[texture_path]
+
+        try:
+            # Convert to absolute path
+            if not Path(texture_path).is_absolute():
+                full_path = self.project.get_absolute_path(texture_path)
+            else:
+                full_path = Path(texture_path)
+
+            if not full_path.exists():
+                print(f"Texture file not found: {full_path}")
+                return None
+
+            # Use PIL/Pillow for more reliable image loading
+            from PIL import Image
+
+            # Load image using PIL
+            pil_image = Image.open(str(full_path))
+
+            # Convert to RGBA if not already
+            if pil_image.mode != 'RGBA':
+                pil_image = pil_image.convert('RGBA')
+
+            # Get image data
+            width, height = pil_image.size
+            image_data = pil_image.tobytes()
+
+            # Flip image vertically for OpenGL (PIL loads top-to-bottom, OpenGL expects bottom-to-top)
+            pil_image = pil_image.transpose(Image.FLIP_TOP_BOTTOM)
+            image_data = pil_image.tobytes()
+
+            # Generate OpenGL texture
+            texture_id = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, texture_id)
+
+            # Set texture parameters
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+
+            # Upload texture data
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height,
+                        0, GL_RGBA, GL_UNSIGNED_BYTE, image_data)
+
+            glBindTexture(GL_TEXTURE_2D, 0)
+
+            # Cache the texture with size info
+            texture_info = (texture_id, width, height)
+            self.texture_cache[texture_path] = texture_info
+
+            print(f"Successfully loaded texture: {texture_path} ({width}x{height})")
+            return texture_info
+
+        except Exception as e:
+            print(f"Error loading texture {texture_path}: {e}")
+            # Fallback to QImage method if PIL fails
+            try:
+                return self._load_texture_qimage_fallback(full_path)
+            except Exception as e2:
+                print(f"Fallback texture loading also failed: {e2}")
+                return None
+
+    def _load_texture_qimage_fallback(self, full_path) -> Optional[Tuple[int, int, int]]:
+        """Fallback texture loading using QImage with proper data conversion"""
+        try:
+            # Load image using QImage
+            image = QImage(str(full_path))
+            if image.isNull():
+                print(f"Failed to load image with QImage: {full_path}")
+                return None
+
+            # Convert to OpenGL format
+            image = image.convertToFormat(QImage.Format.Format_RGBA8888)
+            image = image.mirrored(False, True)  # Flip vertically for OpenGL
+
+            # Convert QImage data to bytes properly
+            width = image.width()
+            height = image.height()
+
+            # Get image data as bytes - this is the key fix
+            ptr = image.constBits()
+            ptr.setsize(width * height * 4)  # 4 bytes per pixel (RGBA)
+            image_data = bytes(ptr)
+
+            # Generate OpenGL texture
+            texture_id = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, texture_id)
+
+            # Set texture parameters
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+
+            # Upload texture data
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height,
+                        0, GL_RGBA, GL_UNSIGNED_BYTE, image_data)
+
+            glBindTexture(GL_TEXTURE_2D, 0)
+
+            # Cache the texture with size info
+            texture_info = (texture_id, width, height)
+
+            print(f"Successfully loaded texture with QImage fallback: {full_path} ({width}x{height})")
+            return texture_info
+
+        except Exception as e:
+            print(f"QImage fallback failed: {e}")
+            return None
 
     def draw_textured_quad(self, texture_id: int, left: float, bottom: float,
                           right: float, top: float, tex_left: float = 0.0,
                           tex_bottom: float = 0.0, tex_right: float = 1.0,
                           tex_top: float = 1.0):
-        """Draw a textured quad using shared renderer"""
-        if self.renderer:
-            self.renderer.draw_textured_quad(texture_id, left, bottom, right, top,
-                                           tex_left, tex_bottom, tex_right, tex_top)
+        """Draw a textured quad with custom texture coordinates"""
+        glEnable(GL_TEXTURE_2D)
+        glBindTexture(GL_TEXTURE_2D, texture_id)
+        glColor3f(1.0, 1.0, 1.0)  # White to show texture as-is
+
+        glBegin(GL_QUADS)
+        glTexCoord2f(tex_left, tex_bottom)
+        glVertex2f(left, bottom)
+        glTexCoord2f(tex_right, tex_bottom)
+        glVertex2f(right, bottom)
+        glTexCoord2f(tex_right, tex_top)
+        glVertex2f(right, top)
+        glTexCoord2f(tex_left, tex_top)
+        glVertex2f(left, top)
+        glEnd()
+
+        glBindTexture(GL_TEXTURE_2D, 0)
+        glDisable(GL_TEXTURE_2D)
 
     def draw_scene_nodes(self):
         """Draw scene nodes"""
@@ -382,16 +629,14 @@ class SceneViewport(QOpenGLWidget):
         # Store original position for reference
         original_position = position.copy() if isinstance(position, list) else [position[0], position[1]]
 
-        if self.renderer:
-            self.renderer.push_matrix()
+        glPushMatrix()
         try:
             # In the editor, UI elements should always remain in their world coordinates
             # regardless of follow_viewport setting. follow_viewport only affects game runtime behavior.
             final_x = position[0]
             final_y = position[1]
 
-            if self.renderer:
-                self.renderer.translate(final_x, final_y, 0)
+            glTranslatef(final_x, final_y, 0)
 
             # Store the original position in the node data for hit detection
             node_data["_original_position"] = original_position
@@ -461,16 +706,18 @@ class SceneViewport(QOpenGLWidget):
                 self.draw_node(child)
 
         finally:
-            if self.renderer:
-                self.renderer.pop_matrix()
+            glPopMatrix()
     
     def draw_node2d(self, node_data: Dict[str, Any]):
         """Draw Node2D"""
-        if not self.renderer:
-            return
-
-        # Draw as a small cross using SharedRenderer
-        self.renderer.draw_cross(0, 0, 20, (0.7, 0.7, 0.7, 1.0), 1.0)
+        # Draw as a small cross
+        glColor3f(0.7, 0.7, 0.7)
+        glBegin(GL_LINES)
+        glVertex2f(-10, 0)
+        glVertex2f(10, 0)
+        glVertex2f(0, -10)
+        glVertex2f(0, 10)
+        glEnd()
     
     def draw_sprite(self, node_data: Dict[str, Any]):
         """Draw Sprite node - Godot Sprite2D equivalent"""
@@ -553,42 +800,54 @@ class SceneViewport(QOpenGLWidget):
                                       tex_left, tex_bottom, tex_right, tex_top)
             else:
                 # Fallback to wireframe if texture loading failed
-                if self.renderer:
-                    points = [(left, bottom), (right, bottom), (right, top), (left, top)]
-                    self.renderer.draw_polygon(points, (1.0, 0.0, 0.0, 1.0), filled=False)
+                glColor3f(1.0, 0.0, 0.0)  # Red for failed texture
+                glBegin(GL_LINE_LOOP)
+                glVertex2f(left, bottom)
+                glVertex2f(right, bottom)
+                glVertex2f(right, top)
+                glVertex2f(left, top)
+                glEnd()
         else:
             # Draw wireframe for sprites without texture
-            if self.renderer:
-                points = [(left, bottom), (right, bottom), (right, top), (left, top)]
-                self.renderer.draw_polygon(points, (0.8, 0.8, 0.2, 1.0), filled=False)
+            glColor3f(0.8, 0.8, 0.2)  # Yellow for sprites without texture
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(left, bottom)
+            glVertex2f(right, bottom)
+            glVertex2f(right, top)
+            glVertex2f(left, top)
+            glEnd()
 
         # Draw frame indicator if using sprite sheet
         if hframes > 1 or vframes > 1:
-            if self.renderer:
-                # Draw frame grid lines
-                lines = []
-                for i in range(1, hframes):
-                    x = pos_x + (i * frame_width)
-                    lines.extend([(x, pos_y), (x, pos_y + frame_height)])
+            glColor3f(1.0, 0.5, 0.0)  # Orange for frame indicator
+            glBegin(GL_LINES)
 
-                for i in range(1, vframes):
-                    y = pos_y + (i * frame_height)
-                    lines.extend([(pos_x, y), (pos_x + frame_width, y)])
+            # Draw frame grid
+            for i in range(1, hframes):
+                x = pos_x + (i * frame_width)
+                glVertex2f(x, pos_y)
+                glVertex2f(x, pos_y + frame_height)
 
-                if lines:
-                    self.renderer.draw_lines(lines, (1.0, 0.5, 0.0, 1.0), 1.0)
+            for i in range(1, vframes):
+                y = pos_y + (i * frame_height)
+                glVertex2f(pos_x, y)
+                glVertex2f(pos_x + frame_width, y)
 
-                # Highlight current frame
-                current_frame_x = (frame % hframes) * frame_width + pos_x
-                current_frame_y = (frame // hframes) * frame_height + pos_y
+            glEnd()
 
-                current_frame_points = [
-                    (current_frame_x, current_frame_y),
-                    (current_frame_x + frame_width, current_frame_y),
-                    (current_frame_x + frame_width, current_frame_y + frame_height),
-                    (current_frame_x, current_frame_y + frame_height)
-                ]
-                self.renderer.draw_polygon(current_frame_points, (1.0, 0.0, 0.0, 1.0), filled=False)
+            # Highlight current frame
+            current_frame_x = (frame % hframes) * frame_width + pos_x
+            current_frame_y = (frame // hframes) * frame_height + pos_y
+
+            glColor3f(1.0, 0.0, 0.0)  # Red for current frame
+            glLineWidth(2.0)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(current_frame_x, current_frame_y)
+            glVertex2f(current_frame_x + frame_width, current_frame_y)
+            glVertex2f(current_frame_x + frame_width, current_frame_y + frame_height)
+            glVertex2f(current_frame_x, current_frame_y + frame_height)
+            glEnd()
+            glLineWidth(1.0)
 
         # Draw texture name if available
         if texture:
@@ -3870,8 +4129,8 @@ class SceneViewport(QOpenGLWidget):
         frame_width = 64  # Default
         frame_height = 64  # Default
 
-        if texture_path and self.renderer and texture_path in self.renderer.texture_cache:
-            texture_info = self.renderer.texture_cache[texture_path]
+        if texture_path and texture_path in self.texture_cache:
+            texture_info = self.texture_cache[texture_path]
             if texture_info:
                 _, frame_width, frame_height = texture_info
 
@@ -3980,8 +4239,8 @@ class SceneViewport(QOpenGLWidget):
 
         # Try to get texture size
         texture_path = node.get("texture") or node.get("texture_path")
-        if texture_path and self.renderer and texture_path in self.renderer.texture_cache:
-            texture_info = self.renderer.texture_cache[texture_path]
+        if texture_path and texture_path in self.texture_cache:
+            texture_info = self.texture_cache[texture_path]
             if texture_info:
                 _, width, height = texture_info
                 return [float(width), float(height)]
@@ -4363,14 +4622,14 @@ class SceneViewport(QOpenGLWidget):
             if property_name in ["texture", "texture_path", "icon", "normal_texture", "pressed_texture", "hover_texture"]:
                 # Invalidate texture cache for the old value
                 old_value = node.get(property_name)
-                if old_value and self.renderer and old_value in self.renderer.texture_cache:
+                if old_value and old_value in self.texture_cache:
                     print(f"[DEBUG] Invalidating texture cache for: {old_value}")
-                    del self.renderer.texture_cache[old_value]
+                    del self.texture_cache[old_value]
 
                 # Also invalidate the new value in case it was cached with different data
-                if value and self.renderer and value in self.renderer.texture_cache:
+                if value and value in self.texture_cache:
                     print(f"[DEBUG] Invalidating texture cache for new value: {value}")
-                    del self.renderer.texture_cache[value]
+                    del self.texture_cache[value]
 
             node[property_name] = value
             self.update()
@@ -4378,16 +4637,13 @@ class SceneViewport(QOpenGLWidget):
 
     def clear_texture_cache(self, texture_path: Optional[str] = None):
         """Clear texture cache for a specific path or all textures"""
-        if not self.renderer:
-            return
-
         if texture_path:
-            if texture_path in self.renderer.texture_cache:
+            if texture_path in self.texture_cache:
                 print(f"[DEBUG] Clearing texture cache for: {texture_path}")
-                del self.renderer.texture_cache[texture_path]
+                del self.texture_cache[texture_path]
         else:
-            print(f"[DEBUG] Clearing entire texture cache ({len(self.renderer.texture_cache)} textures)")
-            self.renderer.texture_cache.clear()
+            print(f"[DEBUG] Clearing entire texture cache ({len(self.texture_cache)} textures)")
+            self.texture_cache.clear()
 
     def refresh_scene_data(self, new_scene_data: Dict[str, Any]):
         """Refresh the scene data and update the view"""
