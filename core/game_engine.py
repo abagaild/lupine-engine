@@ -1081,9 +1081,7 @@ class LupineGameEngine:
             if sprite_data.get('visible', True):
                 self._render_sprite(sprite_data)
 
-        # Render UI (always in screen space, not affected by camera)
-        self._setup_ui_projection()
-
+        # Render UI elements using the same coordinate system as world elements
         # Sort UI elements by Z-index before rendering
         sorted_ui = self._sort_by_z_index(self.ui_elements)
 
@@ -1188,10 +1186,38 @@ class LupineGameEngine:
                     sprite_data['modulate'] = list(getattr(node, 'modulate', [1, 1, 1, 1]))
                     sprite_data['visible'] = getattr(node, 'visible', True)
 
-        # Also sync UI element properties
+        # Also sync UI element properties and positions (same as sprites)
         for ui_data in self.ui_elements:
             if 'lupine_node' in ui_data:
                 node = ui_data['lupine_node']
+
+                # Sync position using the same global transform calculation as sprites
+                if hasattr(node, 'position'):
+                    # Use proper global transform calculation if available
+                    if hasattr(node, 'get_global_position'):
+                        global_position = node.get_global_position()
+                        ui_data['position'] = list(global_position)
+                    else:
+                        # Fallback to simple position accumulation
+                        global_position = self._get_global_position(node)
+                        ui_data['position'] = list(global_position)
+
+                # Sync other transform properties
+                if hasattr(node, 'get_global_scale'):
+                    global_scale = node.get_global_scale()
+                    ui_data['scale'] = list(global_scale)
+                else:
+                    ui_data['scale'] = list(getattr(node, 'scale', [1, 1]))
+
+                if hasattr(node, 'get_global_rotation'):
+                    global_rotation = node.get_global_rotation()
+                    ui_data['rotation'] = global_rotation
+                else:
+                    ui_data['rotation'] = getattr(node, 'rotation', 0)
+
+                # Sync size (UI-specific property)
+                ui_data['size'] = list(getattr(node, 'size', [100, 100]))
+
                 # Sync visibility and other dynamic properties
                 ui_data['visible'] = getattr(node, 'visible', True)
                 ui_data['modulate'] = list(getattr(node, 'modulate', [1, 1, 1, 1]))
@@ -1272,36 +1298,34 @@ class LupineGameEngine:
             print(f"Error rendering sprite: {e}")
 
     def _render_ui_element(self, ui_data: Dict[str, Any]):
-        """Render a single UI element with proper scaling"""
+        """Render a single UI element using world space coordinates"""
         if not self.systems.renderer:
             return
 
         try:
             ui_type = ui_data.get('type', '')
+            # Use the synced global position (same as sprites) as the base position
             position = ui_data.get('position', [0, 0])
             size = ui_data.get('size', [100, 100])
             follow_viewport = ui_data.get('follow_viewport', True)
             modulate = ui_data.get('modulate', [1, 1, 1, 1])
 
-            # Handle positioning based on follow_viewport setting
-            if follow_viewport:
-                # Scale UI elements from game bounds to actual window size (viewport-relative)
-                scaled_pos = self._scale_ui_position(position)
-                scaled_size = self._scale_ui_size(size)
-            else:
-                # Use world coordinates (affected by camera)
-                if self.camera:
-                    # Apply camera transform to world-space UI elements
-                    camera_x, camera_y = self.camera.get_position()
-                    zoom = self.camera.get_zoom()
-                    scaled_pos = [(position[0] - camera_x) * zoom + self.width / 2,
-                                  (position[1] - camera_y) * zoom + self.height / 2]
-                    scaled_size = [size[0] * zoom, size[1] * zoom]
-                else:
-                    # No camera - transform world coordinates to screen coordinates
-                    # World coordinates are centered at (0,0), screen coordinates start at (0,0) top-left
-                    scaled_pos = [position[0] + self.width / 2, position[1] + self.height / 2]
-                    scaled_size = size.copy()
+            # Start with the global position (already calculated in sync, includes parent transforms)
+            world_pos = position.copy()
+            world_size = size.copy()
+
+            # If follow_viewport is enabled, adjust position relative to camera/viewport
+            # This is applied ON TOP of the proper global positioning
+            if follow_viewport and self.camera:
+                # Get camera position to maintain relative positioning
+                camera_x, camera_y = self.camera.get_position()
+                # Add camera offset to maintain relative position to viewport
+                world_pos[0] += camera_x
+                world_pos[1] += camera_y
+
+            # Use the world coordinates directly - SharedRenderer handles center-based positioning
+            scaled_pos = world_pos.copy()
+            scaled_size = world_size.copy()
 
             if ui_type == "TextureRect":
                 # Get texture properties - handle both 'texture_path' and 'texture' export variable
@@ -1428,15 +1452,14 @@ class LupineGameEngine:
                 font_path = ui_data.get('font_path', '')
                 font_size = ui_data.get('font_size', 14)
                 text_align = ui_data.get('text_align', 'center')
-                scaled_font_size = self._scale_ui_font_size(font_size)
 
                 # Calculate text position based on alignment
                 text_x, text_y = self._calculate_text_position(
-                    text, scaled_pos, scaled_size, text_align, 'center', font_path, scaled_font_size
+                    text, scaled_pos, scaled_size, text_align, 'center', font_path, font_size
                 )
 
                 self.systems.renderer.draw_text(
-                    text, text_x, text_y, font_path, scaled_font_size, font_color
+                    text, text_x, text_y, font_path, font_size, font_color
                 )
             elif ui_type == "ProgressBar":
                 # Render ProgressBar with background and fill
@@ -1598,8 +1621,6 @@ class LupineGameEngine:
             border_color = ui_data.get('border_color', [0.5, 0.5, 0.5, 1.0])
             border_width = ui_data.get('border_width', 0.0)
 
-            scaled_font_size = font_size
-
             # Render background if visible
             if background_color[3] > 0:
                 center_x = scaled_pos[0] + scaled_size[0] / 2
@@ -1646,7 +1667,7 @@ class LupineGameEngine:
                 # Simple line wrapping for long text
                 if hasattr(self.systems.renderer, 'get_text_size'):
                     try:
-                        text_width, text_height = self.systems.renderer.get_text_size(text, font_path, scaled_font_size)
+                        text_width, text_height = self.systems.renderer.get_text_size(text, font_path, font_size)
                         if text_width > scaled_size[0] - 2 * padding:
                             # Simple word wrapping
                             words = text.split(' ')
@@ -1655,7 +1676,7 @@ class LupineGameEngine:
 
                             for word in words:
                                 test_line = current_line + (" " if current_line else "") + word
-                                test_width, _ = self.systems.renderer.get_text_size(test_line, font_path, scaled_font_size)
+                                test_width, _ = self.systems.renderer.get_text_size(test_line, font_path, font_size)
 
                                 if test_width <= scaled_size[0] - 2 * padding:
                                     current_line = test_line
@@ -1668,26 +1689,26 @@ class LupineGameEngine:
                                 lines.append(current_line)
 
                             # Render each line
-                            line_height = scaled_font_size + 2
+                            line_height = font_size + 2
                             for i, line in enumerate(lines):
                                 if text_y + i * line_height < scaled_pos[1] + scaled_size[1] - padding:
                                     self.systems.renderer.draw_text(
-                                        line, text_x, text_y + i * line_height, font_path, scaled_font_size, font_color
+                                        line, text_x, text_y + i * line_height, font_path, font_size, font_color
                                     )
                         else:
                             # Single line
                             self.systems.renderer.draw_text(
-                                text, text_x, text_y, font_path, scaled_font_size, font_color
+                                text, text_x, text_y, font_path, font_size, font_color
                             )
                     except:
                         # Fallback to simple rendering
                         self.systems.renderer.draw_text(
-                            text, text_x, text_y, font_path, scaled_font_size, font_color
+                            text, text_x, text_y, font_path, font_size, font_color
                         )
                 else:
                     # Simple rendering without size calculation
                     self.systems.renderer.draw_text(
-                        text, text_x, text_y, font_path, scaled_font_size, font_color
+                        text, text_x, text_y, font_path, font_size, font_color
                     )
 
         except Exception as e:
@@ -1847,35 +1868,12 @@ class LupineGameEngine:
             return 0, 0, self.width, self.height
 
     def _setup_ui_projection(self):
-        """Setup projection matrix for UI rendering (screen space)"""
-        try:
-            import OpenGL.GL as gl
-
-            # Calculate viewport for UI rendering
-            viewport_x, viewport_y, viewport_width, viewport_height = self._calculate_viewport()
-
-            # Set viewport for UI
-            gl.glViewport(viewport_x, viewport_y, viewport_width, viewport_height)
-
-            # UI uses screen space coordinates based on scaling mode
-            gl.glMatrixMode(gl.GL_PROJECTION)
-            gl.glLoadIdentity()
-
-            if self.scaling_mode == "stretch":
-                # UI coordinates map directly to window
-                gl.glOrtho(0, self.width, self.height, 0, -1, 1)
-            else:
-                # UI coordinates map to game bounds, viewport handles scaling
-                gl.glOrtho(0, self.game_bounds_width, self.game_bounds_height, 0, -1, 1)
-
-            gl.glMatrixMode(gl.GL_MODELVIEW)
-            gl.glLoadIdentity()
-
-        except ImportError:
-            # Fallback if OpenGL not available
-            pass
-        except Exception as e:
-            print(f"Error setting up UI projection: {e}")
+        """Setup projection matrix for UI rendering using the same coordinate system as world rendering"""
+        # UI elements now use the same coordinate system as world elements
+        # This ensures consistent positioning between editor and game runner
+        # The projection is already set up by _setup_viewport_and_projection()
+        # so we don't need to change it here
+        pass
 
     def _scale_ui_position(self, position: List[float]) -> List[float]:
         """Scale UI position from game bounds coordinates to actual window coordinates"""

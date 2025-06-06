@@ -724,6 +724,16 @@ class MenuHudBuilder(QWidget):
             self.preview_widget.scene_view and hasattr(self.preview_widget.scene_view, 'viewport') and
             self.preview_widget.scene_view.viewport):
             self.preview_widget.scene_view.viewport.update()
+
+    def on_animation_changed(self, event_name: str, animation_data: Dict[str, Any]):
+        """Handle animation setting changes"""
+        if self.current_node:
+            print(f"Animation changed for {event_name}: {animation_data}")
+            # Update the scene view to reflect animation changes
+            if (self.preview_widget and hasattr(self.preview_widget, 'scene_view') and
+                self.preview_widget.scene_view and hasattr(self.preview_widget.scene_view, 'viewport') and
+                self.preview_widget.scene_view.viewport):
+                self.preview_widget.scene_view.viewport.update()
     
     def save_hud(self):
         """Save the current HUD layout"""
@@ -820,10 +830,30 @@ class MenuHudBuilderWindow(QMainWindow):
         # File menu
         file_menu = menubar.addMenu("File")
 
-        new_action = QAction("New HUD", self)
-        new_action.setShortcut("Ctrl+N")
-        new_action.triggered.connect(self.new_hud)
-        file_menu.addAction(new_action)
+        # Create New submenu
+        new_menu = file_menu.addMenu("Create New")
+
+        # New HUD action
+        new_hud_action = QAction("New HUD", self)
+        new_hud_action.setShortcut("Ctrl+N")
+        new_hud_action.triggered.connect(self.new_hud)
+        new_menu.addAction(new_hud_action)
+
+        # New Menu Scene action
+        new_menu_action = QAction("New Menu Scene", self)
+        new_menu_action.setShortcut("Ctrl+Shift+N")
+        new_menu_action.triggered.connect(self.new_menu_scene)
+        new_menu.addAction(new_menu_action)
+
+        # New Dialogue Scene action
+        new_dialogue_action = QAction("New Dialogue Scene", self)
+        new_dialogue_action.triggered.connect(self.new_dialogue_scene)
+        new_menu.addAction(new_dialogue_action)
+
+        # New Inventory Scene action
+        new_inventory_action = QAction("New Inventory Scene", self)
+        new_inventory_action.triggered.connect(self.new_inventory_scene)
+        new_menu.addAction(new_inventory_action)
 
         open_action = QAction("Open HUD", self)
         open_action.setShortcut("Ctrl+O")
@@ -844,9 +874,275 @@ class MenuHudBuilderWindow(QMainWindow):
         tools_menu.addAction(visual_script_action)
 
     def new_hud(self):
-        """Create a new HUD"""
-        self.hud_builder.preview_widget.create_default_scene()
+        """Create a new HUD using standard scene creation"""
+        # Use the standard scene creation method
+        scene_data = self._create_standard_scene("HUD_Scene", "Control")
+        self.hud_builder.preview_widget.set_scene_data(scene_data)
         self.hud_builder.preview_widget.create_scene_view()
+
+    def new_menu_scene(self):
+        """Create a new menu scene with common menu elements"""
+        # Start with standard scene structure
+        scene_data = self._create_standard_scene("MainMenu", "Control")
+
+        # Add menu-specific elements to the root node
+        root_node = scene_data["nodes"][0]
+        root_node["follow_viewport"] = True  # Menu should follow viewport
+        root_node["children"] = [
+                        {
+                            "name": "Background",
+                            "type": "Panel",
+                            "position": [0, 0],
+                            "size": [1920, 1080],
+                            "bg_color": [0.1, 0.1, 0.2, 1.0],
+                            "children": []
+                        },
+                        {
+                            "name": "TitleLabel",
+                            "type": "Label",
+                            "position": [960, 200],
+                            "size": [400, 80],
+                            "text": "Game Title",
+                            "font_size": 48,
+                            "font_color": [1.0, 1.0, 1.0, 1.0],
+                            "align": "center",
+                            "animations": {
+                                "on_show": {
+                                    "preset": "fade_in",
+                                    "data": copy.deepcopy(UI_ANIMATION_PRESETS.get("fade_in", {}))
+                                }
+                            },
+                            "children": []
+                        },
+                        {
+                            "name": "MenuContainer",
+                            "type": "VBoxContainer",
+                            "position": [860, 400],
+                            "size": [200, 300],
+                            "children": [
+                                {
+                                    "name": "StartButton",
+                                    "type": "Button",
+                                    "position": [0, 0],
+                                    "size": [200, 50],
+                                    "text": "Start Game",
+                                    "bg_color": [0.2, 0.4, 0.8, 0.8],
+                                    "bg_color_hover": [0.3, 0.5, 0.9, 0.9],
+                                    "corner_radius": 8.0,
+                                    "font_size": 16,
+                                    "animations": {
+                                        "on_hover": {
+                                            "preset": "bounce",
+                                            "data": copy.deepcopy(UI_ANIMATION_PRESETS.get("bounce", {}))
+                                        }
+                                    },
+                                    "children": []
+                                },
+                                {
+                                    "name": "OptionsButton",
+                                    "type": "Button",
+                                    "position": [0, 60],
+                                    "size": [200, 50],
+                                    "text": "Options",
+                                    "bg_color": [0.2, 0.4, 0.8, 0.8],
+                                    "bg_color_hover": [0.3, 0.5, 0.9, 0.9],
+                                    "corner_radius": 8.0,
+                                    "font_size": 16,
+                                    "animations": {
+                                        "on_hover": {
+                                            "preset": "bounce",
+                                            "data": copy.deepcopy(UI_ANIMATION_PRESETS["bounce"])
+                                        }
+                                    },
+                                    "children": []
+                                },
+                                {
+                                    "name": "QuitButton",
+                                    "type": "Button",
+                                    "position": [0, 120],
+                                    "size": [200, 50],
+                                    "text": "Quit",
+                                    "bg_color": [0.8, 0.2, 0.2, 0.8],
+                                    "bg_color_hover": [0.9, 0.3, 0.3, 0.9],
+                                    "corner_radius": 8.0,
+                                    "font_size": 16,
+                                    "animations": {
+                                        "on_hover": {
+                                            "preset": "shake",
+                                            "data": copy.deepcopy(UI_ANIMATION_PRESETS["shake"])
+                                        }
+                                    },
+                                    "children": []
+                                }
+                            ]
+                        }
+                    ]
+
+        self.hud_builder.preview_widget.set_scene_data(scene_data)
+        self.hud_builder.preview_widget.create_scene_view()
+
+    def new_dialogue_scene(self):
+        """Create a new dialogue scene template"""
+        scene_data = {
+            "name": "DialogueScene",
+            "nodes": [
+                {
+                    "name": "DialogueUI",
+                    "type": "Control",
+                    "position": [0, 0],
+                    "size": [1920, 1080],
+                    "follow_viewport": True,
+                    "children": [
+                        {
+                            "name": "DialogueBox",
+                            "type": "Panel",
+                            "position": [100, 800],
+                            "size": [1720, 200],
+                            "bg_color": [0.0, 0.0, 0.0, 0.8],
+                            "border_width": 2.0,
+                            "border_color": [0.8, 0.8, 0.8, 1.0],
+                            "corner_radius": 10.0,
+                            "animations": {
+                                "on_show": {
+                                    "preset": "slide_up",
+                                    "data": copy.deepcopy(UI_ANIMATION_PRESETS.get("slide_up", UI_ANIMATION_PRESETS["fade_in"]))
+                                }
+                            },
+                            "children": [
+                                {
+                                    "name": "SpeakerLabel",
+                                    "type": "Label",
+                                    "position": [20, 10],
+                                    "size": [300, 30],
+                                    "text": "Speaker Name",
+                                    "font_size": 18,
+                                    "font_color": [1.0, 1.0, 0.0, 1.0],
+                                    "children": []
+                                },
+                                {
+                                    "name": "DialogueText",
+                                    "type": "Label",
+                                    "position": [20, 50],
+                                    "size": [1680, 120],
+                                    "text": "Dialogue text goes here...",
+                                    "font_size": 16,
+                                    "font_color": [1.0, 1.0, 1.0, 1.0],
+                                    "word_wrap": True,
+                                    "children": []
+                                },
+                                {
+                                    "name": "ContinueIndicator",
+                                    "type": "Label",
+                                    "position": [1650, 170],
+                                    "size": [50, 20],
+                                    "text": "▼",
+                                    "font_size": 14,
+                                    "font_color": [1.0, 1.0, 1.0, 1.0],
+                                    "animations": {
+                                        "on_show": {
+                                            "preset": "pulse",
+                                            "data": copy.deepcopy(UI_ANIMATION_PRESETS["pulse"])
+                                        }
+                                    },
+                                    "children": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+
+        self.hud_builder.preview_widget.set_scene_data(scene_data)
+        self.hud_builder.preview_widget.create_scene_view()
+
+    def new_inventory_scene(self):
+        """Create a new inventory scene template"""
+        scene_data = {
+            "name": "InventoryScene",
+            "nodes": [
+                {
+                    "name": "InventoryUI",
+                    "type": "Control",
+                    "position": [0, 0],
+                    "size": [1920, 1080],
+                    "follow_viewport": True,
+                    "children": [
+                        {
+                            "name": "InventoryPanel",
+                            "type": "Panel",
+                            "position": [300, 150],
+                            "size": [1320, 780],
+                            "bg_color": [0.1, 0.1, 0.1, 0.9],
+                            "border_width": 3.0,
+                            "border_color": [0.6, 0.6, 0.6, 1.0],
+                            "corner_radius": 15.0,
+                            "animations": {
+                                "on_show": {
+                                    "preset": "scale_up",
+                                    "data": copy.deepcopy(UI_ANIMATION_PRESETS.get("scale_up", UI_ANIMATION_PRESETS["fade_in"]))
+                                }
+                            },
+                            "children": [
+                                {
+                                    "name": "TitleLabel",
+                                    "type": "Label",
+                                    "position": [20, 20],
+                                    "size": [200, 40],
+                                    "text": "Inventory",
+                                    "font_size": 24,
+                                    "font_color": [1.0, 1.0, 1.0, 1.0],
+                                    "children": []
+                                },
+                                {
+                                    "name": "CloseButton",
+                                    "type": "Button",
+                                    "position": [1250, 20],
+                                    "size": [50, 40],
+                                    "text": "×",
+                                    "font_size": 24,
+                                    "bg_color": [0.8, 0.2, 0.2, 0.8],
+                                    "bg_color_hover": [0.9, 0.3, 0.3, 0.9],
+                                    "corner_radius": 5.0,
+                                    "animations": {
+                                        "on_hover": {
+                                            "preset": "bounce",
+                                            "data": copy.deepcopy(UI_ANIMATION_PRESETS["bounce"])
+                                        }
+                                    },
+                                    "children": []
+                                },
+                                {
+                                    "name": "ItemGrid",
+                                    "type": "GridContainer",
+                                    "position": [20, 80],
+                                    "size": [1280, 680],
+                                    "columns": 8,
+                                    "children": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+
+        self.hud_builder.preview_widget.set_scene_data(scene_data)
+        self.hud_builder.preview_widget.create_scene_view()
+
+    def _create_standard_scene(self, scene_name: str, root_type: str = "Node2D") -> Dict[str, Any]:
+        """Create a standard scene structure like other parts of the engine"""
+        return {
+            "name": scene_name,
+            "nodes": [
+                {
+                    "name": scene_name,
+                    "type": root_type,
+                    "position": [0, 0],
+                    "children": []
+                }
+            ]
+        }
 
     def open_visual_script_editor(self):
         """Open the visual script editor popup"""

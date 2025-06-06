@@ -622,15 +622,21 @@ class SceneViewport(QOpenGLWidget):
 
         node_type = node_data.get("type", "Node")
 
-        # All nodes use the same position property - no special UI handling
+        # All nodes start with world space positioning
         position = node_data.get("position", [0, 0])
+        follow_viewport = node_data.get("follow_viewport", False)
 
         # Store original position for reference
         original_position = position.copy() if isinstance(position, list) else [position[0], position[1]]
 
         glPushMatrix()
         try:
-            glTranslatef(position[0], position[1], 0)
+            # In the editor, UI elements should always remain in their world coordinates
+            # regardless of follow_viewport setting. follow_viewport only affects game runtime behavior.
+            final_x = position[0]
+            final_y = position[1]
+
+            glTranslatef(final_x, final_y, 0)
 
             # Store the original position in the node data for hit detection
             node_data["_original_position"] = original_position
@@ -4081,56 +4087,224 @@ class SceneViewport(QOpenGLWidget):
         local_x = world_x - position[0]
         local_y = world_y - position[1]
 
+        # Calculate hit box based on node type and actual content size
+        hit_box = self._calculate_node_hit_box(node)
+        if hit_box:
+            left, bottom, right, top = hit_box
+            return left <= local_x <= right and bottom <= local_y <= top
+
+        # Fallback for unknown node types
+        return abs(local_x) <= 8 and abs(local_y) <= 8
+
+    def _calculate_node_hit_box(self, node: Dict[str, Any]) -> Optional[Tuple[float, float, float, float]]:
+        """Calculate hit box for a node based on its type and properties.
+        Returns (left, bottom, right, top) relative to node position, or None if no hit box."""
+        node_type = node.get("type", "Node")
+
         if node_type == "Sprite":
-            # Check sprite bounds
-            centered = node.get("centered", True)
-            offset = node.get("offset", [0.0, 0.0])
-
-            # Default sprite size
-            frame_width = 64
-            frame_height = 64
-
-            # Calculate bounds
-            if centered:
-                left = offset[0] - frame_width / 2
-                right = offset[0] + frame_width / 2
-                bottom = offset[1] - frame_height / 2
-                top = offset[1] + frame_height / 2
-            else:
-                left = offset[0]
-                right = offset[0] + frame_width
-                bottom = offset[1]
-                top = offset[1] + frame_height
-
-            return left <= local_x <= right and bottom <= local_y <= top
-
-        elif hasattr(node, 'size') or 'size' in node:
-            # Check node bounds using size property (for UI nodes and others with size)
-            size = node.get("size", [100.0, 30.0])
-
-            # Nodes with size are centered on their position
-            left = -size[0] / 2
-            right = size[0] / 2
-            bottom = -size[1] / 2
-            top = size[1] / 2
-
-            return left <= local_x <= right and bottom <= local_y <= top
-
+            return self._calculate_sprite_hit_box(node)
+        elif node_type in ["Control", "Panel", "Label", "Button", "ColorRect", "TextureRect",
+                          "ProgressBar", "VBoxContainer", "HBoxContainer", "CenterContainer",
+                          "GridContainer", "RichTextLabel", "PanelContainer", "NinePatchRect", "ItemList"]:
+            return self._calculate_ui_node_hit_box(node)
         elif node_type == "CollisionShape2D":
-            # Check collision shape bounds based on shape type
-            return self._is_point_in_collision_shape(node, local_x, local_y)
-
+            return self._calculate_collision_shape_hit_box(node)
         elif node_type == "CollisionPolygon2D":
-            # Check collision polygon bounds
-            return self._is_point_in_collision_polygon(node, local_x, local_y)
-
+            return self._calculate_collision_polygon_hit_box(node)
         elif node_type == "Node2D":
-            # Check small area around node center
-            return abs(local_x) <= 10 and abs(local_y) <= 10
-
+            # Small area around node center
+            return (-10, -10, 10, 10)
         else:
             # Default node hit area
-            return abs(local_x) <= 8 and abs(local_y) <= 8
+            return (-8, -8, 8, 8)
+
+    def _calculate_sprite_hit_box(self, node: Dict[str, Any]) -> Tuple[float, float, float, float]:
+        """Calculate hit box for Sprite nodes based on texture size"""
+        centered = node.get("centered", True)
+        offset = node.get("offset", [0.0, 0.0])
+        scale = node.get("scale", [1.0, 1.0])
+
+        # Try to get actual texture size
+        texture_path = node.get("texture") or node.get("texture_path")
+        frame_width = 64  # Default
+        frame_height = 64  # Default
+
+        if texture_path and texture_path in self.texture_cache:
+            texture_info = self.texture_cache[texture_path]
+            if texture_info:
+                _, frame_width, frame_height = texture_info
+
+        # Apply scale
+        frame_width *= abs(scale[0])
+        frame_height *= abs(scale[1])
+
+        # Calculate bounds based on centering
+        if centered:
+            left = offset[0] - frame_width / 2
+            right = offset[0] + frame_width / 2
+            bottom = offset[1] - frame_height / 2
+            top = offset[1] + frame_height / 2
+        else:
+            left = offset[0]
+            right = offset[0] + frame_width
+            bottom = offset[1]
+            top = offset[1] + frame_height
+
+        return (left, bottom, right, top)
+
+    def _calculate_ui_node_hit_box(self, node: Dict[str, Any]) -> Tuple[float, float, float, float]:
+        """Calculate hit box for UI nodes based on their content and size"""
+        node_type = node.get("type", "Control")
+
+        # Start with the explicit size if available
+        size = node.get("size", [100.0, 30.0])
+
+        # For specific UI node types, calculate size based on content
+        if node_type == "Label":
+            size = self._calculate_label_size(node)
+        elif node_type == "Button":
+            size = self._calculate_button_size(node)
+        elif node_type == "TextureRect":
+            size = self._calculate_texture_rect_size(node)
+
+        # UI nodes are centered on their position
+        half_width = size[0] / 2
+        half_height = size[1] / 2
+
+        return (-half_width, -half_height, half_width, half_height)
+
+    def _calculate_label_size(self, node: Dict[str, Any]) -> List[float]:
+        """Calculate size for Label nodes based on text and font"""
+        text = node.get("text", "Label")
+        font_size = node.get("font_size", 14)
+
+        # Use explicit size if available
+        explicit_size = node.get("size")
+        if explicit_size and isinstance(explicit_size, list) and len(explicit_size) >= 2:
+            if explicit_size[0] > 0 and explicit_size[1] > 0:
+                return explicit_size
+
+        # Estimate text size based on font size and character count
+        # This is a rough approximation - in a real implementation you'd measure the actual text
+        char_width = font_size * 0.6  # Approximate character width
+        char_height = font_size * 1.2  # Approximate line height
+
+        lines = text.split('\n')
+        max_line_length = max(len(line) for line in lines) if lines else 0
+
+        estimated_width = max_line_length * char_width
+        estimated_height = len(lines) * char_height
+
+        # Minimum size for clickability
+        estimated_width = max(estimated_width, 20)
+        estimated_height = max(estimated_height, 20)
+
+        return [estimated_width, estimated_height]
+
+    def _calculate_button_size(self, node: Dict[str, Any]) -> List[float]:
+        """Calculate size for Button nodes based on text and padding"""
+        text = node.get("text", "Button")
+        font_size = node.get("font_size", 14)
+
+        # Use explicit size if available
+        explicit_size = node.get("size")
+        if explicit_size and isinstance(explicit_size, list) and len(explicit_size) >= 2:
+            if explicit_size[0] > 0 and explicit_size[1] > 0:
+                return explicit_size
+
+        # Estimate button size with padding
+        char_width = font_size * 0.6
+        char_height = font_size * 1.2
+
+        # Add padding for button appearance
+        padding_x = 20  # Horizontal padding
+        padding_y = 10  # Vertical padding
+
+        estimated_width = len(text) * char_width + padding_x
+        estimated_height = char_height + padding_y
+
+        # Minimum button size
+        estimated_width = max(estimated_width, 60)
+        estimated_height = max(estimated_height, 30)
+
+        return [estimated_width, estimated_height]
+
+    def _calculate_texture_rect_size(self, node: Dict[str, Any]) -> List[float]:
+        """Calculate size for TextureRect nodes based on texture dimensions"""
+        # Use explicit size if available
+        explicit_size = node.get("size")
+        if explicit_size and isinstance(explicit_size, list) and len(explicit_size) >= 2:
+            if explicit_size[0] > 0 and explicit_size[1] > 0:
+                return explicit_size
+
+        # Try to get texture size
+        texture_path = node.get("texture") or node.get("texture_path")
+        if texture_path and texture_path in self.texture_cache:
+            texture_info = self.texture_cache[texture_path]
+            if texture_info:
+                _, width, height = texture_info
+                return [float(width), float(height)]
+
+        # Default size if no texture or size info
+        return [100.0, 100.0]
+
+    def _calculate_collision_shape_hit_box(self, node: Dict[str, Any]) -> Tuple[float, float, float, float]:
+        """Calculate hit box for CollisionShape2D nodes based on shape type"""
+        shape_type = node.get("shape", "rectangle")
+
+        if shape_type == "rectangle":
+            size = node.get("size", [32.0, 32.0])
+            width, height = size[0], size[1]
+            return (-width/2, -height/2, width/2, height/2)
+
+        elif shape_type == "circle":
+            radius = node.get("radius", 16.0)
+            return (-radius, -radius, radius, radius)
+
+        elif shape_type == "capsule":
+            size = node.get("size", [32.0, 32.0])
+            height, width = size[0], size[1]
+            # Capsule extends by radius on each side
+            radius = width / 2
+            return (-radius, -height/2 - radius, radius, height/2 + radius)
+
+        elif shape_type == "polygon":
+            points = node.get("points", [[0, 0], [32, 0], [32, 32], [0, 32]])
+            if len(points) >= 3:
+                # Calculate bounding box of polygon
+                min_x = min(point[0] for point in points if isinstance(point, list) and len(point) >= 2)
+                max_x = max(point[0] for point in points if isinstance(point, list) and len(point) >= 2)
+                min_y = min(point[1] for point in points if isinstance(point, list) and len(point) >= 2)
+                max_y = max(point[1] for point in points if isinstance(point, list) and len(point) >= 2)
+                return (min_x, min_y, max_x, max_y)
+
+        elif shape_type == "line":
+            line_start = node.get("line_start", [0.0, 0.0])
+            line_end = node.get("line_end", [32.0, 0.0])
+            # Create a small hit box around the line
+            min_x = min(line_start[0], line_end[0]) - 3
+            max_x = max(line_start[0], line_end[0]) + 3
+            min_y = min(line_start[1], line_end[1]) - 3
+            max_y = max(line_start[1], line_end[1]) + 3
+            return (min_x, min_y, max_x, max_y)
+
+        # Default fallback
+        return (-16, -16, 16, 16)
+
+    def _calculate_collision_polygon_hit_box(self, node: Dict[str, Any]) -> Tuple[float, float, float, float]:
+        """Calculate hit box for CollisionPolygon2D nodes"""
+        polygon = node.get("polygon", [[0, 0], [32, 0], [32, 32], [0, 32]])
+
+        if len(polygon) >= 3:
+            # Calculate bounding box of polygon
+            min_x = min(vertex[0] for vertex in polygon if isinstance(vertex, list) and len(vertex) >= 2)
+            max_x = max(vertex[0] for vertex in polygon if isinstance(vertex, list) and len(vertex) >= 2)
+            min_y = min(vertex[1] for vertex in polygon if isinstance(vertex, list) and len(vertex) >= 2)
+            max_y = max(vertex[1] for vertex in polygon if isinstance(vertex, list) and len(vertex) >= 2)
+            return (min_x, min_y, max_x, max_y)
+
+        # Default fallback
+        return (-16, -16, 16, 16)
 
     def _is_point_in_collision_shape(self, node: Dict[str, Any], local_x: float, local_y: float) -> bool:
         """Check if a point is inside a collision shape's bounds"""
