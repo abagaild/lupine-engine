@@ -326,11 +326,13 @@ class AddNodeDialog(QDialog):
         """Create the selected node"""
         if not self.selected_node_type:
             return
-        
+
         node_name = self.name_edit.text().strip()
         if not node_name:
             node_name = self.selected_node_type
-        
+
+        # Note: Unique name generation will be handled by the scene tree
+        # when it receives the node_selected signal
         self.node_selected.emit(self.selected_node_type, node_name)
         self.accept()
     

@@ -26,19 +26,29 @@ def setup_paths(project_path: str, lupine_engine_path: str):
 
 def run_game(project_path: str, scene_path: str, lupine_engine_path: Optional[str] = None):
     """Run a game with the specified project and scene"""
-    
+
+    print(f"[SIMPLE_GAME_RUNNER] run_game called")
+    print(f"[SIMPLE_GAME_RUNNER] project_path: {project_path}")
+    print(f"[SIMPLE_GAME_RUNNER] scene_path: {scene_path}")
+    print(f"[SIMPLE_GAME_RUNNER] lupine_engine_path: {lupine_engine_path}")
+
     # Auto-detect lupine engine path if not provided
     if lupine_engine_path is None:
         # Assume this script is in core/ directory of lupine engine
         lupine_engine_path = str(Path(__file__).parent.parent)
-    
+        print(f"[SIMPLE_GAME_RUNNER] Auto-detected engine path: {lupine_engine_path}")
+
     # Setup paths
+    print(f"[SIMPLE_GAME_RUNNER] Setting up paths...")
     setup_paths(project_path, lupine_engine_path)
-    
+    print(f"[SIMPLE_GAME_RUNNER] Paths set up successfully")
+
     try:
         # Import the game engine
+        print(f"[SIMPLE_GAME_RUNNER] Importing LupineGameEngine...")
         from core.game_engine import LupineGameEngine
-        
+        print(f"[SIMPLE_GAME_RUNNER] Successfully imported LupineGameEngine")
+
         print(f"[GAME] Starting Lupine Game Engine")
         print(f"[GAME] Project: {project_path}")
         print(f"[GAME] Scene: {scene_path}")
@@ -46,7 +56,9 @@ def run_game(project_path: str, scene_path: str, lupine_engine_path: Optional[st
         print("-" * 50)
 
         # Create and run the game engine
+        print(f"[SIMPLE_GAME_RUNNER] Creating LupineGameEngine instance...")
         engine = LupineGameEngine(project_path, scene_path)
+        print(f"[SIMPLE_GAME_RUNNER] LupineGameEngine created, calling run()...")
         engine.run()
 
         print("[GAME] Game finished successfully")

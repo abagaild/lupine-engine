@@ -107,6 +107,7 @@ class PhysicsBody:
 
         shape_offset = (float(shape_position[0]), float(shape_position[1]))
         print(f"[PHYSICS] Shape offset: {shape_offset}")
+        print(f"[PHYSICS] Parent body position: {getattr(self.node, 'position', [0.0, 0.0])}")
 
         if shape_type == 'rectangle':
             size = getattr(shape_node, 'size', [32, 32])
@@ -290,6 +291,9 @@ class PhysicsBody:
         if not self.pymunk_body:
             return
 
+        # Store old position for change detection
+        old_position = getattr(self.node, 'position', [0, 0]).copy() if hasattr(self.node, 'position') else [0, 0]
+
         # Update position
         if hasattr(self.node, 'position'):
             pos = self.pymunk_body.position
@@ -298,6 +302,14 @@ class PhysicsBody:
         # Update rotation
         if hasattr(self.node, 'rotation'):
             self.node.rotation = self.pymunk_body.angle
+
+        # Check if position changed significantly and mark transform dirty
+        new_position = getattr(self.node, 'position', [0, 0])
+        if (abs(new_position[0] - old_position[0]) > 0.1 or
+            abs(new_position[1] - old_position[1]) > 0.1):
+            # Position changed - mark transform as dirty for redrawing
+            if hasattr(self.node, '_mark_transform_dirty'):
+                self.node._mark_transform_dirty()
 
     def update_physics_from_node(self):
         """Update physics body from node"""
@@ -348,7 +360,7 @@ class PhysicsWorld:
     
     def __init__(self):
         self.space = pymunk.Space()
-        self.space.gravity = (0, -981)  # Default gravity (pixels/s²)
+        self.space.gravity = (0, 981)  # Default gravity (pixels/s²) - positive Y is downward in screen coordinates
         
         # Physics bodies
         self.bodies: Dict[str, PhysicsBody] = {}
@@ -499,6 +511,26 @@ class PhysicsWorld:
                 return self._add_kinematic_body(node)
             elif body_type == "area":
                 return self._add_area(node)
+
+        # Check for inheritance from physics body types (for script-based physics nodes)
+        try:
+            # Import physics body classes to check inheritance
+            from nodes.node2d.KinematicBody2D import KinematicBody2D
+            from nodes.node2d.StaticBody2D import StaticBody2D
+            from nodes.node2d.Rigidbody2D import RigidBody2D
+            from nodes.node2d.Area2D import Area2D
+
+            # Check if the node inherits from any physics body type
+            if isinstance(node, KinematicBody2D):
+                return self._add_kinematic_body(node)
+            elif isinstance(node, StaticBody2D):
+                return self._add_static_body(node)
+            elif isinstance(node, RigidBody2D):
+                return self._add_rigid_body(node)
+            elif isinstance(node, Area2D):
+                return self._add_area(node)
+        except Exception as e:
+            print(f"[WARNING] Error checking physics inheritance for {node.name}: {e}")
 
         return None
     
@@ -675,6 +707,13 @@ class PhysicsWorld:
             if body.node == node:
                 return body
         return None
+
+    def get_body_by_pymunk_shape(self, pymunk_shape) -> Optional[PhysicsBody]:
+        """Get physics body associated with a pymunk shape"""
+        for body in self.bodies.values():
+            if pymunk_shape in body.pymunk_shapes:
+                return body
+        return None
     
     def query_point(self, point: Tuple[float, float]) -> List[PhysicsBody]:
         """Query bodies at a point"""
@@ -814,8 +853,7 @@ class PhysicsWorld:
         self.space.add(temp_body, temp_shape)
 
         try:
-            # Query for overlapping shapes
-            overlapping = []
+            # Query for overlapping shapes using more precise collision detection
             for shape in self.space.shapes:
                 if shape == temp_shape:
                     continue
@@ -824,22 +862,101 @@ class PhysicsWorld:
                 if exclude_body and hasattr(shape, 'user_data') and shape.user_data == exclude_body:
                     continue
 
-                # Check for overlap using shape query
-                if self.space.shape_query(temp_shape):
+                # Skip sensors
+                if hasattr(shape, 'sensor') and shape.sensor:
+                    continue
+
+                # Check for overlap using pymunk's collision detection
+                if self._shapes_colliding(temp_shape, shape):
                     body = shape.user_data if hasattr(shape, 'user_data') and shape.user_data else None
                     if body:
-                        overlapping.append({
+                        # Calculate a better collision normal for overlap
+                        normal = self._calculate_overlap_normal(temp_shape, shape, position)
+
+                        return {
                             'body': body,
                             'point': position,
-                            'normal': (0, 1),  # Default normal for overlap
+                            'normal': normal,
                             'distance': 0.0
-                        })
-                        break  # Return first overlap found
+                        }
 
-            return overlapping[0] if overlapping else None
+            return None
 
         finally:
             self.space.remove(temp_body, temp_shape)
+
+    def _calculate_overlap_normal(self, shape1, shape2, position: Tuple[float, float]) -> Tuple[float, float]:
+        """Calculate the best normal direction to resolve an overlap"""
+        import math
+
+        try:
+            # Try to get contact points from collision
+            contact_set = shape1.shapes_collide(shape2)
+            if contact_set.points:
+                # Use the normal from the first contact point
+                normal = contact_set.normal
+                # Ensure the normal points away from shape2 towards shape1
+                return (normal.x, normal.y)
+        except Exception as e:
+            print(f"[PHYSICS] Error getting contact normal: {e}")
+
+        # Fallback: calculate normal based on shape centers and edges
+        try:
+            center1 = shape1.body.position
+            center2 = shape2.body.position
+
+            # Calculate direction from shape2 to shape1 (direction to push shape1)
+            dx = center1.x - center2.x
+            dy = center1.y - center2.y
+
+            # If centers are too close, try to find the best separation direction
+            # by looking at the shape edges
+            length = math.sqrt(dx*dx + dy*dy)
+            if length < 0.001:
+                # Centers are at same position, try to find edge-based normal
+                normal = self._calculate_edge_based_normal(shape1, shape2)
+                if normal:
+                    return normal
+                # If that fails, use a default direction
+                return (1.0, 0.0)  # Push to the right
+            else:
+                return (dx/length, dy/length)
+        except Exception as e:
+            print(f"[PHYSICS] Error calculating center-based normal: {e}")
+
+        # Final fallback: use upward normal
+        return (0.0, -1.0)
+
+    def _calculate_edge_based_normal(self, shape1, shape2) -> Optional[Tuple[float, float]]:
+        """Calculate normal based on shape edges when centers overlap"""
+        import math
+
+        try:
+            # Get bounding boxes
+            bb1 = shape1.bb
+            bb2 = shape2.bb
+
+            # Calculate overlap amounts in each direction
+            overlap_left = bb1.right - bb2.left
+            overlap_right = bb2.right - bb1.left
+            overlap_top = bb1.bottom - bb2.top
+            overlap_bottom = bb2.bottom - bb1.bottom
+
+            # Find the direction with minimum overlap (easiest escape route)
+            min_overlap = min(overlap_left, overlap_right, overlap_top, overlap_bottom)
+
+            if min_overlap == overlap_left:
+                return (-1.0, 0.0)  # Push left
+            elif min_overlap == overlap_right:
+                return (1.0, 0.0)   # Push right
+            elif min_overlap == overlap_top:
+                return (0.0, 1.0)   # Push up
+            else:
+                return (0.0, -1.0)  # Push down
+
+        except Exception as e:
+            print(f"[PHYSICS] Error calculating edge-based normal: {e}")
+            return None
 
     def _perform_swept_collision(self, temp_body, temp_shape, start: Tuple[float, float],
                                end: Tuple[float, float], move_dir: Tuple[float, float],
@@ -965,8 +1082,33 @@ class PhysicsWorld:
                        bb1.top < bb2.bottom or bb1.bottom > bb2.top)
 
     def _calculate_collision_normal(self, temp_shape, colliding_shape, position: Tuple[float, float]) -> Tuple[float, float]:
-        """Calculate the collision normal between two shapes"""
+        """Calculate the collision normal between two shapes using pre-calculated edge normals"""
         import math
+
+        try:
+            # First try to use the collision shape's pre-calculated edge normals
+            # Get the collision shape node from the colliding body
+            colliding_body = self.get_body_by_pymunk_shape(colliding_shape)
+            if colliding_body and hasattr(colliding_body, 'node'):
+                colliding_node = colliding_body.node
+
+                # Find the CollisionShape2D child
+                collision_shape_node = None
+                for child in colliding_node.children:
+                    if hasattr(child, 'type') and child.type == "CollisionShape2D":
+                        collision_shape_node = child
+                        break
+
+                if collision_shape_node and hasattr(collision_shape_node, 'get_best_collision_normal'):
+                    # Use the collision shape's improved normal calculation
+                    temp_center = [temp_shape.body.position.x, temp_shape.body.position.y]
+                    collision_point = [position[0], position[1]]
+
+                    normal = collision_shape_node.get_best_collision_normal(collision_point, temp_center)
+                    print(f"[PHYSICS] Using collision shape edge normal: {normal}")
+                    return (normal[0], normal[1])
+        except Exception as e:
+            print(f"[PHYSICS] Error using collision shape normals: {e}")
 
         try:
             # Try to get contact points and normal from pymunk
@@ -974,24 +1116,43 @@ class PhysicsWorld:
             if contact_set.points:
                 # Use the normal from the first contact point
                 normal = contact_set.normal
+                # The normal from pymunk should point from colliding_shape towards temp_shape
+                # which is the direction to push temp_shape to resolve the collision
+                print(f"[PHYSICS] Using pymunk contact normal: {(normal.x, normal.y)}")
                 return (normal.x, normal.y)
-        except:
-            pass
+        except Exception as e:
+            print(f"[PHYSICS] Error getting collision normal: {e}")
 
-        # Fallback: calculate normal based on shape centers
-        temp_center = temp_shape.body.position
-        colliding_center = colliding_shape.body.position
+        # Fallback: Use edge-based calculation first for better accuracy
+        try:
+            edge_normal = self._calculate_edge_based_normal(temp_shape, colliding_shape)
+            if edge_normal:
+                print(f"[PHYSICS] Using edge-based normal: {edge_normal}")
+                return edge_normal
+        except Exception as e:
+            print(f"[PHYSICS] Error calculating edge-based normal: {e}")
 
-        # Vector from colliding shape to temp shape
-        dx = temp_center.x - colliding_center.x
-        dy = temp_center.y - colliding_center.y
+        # Final fallback: calculate normal based on shape centers
+        try:
+            temp_center = temp_shape.body.position
+            colliding_center = colliding_shape.body.position
 
-        # Normalize
-        length = math.sqrt(dx*dx + dy*dy)
-        if length > 0.001:
-            return (dx / length, dy / length)
-        else:
-            # Default normal if shapes are at same position
+            # Vector from colliding shape to temp shape
+            dx = temp_center.x - colliding_center.x
+            dy = temp_center.y - colliding_center.y
+
+            # Normalize
+            length = math.sqrt(dx*dx + dy*dy)
+            if length > 0.001:
+                normal = (dx / length, dy / length)
+                print(f"[PHYSICS] Using center-based normal: {normal}")
+                return normal
+            else:
+                # If centers are at same position, default to pushing upward
+                print(f"[PHYSICS] Using default upward normal: (0.0, 1.0)")
+                return (0.0, 1.0)
+        except Exception as e:
+            print(f"[PHYSICS] Error calculating fallback normal: {e}")
             return (0.0, 1.0)
 
     def shape_cast_all(self, shape_type: str, size: Tuple[float, float],

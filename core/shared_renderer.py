@@ -4,6 +4,7 @@ Provides consistent rendering between editor and game runner
 """
 
 import math
+import os
 from typing import Dict, Any, Optional, Tuple, List
 from pathlib import Path
 from OpenGL.GL import *
@@ -421,6 +422,73 @@ class SharedRenderer:
         glPopMatrix()
         glEnable(GL_TEXTURE_2D)
 
+    def draw_rounded_rectangle(self, x: float, y: float, width: float, height: float,
+                              radius: float = 4.0,
+                              color: Tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
+                              filled: bool = True, segments: int = 8):
+        """Draw a rounded rectangle"""
+        glDisable(GL_TEXTURE_2D)
+        glColor4f(*color)
+
+        half_width = width / 2
+        half_height = height / 2
+
+        # Clamp radius to not exceed half the smaller dimension
+        max_radius = min(half_width, half_height)
+        radius = min(radius, max_radius)
+
+        glPushMatrix()
+        glTranslatef(x, y, 0)
+
+        if filled:
+            glBegin(GL_TRIANGLE_FAN)
+            glVertex2f(0, 0)  # Center vertex for fan
+        else:
+            glBegin(GL_LINE_LOOP)
+
+        # Generate vertices for rounded rectangle
+        # Start from top-right corner and go clockwise
+
+        # Top-right corner arc
+        corner_x = half_width - radius
+        corner_y = -half_height + radius
+        for i in range(segments + 1):
+            angle = -math.pi/2 + i * (math.pi/2) / segments
+            px = corner_x + radius * math.cos(angle)
+            py = corner_y + radius * math.sin(angle)
+            glVertex2f(px, py)
+
+        # Bottom-right corner arc
+        corner_x = half_width - radius
+        corner_y = half_height - radius
+        for i in range(segments + 1):
+            angle = 0 + i * (math.pi/2) / segments
+            px = corner_x + radius * math.cos(angle)
+            py = corner_y + radius * math.sin(angle)
+            glVertex2f(px, py)
+
+        # Bottom-left corner arc
+        corner_x = -half_width + radius
+        corner_y = half_height - radius
+        for i in range(segments + 1):
+            angle = math.pi/2 + i * (math.pi/2) / segments
+            px = corner_x + radius * math.cos(angle)
+            py = corner_y + radius * math.sin(angle)
+            glVertex2f(px, py)
+
+        # Top-left corner arc
+        corner_x = -half_width + radius
+        corner_y = -half_height + radius
+        for i in range(segments + 1):
+            angle = math.pi + i * (math.pi/2) / segments
+            px = corner_x + radius * math.cos(angle)
+            py = corner_y + radius * math.sin(angle)
+            glVertex2f(px, py)
+
+        glEnd()
+        glPopMatrix()
+        glEnable(GL_TEXTURE_2D)
+
     def get_font(self, font_name: Optional[str] = None, font_size: int = 14):
         """Get a pygame font for text rendering with improved font loading"""
         if not PYGAME_AVAILABLE:
@@ -430,18 +498,43 @@ class SharedRenderer:
         if font_key not in self.font_cache:
             try:
                 if font_name and font_name.strip():
-                    # Try to load custom font file
+                    # Try to load custom font file first
                     if self.project_path and not os.path.isabs(font_name):
                         # Make relative paths relative to project
                         font_path = self.project_path / font_name
                     else:
                         font_path = Path(font_name)
 
-                    if font_path.exists():
+                    if font_path.exists() and font_path.suffix.lower() in ['.ttf', '.otf', '.ttc']:
+                        # Load custom font file
                         font = pygame.font.Font(str(font_path), font_size)
+                        print(f"[OK] Loaded custom font: {font_path}")
                     else:
                         # Try as system font name
-                        font = pygame.font.SysFont(font_name, font_size)
+                        try:
+                            font = pygame.font.SysFont(font_name, font_size)
+                            print(f"[OK] Loaded system font: {font_name}")
+                        except:
+                            # If system font fails, try common font names
+                            common_fonts = [
+                                'Arial', 'Helvetica', 'Times New Roman', 'Courier New',
+                                'Verdana', 'Georgia', 'Comic Sans MS', 'Impact',
+                                'Trebuchet MS', 'Tahoma', 'Calibri'
+                            ]
+
+                            font = None
+                            for common_font in common_fonts:
+                                try:
+                                    font = pygame.font.SysFont(common_font, font_size)
+                                    print(f"[OK] Fallback to system font: {common_font}")
+                                    break
+                                except:
+                                    continue
+
+                            if font is None:
+                                # Final fallback to default font
+                                font = pygame.font.Font(None, font_size)
+                                print(f"[OK] Using default font")
                 else:
                     # Use default font
                     font = pygame.font.Font(None, font_size)
@@ -458,6 +551,57 @@ class SharedRenderer:
                     return None
 
         return self.font_cache[font_key]
+
+    def get_available_system_fonts(self) -> List[str]:
+        """Get list of available system fonts"""
+        if not PYGAME_AVAILABLE:
+            return []
+
+        try:
+            return pygame.font.get_fonts()
+        except Exception as e:
+            print(f"Error getting system fonts: {e}")
+            return []
+
+    def get_font_info(self, font_name: Optional[str] = None) -> Dict[str, Any]:
+        """Get information about a font"""
+        info = {
+            "name": font_name or "default",
+            "available": False,
+            "is_system_font": False,
+            "is_custom_font": False,
+            "path": None
+        }
+
+        if not PYGAME_AVAILABLE:
+            return info
+
+        try:
+            if font_name and font_name.strip():
+                # Check if it's a custom font file
+                if self.project_path and not os.path.isabs(font_name):
+                    font_path = self.project_path / font_name
+                else:
+                    font_path = Path(font_name)
+
+                if font_path.exists() and font_path.suffix.lower() in ['.ttf', '.otf', '.ttc']:
+                    info["available"] = True
+                    info["is_custom_font"] = True
+                    info["path"] = str(font_path)
+                else:
+                    # Check if it's a system font
+                    system_fonts = self.get_available_system_fonts()
+                    if font_name.lower() in [f.lower() for f in system_fonts]:
+                        info["available"] = True
+                        info["is_system_font"] = True
+            else:
+                # Default font is always available
+                info["available"] = True
+
+        except Exception as e:
+            print(f"Error getting font info for {font_name}: {e}")
+
+        return info
 
     def get_text_size(self, text: str, font_name: Optional[str] = None, font_size: int = 14) -> tuple:
         """Get the size of rendered text"""

@@ -57,10 +57,15 @@ class TilesetCanvas(QWidget):
         if not self.tileset or not self.tileset.texture_path:
             self.texture_pixmap = None
             return
-        
+
         try:
-            # Try to load the texture
-            texture_path = Path(self.tileset.texture_path)
+            # Import here to avoid circular imports
+            from core.tileset import get_tileset_manager
+
+            # Use tileset manager to resolve path properly
+            tileset_manager = get_tileset_manager()
+            texture_path = tileset_manager.resolve_path(self.tileset.texture_path)
+
             if texture_path.exists():
                 self.texture_pixmap = QPixmap(str(texture_path))
             else:
@@ -68,6 +73,8 @@ class TilesetCanvas(QWidget):
                 print(f"Texture not found: {texture_path}")
         except Exception as e:
             print(f"Error loading texture: {e}")
+            import traceback
+            traceback.print_exc()
             self.texture_pixmap = None
     
     def paintEvent(self, event):
@@ -261,12 +268,16 @@ class TilesetEditorWindow(QMainWindow):
         self.project = project
         self.current_tileset = None
         self.current_file_path = None
-        
+
+        # Initialize tileset manager with project root
+        from core.tileset import set_tileset_manager_project_root
+        set_tileset_manager_project_root(str(project.project_path))
+
         self.setup_ui()
         self.setup_menus()
         self.setup_toolbar()
         self.setup_status_bar()
-        
+
         # Load default or create new tileset
         self.new_tileset()
     
@@ -508,6 +519,63 @@ class TilesetEditorWindow(QMainWindow):
         self.shape_props_group = QGroupBox("Shape Properties")
         self.shape_props_layout = QFormLayout(self.shape_props_group)
         layout.addWidget(self.shape_props_group)
+
+        # Polygon vertex editor
+        self.polygon_editor_group = QGroupBox("Polygon Vertices")
+        polygon_layout = QVBoxLayout(self.polygon_editor_group)
+
+        # Vertex list
+        self.vertex_list = QListWidget()
+        self.vertex_list.itemSelectionChanged.connect(self.on_vertex_selected)
+        polygon_layout.addWidget(self.vertex_list)
+
+        # Vertex controls
+        vertex_controls = QHBoxLayout()
+
+        add_vertex_btn = QPushButton("Add Vertex")
+        add_vertex_btn.clicked.connect(self.add_vertex)
+        vertex_controls.addWidget(add_vertex_btn)
+
+        remove_vertex_btn = QPushButton("Remove Vertex")
+        remove_vertex_btn.clicked.connect(self.remove_vertex)
+        vertex_controls.addWidget(remove_vertex_btn)
+
+        polygon_layout.addLayout(vertex_controls)
+
+        # Vertex position editor
+        vertex_pos_layout = QHBoxLayout()
+        vertex_pos_layout.addWidget(QLabel("X:"))
+        self.vertex_x_spin = QSpinBox()
+        self.vertex_x_spin.setRange(-1000, 1000)
+        self.vertex_x_spin.valueChanged.connect(self.update_vertex_position)
+        vertex_pos_layout.addWidget(self.vertex_x_spin)
+
+        vertex_pos_layout.addWidget(QLabel("Y:"))
+        self.vertex_y_spin = QSpinBox()
+        self.vertex_y_spin.setRange(-1000, 1000)
+        self.vertex_y_spin.valueChanged.connect(self.update_vertex_position)
+        vertex_pos_layout.addWidget(self.vertex_y_spin)
+
+        polygon_layout.addLayout(vertex_pos_layout)
+
+        # Polygon presets
+        preset_layout = QHBoxLayout()
+        triangle_btn = QPushButton("Triangle")
+        triangle_btn.clicked.connect(lambda: self.create_polygon_preset("triangle"))
+        preset_layout.addWidget(triangle_btn)
+
+        square_btn = QPushButton("Square")
+        square_btn.clicked.connect(lambda: self.create_polygon_preset("square"))
+        preset_layout.addWidget(square_btn)
+
+        diamond_btn = QPushButton("Diamond")
+        diamond_btn.clicked.connect(lambda: self.create_polygon_preset("diamond"))
+        preset_layout.addWidget(diamond_btn)
+
+        polygon_layout.addLayout(preset_layout)
+
+        layout.addWidget(self.polygon_editor_group)
+        self.polygon_editor_group.setVisible(False)  # Hidden by default
 
         layout.addStretch()
         return widget
@@ -779,10 +847,7 @@ class TilesetEditorWindow(QMainWindow):
                 tile_def.name = self.tile_name_edit.text()
                 self.canvas.update()
 
-    def on_collision_shape_selected(self):
-        """Handle collision shape selection"""
-        # Update shape properties UI
-        pass
+
 
     def on_tile_tag_selected(self):
         """Handle tile tag selection"""
@@ -1013,6 +1078,197 @@ class TilesetEditorWindow(QMainWindow):
             del tile_def.collision_shapes[shape_index]
             self.update_tile_ui()
             self.canvas.update()
+
+    def on_collision_shape_selected(self):
+        """Handle collision shape selection"""
+        current_item = self.collision_shapes_list.currentItem()
+        if not current_item:
+            self.polygon_editor_group.setVisible(False)
+            return
+
+        shape_index = self.collision_shapes_list.row(current_item)
+        tile_def = self.current_tileset.get_tile(self.canvas.selected_tile_id)
+        if not tile_def or shape_index >= len(tile_def.collision_shapes):
+            return
+
+        shape = tile_def.collision_shapes[shape_index]
+        if shape.get("type") == "polygon":
+            self.polygon_editor_group.setVisible(True)
+            self.update_vertex_list()
+        else:
+            self.polygon_editor_group.setVisible(False)
+
+    # Polygon vertex editing
+    def update_vertex_list(self):
+        """Update the vertex list for the selected polygon"""
+        self.vertex_list.clear()
+
+        current_item = self.collision_shapes_list.currentItem()
+        if not current_item:
+            return
+
+        shape_index = self.collision_shapes_list.row(current_item)
+        tile_def = self.current_tileset.get_tile(self.canvas.selected_tile_id)
+        if not tile_def or shape_index >= len(tile_def.collision_shapes):
+            return
+
+        shape = tile_def.collision_shapes[shape_index]
+        if shape.get("type") != "polygon":
+            return
+
+        points = shape.get("points", [])
+        for i, point in enumerate(points):
+            from PyQt6.QtWidgets import QListWidgetItem
+            item_text = f"Vertex {i}: ({point[0]}, {point[1]})"
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.ItemDataRole.UserRole, i)
+            self.vertex_list.addItem(item)
+
+    def on_vertex_selected(self):
+        """Handle vertex selection"""
+        current_item = self.vertex_list.currentItem()
+        if not current_item:
+            return
+
+        vertex_index = current_item.data(Qt.ItemDataRole.UserRole)
+        shape_index = self.collision_shapes_list.row(self.collision_shapes_list.currentItem())
+        tile_def = self.current_tileset.get_tile(self.canvas.selected_tile_id)
+
+        if not tile_def or shape_index >= len(tile_def.collision_shapes):
+            return
+
+        shape = tile_def.collision_shapes[shape_index]
+        points = shape.get("points", [])
+
+        if vertex_index < len(points):
+            point = points[vertex_index]
+            self.vertex_x_spin.blockSignals(True)
+            self.vertex_y_spin.blockSignals(True)
+            self.vertex_x_spin.setValue(point[0])
+            self.vertex_y_spin.setValue(point[1])
+            self.vertex_x_spin.blockSignals(False)
+            self.vertex_y_spin.blockSignals(False)
+
+    def update_vertex_position(self):
+        """Update the position of the selected vertex"""
+        current_vertex_item = self.vertex_list.currentItem()
+        current_shape_item = self.collision_shapes_list.currentItem()
+
+        if not current_vertex_item or not current_shape_item:
+            return
+
+        vertex_index = current_vertex_item.data(Qt.ItemDataRole.UserRole)
+        shape_index = self.collision_shapes_list.row(current_shape_item)
+        tile_def = self.current_tileset.get_tile(self.canvas.selected_tile_id)
+
+        if not tile_def or shape_index >= len(tile_def.collision_shapes):
+            return
+
+        shape = tile_def.collision_shapes[shape_index]
+        points = shape.get("points", [])
+
+        if vertex_index < len(points):
+            points[vertex_index] = [self.vertex_x_spin.value(), self.vertex_y_spin.value()]
+            self.update_vertex_list()
+            self.canvas.update()
+
+    def add_vertex(self):
+        """Add a new vertex to the selected polygon"""
+        current_shape_item = self.collision_shapes_list.currentItem()
+        if not current_shape_item:
+            return
+
+        shape_index = self.collision_shapes_list.row(current_shape_item)
+        tile_def = self.current_tileset.get_tile(self.canvas.selected_tile_id)
+
+        if not tile_def or shape_index >= len(tile_def.collision_shapes):
+            return
+
+        shape = tile_def.collision_shapes[shape_index]
+        if shape.get("type") != "polygon":
+            return
+
+        points = shape.get("points", [])
+        # Add vertex at center of tile
+        tile_w, tile_h = tile_def.texture_rect[2], tile_def.texture_rect[3]
+        points.append([tile_w // 2, tile_h // 2])
+
+        self.update_vertex_list()
+        self.canvas.update()
+
+    def remove_vertex(self):
+        """Remove the selected vertex"""
+        current_vertex_item = self.vertex_list.currentItem()
+        current_shape_item = self.collision_shapes_list.currentItem()
+
+        if not current_vertex_item or not current_shape_item:
+            return
+
+        vertex_index = current_vertex_item.data(Qt.ItemDataRole.UserRole)
+        shape_index = self.collision_shapes_list.row(current_shape_item)
+        tile_def = self.current_tileset.get_tile(self.canvas.selected_tile_id)
+
+        if not tile_def or shape_index >= len(tile_def.collision_shapes):
+            return
+
+        shape = tile_def.collision_shapes[shape_index]
+        points = shape.get("points", [])
+
+        # Don't allow removing if less than 3 vertices
+        if len(points) <= 3:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Warning", "A polygon must have at least 3 vertices.")
+            return
+
+        if vertex_index < len(points):
+            del points[vertex_index]
+            self.update_vertex_list()
+            self.canvas.update()
+
+    def create_polygon_preset(self, preset_type: str):
+        """Create a polygon with a preset shape"""
+        current_shape_item = self.collision_shapes_list.currentItem()
+        if not current_shape_item:
+            return
+
+        shape_index = self.collision_shapes_list.row(current_shape_item)
+        tile_def = self.current_tileset.get_tile(self.canvas.selected_tile_id)
+
+        if not tile_def or shape_index >= len(tile_def.collision_shapes):
+            return
+
+        shape = tile_def.collision_shapes[shape_index]
+        if shape.get("type") != "polygon":
+            return
+
+        tile_w, tile_h = tile_def.texture_rect[2], tile_def.texture_rect[3]
+
+        if preset_type == "triangle":
+            points = [
+                [tile_w // 2, 0],
+                [0, tile_h],
+                [tile_w, tile_h]
+            ]
+        elif preset_type == "square":
+            points = [
+                [0, 0],
+                [tile_w, 0],
+                [tile_w, tile_h],
+                [0, tile_h]
+            ]
+        elif preset_type == "diamond":
+            points = [
+                [tile_w // 2, 0],
+                [tile_w, tile_h // 2],
+                [tile_w // 2, tile_h],
+                [0, tile_h // 2]
+            ]
+        else:
+            return
+
+        shape["points"] = points
+        self.update_vertex_list()
+        self.canvas.update()
 
     # Tag management
     def add_tag_to_tile(self):

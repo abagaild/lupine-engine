@@ -182,6 +182,10 @@ class LupineGameEngine:
         # Initialize game systems
         self.systems = GameSystemManager(str(self.project_path), self.width, self.height)
 
+        # Expose physics_world directly for compatibility
+        if hasattr(self.systems, 'physics_world'):
+            self.physics_world = self.systems.physics_world
+
         # Game state
         self.scene: Optional[Scene] = None
         self.camera: Optional[Any] = None
@@ -215,8 +219,12 @@ class LupineGameEngine:
         pygame.display.gl_set_attribute(pygame.GL_DEPTH_SIZE, 24)
         pygame.display.gl_set_attribute(pygame.GL_ALPHA_SIZE, 8)
 
-        # Load game bounds from project settings for window size
-        self.width, self.height = self._load_game_bounds_from_project()
+        # Load game bounds and scaling settings from project settings
+        self.game_bounds_width, self.game_bounds_height = self._load_game_bounds_from_project()
+        self.scaling_mode, self.scaling_filter = self._load_scaling_settings_from_project()
+
+        # Set initial window size to game bounds (can be resized later)
+        self.width, self.height = self.game_bounds_width, self.game_bounds_height
 
         # Create window
         self.screen = pygame.display.set_mode(
@@ -226,6 +234,7 @@ class LupineGameEngine:
         pygame.display.set_caption("Lupine Engine - Game Runner")
 
         print(f"[OK] Pygame and OpenGL initialized - Window: {self.width}x{self.height}")
+        print(f"[OK] Game bounds: {self.game_bounds_width}x{self.game_bounds_height}, Scaling: {self.scaling_mode}")
 
     def _load_game_bounds_from_project(self) -> tuple[int, int]:
         """Load game bounds from project settings"""
@@ -247,6 +256,27 @@ class LupineGameEngine:
 
         # Fallback to default 1920x1080
         return 1920, 1080
+
+    def _load_scaling_settings_from_project(self) -> tuple[str, str]:
+        """Load scaling settings from project settings"""
+        try:
+            project_file = self.project_path / "project.lupine"
+            if project_file.exists():
+                import json
+                with open(project_file, 'r') as f:
+                    project_data = json.load(f)
+
+                display_settings = project_data.get("settings", {}).get("display", {})
+                scaling_mode = display_settings.get("scaling_mode", "stretch")
+                scaling_filter = display_settings.get("scaling_filter", "linear")
+
+                print(f"[Game Engine] Loaded scaling settings: {scaling_mode}, {scaling_filter}")
+                return scaling_mode, scaling_filter
+        except Exception as e:
+            print(f"Warning: Could not load scaling settings from project settings: {e}")
+
+        # Fallback to defaults
+        return "stretch", "linear"
 
     def _setup_python_builtins(self):
         """Setup built-in functions for Python scripts"""
@@ -332,42 +362,86 @@ class LupineGameEngine:
         """Setup the loaded scene"""
         if not self.scene:
             return
-        
+
         # Clear previous data
         self.sprites.clear()
         self.ui_elements.clear()
-        
+
         # Setup all nodes
-        for root_node in self.scene.root_nodes:
+        print(f"[DEBUG] Setting up scene with {len(self.scene.root_nodes)} root nodes")
+        for i, root_node in enumerate(self.scene.root_nodes):
+            print(f"[DEBUG] Setting up root node {i}: {root_node.name} (type: {getattr(root_node, 'type', 'Unknown')})")
             self._setup_node_recursive(root_node)
             self._find_cameras_recursive(root_node)
     
     def _setup_node_recursive(self, node: Node):
         """Setup a node and all its children"""
         try:
+            print(f"[DEBUG] Setting up node: {node.name} (type: {getattr(node, 'type', 'Unknown')})")
+
             # Load and execute scripts (both legacy single script and new multiple scripts)
             has_legacy_script = hasattr(node, 'script_path') and node.script_path
             has_new_scripts = (getattr(node, 'scripts', None) or node.properties.get('scripts', []))
 
             if (has_legacy_script or has_new_scripts) and self.systems.python_runtime:
+                print(f"[DEBUG] Loading scripts for {node.name}")
                 self._load_node_script(node)
 
             # Setup node-specific functionality
+            print(f"[DEBUG] Setting up node type for {node.name}")
             self._setup_node_type(node)
 
             # Call the node's _ready method if it exists (for custom node classes)
             if hasattr(node, '_ready') and callable(getattr(node, '_ready')):
                 try:
+                    print(f"[DEBUG] Calling _ready on {node.name}")
                     node._ready()
                 except Exception as e:
                     print(f"Error calling _ready on {node.name}: {e}")
 
             # Setup children
+            print(f"[DEBUG] Setting up {len(node.children)} children for {node.name}")
             for child in node.children:
                 self._setup_node_recursive(child)
 
         except Exception as e:
             print(f"Error setting up node {getattr(node, 'name', 'Unknown')}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _is_physics_node_from_script(self, node):
+        """Check if a node with a script is actually a physics node (inherits from physics body types)"""
+        try:
+            # First check if the node itself is an instance of a physics body type
+            # (this happens when scripts replace the node with a custom class instance)
+
+            # Import physics body classes to check inheritance
+            from nodes.node2d.KinematicBody2D import KinematicBody2D
+            from nodes.node2d.StaticBody2D import StaticBody2D
+            from nodes.node2d.Rigidbody2D import RigidBody2D
+            from nodes.node2d.Area2D import Area2D
+
+            # Check if the node itself inherits from any physics body type
+            physics_types = (KinematicBody2D, StaticBody2D, RigidBody2D, Area2D)
+
+            for physics_type in physics_types:
+                if isinstance(node, physics_type):
+                    return True
+
+            # Also check the script instance if it exists
+            if hasattr(node, 'script_instance') and node.script_instance:
+                script_instance = node.script_instance
+
+                # Check if the script instance namespace contains a physics class instance
+                if hasattr(script_instance, 'namespace'):
+                    for key, value in script_instance.namespace.items():
+                        if isinstance(value, physics_types):
+                            return True
+
+            return False
+        except Exception as e:
+            print(f"[WARNING] Error checking physics script for {node.name}: {e}")
+            return False
 
     def _load_node_script(self, node: Node):
         """Load and execute scripts for a node (supports multiple scripts)"""
@@ -473,16 +547,29 @@ class LupineGameEngine:
         elif node_type == "AnimationPlayer":
             self._setup_animation_player_node(node)
 
+        # Container nodes
+        elif node_type == "YSort":
+            self._setup_ysort_node(node)
+
         # Camera nodes
         elif node_type == "Camera2D":
             self._setup_camera_node(node)
 
         # Physics nodes - check both explicit types and physics_body_type property
-        elif self.systems.physics_world and (
-            node_type in ["RigidBody2D", "StaticBody2D", "KinematicBody2D", "Area2D"] or
-            hasattr(node, 'physics_body_type')
-        ):
-            self._setup_physics_node(node)
+        elif self.systems.physics_world:
+            print(f"[DEBUG] Checking physics for {node.name}: type={node_type}, has_physics_world=True")
+
+            is_explicit_type = node_type in ["RigidBody2D", "StaticBody2D", "KinematicBody2D", "Area2D"]
+            has_physics_property = hasattr(node, 'physics_body_type')
+            is_script_physics = self._is_physics_node_from_script(node)
+
+            print(f"[DEBUG] Physics checks for {node.name}: explicit_type={is_explicit_type}, has_property={has_physics_property}, script_physics={is_script_physics}")
+
+            if is_explicit_type or has_physics_property or is_script_physics:
+                print(f"[DEBUG] Setting up physics for {node.name}")
+                self._setup_physics_node(node)
+            else:
+                print(f"[DEBUG] No physics setup for {node.name}")
 
         # Light nodes
         elif node_type == "Light2D":
@@ -710,6 +797,20 @@ class LupineGameEngine:
             import traceback
             traceback.print_exc()
 
+    def _setup_ysort_node(self, node: Node):
+        """Setup YSort node"""
+        try:
+            print(f"[OK] YSort node setup: {node.name} (type: {node.type})")
+
+            # YSort nodes don't need special rendering setup
+            # They manage their own child sorting automatically
+            # The sorting happens in the node's _process method
+
+        except Exception as e:
+            print(f"Error setting up YSort node {node.name}: {e}")
+            import traceback
+            traceback.print_exc()
+
     def _setup_camera_node(self, node: Node):
         """Setup a camera node"""
         try:
@@ -778,21 +879,75 @@ class LupineGameEngine:
             if not hasattr(self, 'tilemaps'):
                 self.tilemaps = []
 
+            # Get tilemap properties with improved support
+            tilesets = getattr(node, 'tilesets', [])
+            if not tilesets:
+                # Fallback to legacy tileset property
+                legacy_tileset = getattr(node, 'tileset', '')
+                if legacy_tileset:
+                    tilesets = [legacy_tileset]
+
             tilemap_data = {
                 'lupine_node': node,
                 'position': getattr(node, 'position', [0, 0]),
-                'tileset': getattr(node, 'tileset', ''),
+                'tileset': getattr(node, 'tileset', ''),  # Legacy support
+                'tilesets': tilesets,
                 'cell_size': getattr(node, 'cell_size', [32.0, 32.0]),
                 'tiles': getattr(node, '_tiles', {}),
+                'layers': getattr(node, 'layers', []),
                 'modulate': getattr(node, 'modulate', [1.0, 1.0, 1.0, 1.0]),
                 'opacity': getattr(node, 'opacity', 1.0),
-                'visible': True
+                'visible': getattr(node, 'visible', True),
+                'scale': getattr(node, 'scale', [1.0, 1.0])
             }
 
+            # Load tilesets for rendering
+            self._load_tilemap_tilesets(tilemap_data)
+
             self.tilemaps.append(tilemap_data)
-            print(f"[OK] TileMap setup: {node.name}")
+            print(f"[OK] TileMap setup: {node.name} with {len(tilesets)} tilesets")
         except Exception as e:
             print(f"Error setting up TileMap {node.name}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _load_tilemap_tilesets(self, tilemap_data: dict):
+        """Load tilesets for a tilemap"""
+        tilemap_data['loaded_tilesets'] = []
+
+        tilesets = tilemap_data.get('tilesets', [])
+        if not tilesets:
+            return
+
+        try:
+            from core.tileset import get_tileset_manager
+            tileset_manager = get_tileset_manager()
+
+            # Set project root for proper path resolution
+            if hasattr(self, 'project_path'):
+                tileset_manager.set_project_root(str(self.project_path))
+
+            for tileset_path in tilesets:
+                tileset = tileset_manager.load_tileset(tileset_path)
+                if tileset:
+                    tilemap_data['loaded_tilesets'].append(tileset)
+
+                    # Load tileset texture for rendering
+                    if tileset.texture_path and self.renderer:
+                        try:
+                            texture_id = self.renderer.load_texture(tileset.texture_path)
+                            if not hasattr(tilemap_data, 'tileset_textures'):
+                                tilemap_data['tileset_textures'] = {}
+                            tilemap_data['tileset_textures'][len(tilemap_data['loaded_tilesets']) - 1] = texture_id
+                        except Exception as e:
+                            print(f"Failed to load tileset texture {tileset.texture_path}: {e}")
+                else:
+                    print(f"Failed to load tileset: {tileset_path}")
+                    tilemap_data['loaded_tilesets'].append(None)
+        except Exception as e:
+            print(f"Error loading tilemap tilesets: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _setup_raycast_node(self, node: Node):
         """Setup a RayCast2D node"""
@@ -993,18 +1148,43 @@ class LupineGameEngine:
             print(f"Error updating scripts for node {getattr(node, 'name', 'Unknown')}: {e}")
 
     def _sync_sprite_positions(self):
-        """Synchronize sprite positions with their nodes"""
+        """Synchronize sprite positions with their nodes and handle dynamic updates"""
         for sprite_data in self.sprites:
             if 'lupine_node' in sprite_data:
                 node = sprite_data['lupine_node']
                 if hasattr(node, 'position'):
-                    # Calculate global position for child sprites
-                    global_position = self._get_global_position(node)
-                    sprite_data['position'] = list(global_position)
+                    # Store previous position for change detection
+                    old_position = sprite_data.get('position', [0, 0])
 
-                    # Also sync other properties that might have changed
-                    sprite_data['scale'] = list(getattr(node, 'scale', [1, 1]))
-                    sprite_data['rotation'] = getattr(node, 'rotation', 0)
+                    # Use proper global transform calculation if available
+                    if hasattr(node, 'get_global_position'):
+                        global_position = node.get_global_position()
+                        sprite_data['position'] = list(global_position)
+                    else:
+                        # Fallback to simple position accumulation
+                        global_position = self._get_global_position(node)
+                        sprite_data['position'] = list(global_position)
+
+                    # Check if position changed significantly (for YSort updates)
+                    new_position = sprite_data['position']
+                    if (abs(new_position[0] - old_position[0]) > 0.1 or
+                        abs(new_position[1] - old_position[1]) > 0.1):
+                        # Position changed - notify parent YSort if it exists
+                        self._notify_ysort_parent(node)
+
+                    # Use global scale and rotation if available
+                    if hasattr(node, 'get_global_scale'):
+                        global_scale = node.get_global_scale()
+                        sprite_data['scale'] = list(global_scale)
+                    else:
+                        sprite_data['scale'] = list(getattr(node, 'scale', [1, 1]))
+
+                    if hasattr(node, 'get_global_rotation'):
+                        global_rotation = node.get_global_rotation()
+                        sprite_data['rotation'] = global_rotation
+                    else:
+                        sprite_data['rotation'] = getattr(node, 'rotation', 0)
+
                     sprite_data['modulate'] = list(getattr(node, 'modulate', [1, 1, 1, 1]))
                     sprite_data['visible'] = getattr(node, 'visible', True)
 
@@ -1039,6 +1219,22 @@ class LupineGameEngine:
 
         return position
 
+    def _notify_ysort_parent(self, node):
+        """Notify parent YSort node that a child has moved"""
+        try:
+            # Walk up the parent chain to find YSort nodes
+            current_parent = getattr(node, 'parent', None)
+            while current_parent:
+                if hasattr(current_parent, 'type') and current_parent.type == "YSort":
+                    # Found a YSort parent - trigger re-sorting
+                    if hasattr(current_parent, '_mark_sort_needed'):
+                        current_parent._mark_sort_needed()
+                    break
+                current_parent = getattr(current_parent, 'parent', None)
+        except Exception as e:
+            # Silently handle errors to avoid disrupting the main update loop
+            pass
+
     def _render_sprite(self, sprite_data: Dict[str, Any]):
         """Render a single sprite"""
         if not self.systems.renderer:
@@ -1054,11 +1250,19 @@ class LupineGameEngine:
             # Debug output for empty textures
             if not texture_path:
                 print(f"Warning: Sprite at {position} has no texture path")
+                return
 
-            # Calculate size based on scale
-            # For now, use default size if not specified
-            width = 64 * scale[0]
-            height = 64 * scale[1]
+            # Get actual texture dimensions
+            texture_info = self.systems.renderer.load_texture(texture_path)
+            if not texture_info:
+                print(f"Warning: Could not load texture: {texture_path}")
+                return
+
+            _, tex_width, tex_height = texture_info
+
+            # Calculate size based on texture dimensions and scale
+            width = tex_width * scale[0]
+            height = tex_height * scale[1]
 
             self.systems.renderer.draw_sprite(
                 texture_path, position[0], position[1],
@@ -1094,12 +1298,14 @@ class LupineGameEngine:
                                   (position[1] - camera_y) * zoom + self.height / 2]
                     scaled_size = [size[0] * zoom, size[1] * zoom]
                 else:
-                    # No camera, use position as-is
-                    scaled_pos = position
-                    scaled_size = size
+                    # No camera - transform world coordinates to screen coordinates
+                    # World coordinates are centered at (0,0), screen coordinates start at (0,0) top-left
+                    scaled_pos = [position[0] + self.width / 2, position[1] + self.height / 2]
+                    scaled_size = size.copy()
 
             if ui_type == "TextureRect":
-                texture_path = ui_data.get('texture_path', '')
+                # Get texture properties - handle both 'texture_path' and 'texture' export variable
+                texture_path = ui_data.get('texture_path', '') or ui_data.get('texture', '')
                 stretch_mode = ui_data.get('stretch_mode', 'stretch')
                 flip_h = ui_data.get('flip_h', False)
                 flip_v = ui_data.get('flip_v', False)
@@ -1113,20 +1319,27 @@ class LupineGameEngine:
                 center_x = scaled_pos[0] + scaled_size[0] / 2
                 center_y = scaled_pos[1] + scaled_size[1] / 2
 
-                # Use the enhanced texture rect rendering
-                if hasattr(self.systems.renderer, 'draw_texture_rect'):
-                    self.systems.renderer.draw_texture_rect(
-                        texture_path, center_x, center_y,
-                        scaled_size[0], scaled_size[1],
-                        stretch_mode, flip_h, flip_v, modulate_color,
-                        tuple(uv_offset), tuple(uv_scale), rotation,
-                        tuple(region_rect) if region_rect else None
-                    )
+                # Only render if we have a texture
+                if texture_path and texture_path.strip():
+                    # Use the enhanced texture rect rendering
+                    if hasattr(self.systems.renderer, 'draw_texture_rect'):
+                        self.systems.renderer.draw_texture_rect(
+                            texture_path, center_x, center_y,
+                            scaled_size[0], scaled_size[1],
+                            stretch_mode, flip_h, flip_v, modulate_color,
+                            tuple(uv_offset), tuple(uv_scale), rotation,
+                            tuple(region_rect) if region_rect else None
+                        )
+                    else:
+                        # Fallback to basic sprite rendering
+                        self.systems.renderer.draw_sprite(
+                            texture_path, center_x, center_y,
+                            scaled_size[0], scaled_size[1], rotation, modulate_color[3]
+                        )
                 else:
-                    # Fallback to basic sprite rendering
-                    self.systems.renderer.draw_sprite(
-                        texture_path, center_x, center_y,
-                        scaled_size[0], scaled_size[1], rotation, modulate_color[3]
+                    # No texture - render as colored rectangle
+                    self.systems.renderer.draw_rectangle(
+                        center_x, center_y, scaled_size[0], scaled_size[1], modulate_color
                     )
             elif ui_type == "ColorRect":
                 color = ui_data.get('color', [1, 1, 1, 1])
@@ -1143,16 +1356,18 @@ class LupineGameEngine:
                 font_color = ui_data.get('font_color', modulate)
                 align = ui_data.get('align', 'left')
                 valign = ui_data.get('valign', 'top')
-                scaled_font_size = self._scale_ui_font_size(font_size)
 
                 # Calculate text position based on alignment
                 text_x, text_y = self._calculate_text_position(
-                    text, scaled_pos, scaled_size, align, valign, font_path, scaled_font_size
+                    text, scaled_pos, scaled_size, align, valign, font_path, font_size
                 )
 
                 self.systems.renderer.draw_text(
-                    text, text_x, text_y, font_path, scaled_font_size, font_color
+                    text, text_x, text_y, font_path, font_size, font_color
                 )
+            elif ui_type == "Panel":
+                # Render Panel with background, texture, and border support
+                self._render_panel(ui_data, scaled_pos, scaled_size)
             elif ui_type == "Button":
                 # Get button state for visual feedback
                 is_hovered = ui_data.get('_is_hovered', False)
@@ -1174,43 +1389,38 @@ class LupineGameEngine:
                     bg_color = ui_data.get('bg_color', [0.3, 0.3, 0.3, 1])
                     font_color = ui_data.get('font_color', [1, 1, 1, 1])
 
+                # Get border properties
+                border_radius = ui_data.get('border_radius', 4.0)
+                border_width = ui_data.get('border_width', 1.0)
+                border_color = ui_data.get('border_color', [0.6, 0.6, 0.6, 1])
+
                 # Render button background (unless flat)
                 if not flat:
                     # Convert top-left position to center position for SharedRenderer
                     center_x = scaled_pos[0] + scaled_size[0] / 2
                     center_y = scaled_pos[1] + scaled_size[1] / 2
-                    self.systems.renderer.draw_rectangle(
-                        center_x, center_y, scaled_size[0], scaled_size[1], bg_color
-                    )
 
-                    # Draw border
-                    border_width = ui_data.get('border_width', 1.0)
-                    border_color = ui_data.get('border_color', [0.6, 0.6, 0.6, 1])
-                    if border_width > 0:
-                        # Draw border as outline with center-based positioning
-                        # Top border
-                        top_center_x = scaled_pos[0] + scaled_size[0] / 2
-                        top_center_y = scaled_pos[1] + border_width / 2
-                        self.systems.renderer.draw_rectangle(
-                            top_center_x, top_center_y, scaled_size[0], border_width, border_color
+                    # Use rounded rectangle if border radius is specified and renderer supports it
+                    if border_radius > 0 and hasattr(self.systems.renderer, 'draw_rounded_rectangle'):
+                        self.systems.renderer.draw_rounded_rectangle(
+                            center_x, center_y, scaled_size[0], scaled_size[1], border_radius, bg_color
                         )
-                        # Bottom border
-                        bottom_center_x = scaled_pos[0] + scaled_size[0] / 2
-                        bottom_center_y = scaled_pos[1] + scaled_size[1] - border_width / 2
+                    else:
+                        # Fallback to regular rectangle
                         self.systems.renderer.draw_rectangle(
-                            bottom_center_x, bottom_center_y, scaled_size[0], border_width, border_color
+                            center_x, center_y, scaled_size[0], scaled_size[1], bg_color
                         )
-                        # Left border
-                        left_center_x = scaled_pos[0] + border_width / 2
-                        left_center_y = scaled_pos[1] + scaled_size[1] / 2
-                        self.systems.renderer.draw_rectangle(
-                            left_center_x, left_center_y, border_width, scaled_size[1], border_color
+
+                    # Render border if specified
+                    if border_width > 0 and border_radius > 0 and hasattr(self.systems.renderer, 'draw_rounded_rectangle'):
+                        # Draw border as outline with rounded corners
+                        self.systems.renderer.draw_rounded_rectangle(
+                            center_x, center_y, scaled_size[0], scaled_size[1], border_radius, border_color, filled=False
                         )
-                        # Right border
-                        right_center_x = scaled_pos[0] + scaled_size[0] - border_width / 2
-                        right_center_y = scaled_pos[1] + scaled_size[1] / 2
+                    elif border_width > 0:
+                        # Draw regular border
                         self.systems.renderer.draw_rectangle(
-                            right_center_x, right_center_y, border_width, scaled_size[1], border_color
+                            center_x, center_y, scaled_size[0], scaled_size[1], border_color, filled=False
                         )
 
                 # Render button text
@@ -1228,31 +1438,336 @@ class LupineGameEngine:
                 self.systems.renderer.draw_text(
                     text, text_x, text_y, font_path, scaled_font_size, font_color
                 )
+            elif ui_type == "ProgressBar":
+                # Render ProgressBar with background and fill
+                self._render_progress_bar(ui_data, scaled_pos, scaled_size)
+            elif ui_type == "RichTextLabel":
+                # Render RichTextLabel with BBCode support
+                self._render_rich_text_label(ui_data, scaled_pos, scaled_size)
+            elif ui_type == "NinePatchRect":
+                # Render NinePatchRect with 9-patch scaling
+                self._render_nine_patch_rect(ui_data, scaled_pos, scaled_size)
         except Exception as e:
             print(f"Error rendering UI element ({ui_type}): {e}")
             import traceback
             traceback.print_exc()
 
+    def _render_panel(self, ui_data: Dict[str, Any], scaled_pos: List[float], scaled_size: List[float]):
+        """Render Panel with background, texture, border, and alpha support"""
+        try:
+            # Get panel properties
+            background_color = ui_data.get('background_color', [0.2, 0.2, 0.2, 0.8])
+            background_texture = ui_data.get('background_texture', '')
+            texture_mode = ui_data.get('texture_mode', 'stretch')
+            border_width = ui_data.get('border_width', 1.0)
+            border_color = ui_data.get('border_color', [0.5, 0.5, 0.5, 1.0])
+            corner_radius = ui_data.get('corner_radius', 4.0)
+
+            # Convert top-left position to center position for SharedRenderer
+            center_x = scaled_pos[0] + scaled_size[0] / 2
+            center_y = scaled_pos[1] + scaled_size[1] / 2
+
+            # Render background texture if specified
+            if background_texture and background_texture.strip():
+                if hasattr(self.systems.renderer, 'draw_texture_rect'):
+                    self.systems.renderer.draw_texture_rect(
+                        background_texture, center_x, center_y,
+                        scaled_size[0], scaled_size[1],
+                        texture_mode, False, False, background_color,
+                        (0.0, 0.0), (1.0, 1.0), 0.0, None
+                    )
+                else:
+                    # Fallback to sprite rendering
+                    self.systems.renderer.draw_sprite(
+                        background_texture, center_x, center_y,
+                        scaled_size[0], scaled_size[1], 0.0, background_color[3]
+                    )
+            else:
+                # Render solid background color
+                self.systems.renderer.draw_rectangle(
+                    center_x, center_y, scaled_size[0], scaled_size[1], background_color
+                )
+
+            # Render border if specified
+            if border_width > 0:
+                # Draw border as outline with center-based positioning
+                # Top border
+                top_center_x = scaled_pos[0] + scaled_size[0] / 2
+                top_center_y = scaled_pos[1] + border_width / 2
+                self.systems.renderer.draw_rectangle(
+                    top_center_x, top_center_y, scaled_size[0], border_width, border_color
+                )
+                # Bottom border
+                bottom_center_x = scaled_pos[0] + scaled_size[0] / 2
+                bottom_center_y = scaled_pos[1] + scaled_size[1] - border_width / 2
+                self.systems.renderer.draw_rectangle(
+                    bottom_center_x, bottom_center_y, scaled_size[0], border_width, border_color
+                )
+                # Left border
+                left_center_x = scaled_pos[0] + border_width / 2
+                left_center_y = scaled_pos[1] + scaled_size[1] / 2
+                self.systems.renderer.draw_rectangle(
+                    left_center_x, left_center_y, border_width, scaled_size[1], border_color
+                )
+                # Right border
+                right_center_x = scaled_pos[0] + scaled_size[0] - border_width / 2
+                right_center_y = scaled_pos[1] + scaled_size[1] / 2
+                self.systems.renderer.draw_rectangle(
+                    right_center_x, right_center_y, border_width, scaled_size[1], border_color
+                )
+
+        except Exception as e:
+            print(f"Error rendering Panel: {e}")
+
+    def _render_progress_bar(self, ui_data: Dict[str, Any], scaled_pos: List[float], scaled_size: List[float]):
+        """Render ProgressBar with background and fill"""
+        try:
+            # Get progress bar properties
+            value = ui_data.get('value', 0.0)
+            min_value = ui_data.get('min_value', 0.0)
+            max_value = ui_data.get('max_value', 100.0)
+            bg_color = ui_data.get('bg_color', [0.2, 0.2, 0.2, 1.0])
+            fill_color = ui_data.get('fill_color', [0.2, 0.8, 0.2, 1.0])
+            border_color = ui_data.get('border_color', [0.5, 0.5, 0.5, 1.0])
+            border_width = ui_data.get('border_width', 1.0)
+
+            # Calculate progress percentage
+            if max_value > min_value:
+                progress = max(0.0, min(1.0, (value - min_value) / (max_value - min_value)))
+            else:
+                progress = 0.0
+
+            # Convert top-left position to center position for SharedRenderer
+            center_x = scaled_pos[0] + scaled_size[0] / 2
+            center_y = scaled_pos[1] + scaled_size[1] / 2
+
+            # Render background
+            self.systems.renderer.draw_rectangle(
+                center_x, center_y, scaled_size[0], scaled_size[1], bg_color
+            )
+
+            # Render fill based on progress
+            if progress > 0:
+                fill_width = scaled_size[0] * progress
+                fill_center_x = scaled_pos[0] + fill_width / 2
+                self.systems.renderer.draw_rectangle(
+                    fill_center_x, center_y, fill_width, scaled_size[1], fill_color
+                )
+
+            # Render border
+            if border_width > 0:
+                # Draw border as outline
+                # Top border
+                top_center_x = scaled_pos[0] + scaled_size[0] / 2
+                top_center_y = scaled_pos[1] + border_width / 2
+                self.systems.renderer.draw_rectangle(
+                    top_center_x, top_center_y, scaled_size[0], border_width, border_color
+                )
+                # Bottom border
+                bottom_center_x = scaled_pos[0] + scaled_size[0] / 2
+                bottom_center_y = scaled_pos[1] + scaled_size[1] - border_width / 2
+                self.systems.renderer.draw_rectangle(
+                    bottom_center_x, bottom_center_y, scaled_size[0], border_width, border_color
+                )
+                # Left border
+                left_center_x = scaled_pos[0] + border_width / 2
+                left_center_y = scaled_pos[1] + scaled_size[1] / 2
+                self.systems.renderer.draw_rectangle(
+                    left_center_x, left_center_y, border_width, scaled_size[1], border_color
+                )
+                # Right border
+                right_center_x = scaled_pos[0] + scaled_size[0] - border_width / 2
+                right_center_y = scaled_pos[1] + scaled_size[1] / 2
+                self.systems.renderer.draw_rectangle(
+                    right_center_x, right_center_y, border_width, scaled_size[1], border_color
+                )
+
+        except Exception as e:
+            print(f"Error rendering ProgressBar: {e}")
+
+    def _render_rich_text_label(self, ui_data: Dict[str, Any], scaled_pos: List[float], scaled_size: List[float]):
+        """Render RichTextLabel with BBCode support"""
+        try:
+            # Get rich text label properties
+            text = ui_data.get('text', '')
+            bbcode_enabled = ui_data.get('bbcode_enabled', True)
+            font_path = ui_data.get('font_path', '')
+            font_size = ui_data.get('font_size', 14)
+            font_color = ui_data.get('font_color', [1.0, 1.0, 1.0, 1.0])
+            background_color = ui_data.get('background_color', [0.0, 0.0, 0.0, 0.0])
+            border_color = ui_data.get('border_color', [0.5, 0.5, 0.5, 1.0])
+            border_width = ui_data.get('border_width', 0.0)
+
+            scaled_font_size = font_size
+
+            # Render background if visible
+            if background_color[3] > 0:
+                center_x = scaled_pos[0] + scaled_size[0] / 2
+                center_y = scaled_pos[1] + scaled_size[1] / 2
+                self.systems.renderer.draw_rectangle(
+                    center_x, center_y, scaled_size[0], scaled_size[1], background_color
+                )
+
+            # Render border if specified
+            if border_width > 0:
+                # Draw border as outline
+                # Top border
+                top_center_x = scaled_pos[0] + scaled_size[0] / 2
+                top_center_y = scaled_pos[1] + border_width / 2
+                self.systems.renderer.draw_rectangle(
+                    top_center_x, top_center_y, scaled_size[0], border_width, border_color
+                )
+                # Bottom border
+                bottom_center_x = scaled_pos[0] + scaled_size[0] / 2
+                bottom_center_y = scaled_pos[1] + scaled_size[1] - border_width / 2
+                self.systems.renderer.draw_rectangle(
+                    bottom_center_x, bottom_center_y, scaled_size[0], border_width, border_color
+                )
+                # Left border
+                left_center_x = scaled_pos[0] + border_width / 2
+                left_center_y = scaled_pos[1] + scaled_size[1] / 2
+                self.systems.renderer.draw_rectangle(
+                    left_center_x, left_center_y, border_width, scaled_size[1], border_color
+                )
+                # Right border
+                right_center_x = scaled_pos[0] + scaled_size[0] - border_width / 2
+                right_center_y = scaled_pos[1] + scaled_size[1] / 2
+                self.systems.renderer.draw_rectangle(
+                    right_center_x, right_center_y, border_width, scaled_size[1], border_color
+                )
+
+            # For now, render as simple text (BBCode parsing can be added later)
+            if text:
+                # Calculate text position (top-left aligned with padding)
+                padding = 5
+                text_x = scaled_pos[0] + padding
+                text_y = scaled_pos[1] + padding
+
+                # Simple line wrapping for long text
+                if hasattr(self.systems.renderer, 'get_text_size'):
+                    try:
+                        text_width, text_height = self.systems.renderer.get_text_size(text, font_path, scaled_font_size)
+                        if text_width > scaled_size[0] - 2 * padding:
+                            # Simple word wrapping
+                            words = text.split(' ')
+                            lines = []
+                            current_line = ""
+
+                            for word in words:
+                                test_line = current_line + (" " if current_line else "") + word
+                                test_width, _ = self.systems.renderer.get_text_size(test_line, font_path, scaled_font_size)
+
+                                if test_width <= scaled_size[0] - 2 * padding:
+                                    current_line = test_line
+                                else:
+                                    if current_line:
+                                        lines.append(current_line)
+                                    current_line = word
+
+                            if current_line:
+                                lines.append(current_line)
+
+                            # Render each line
+                            line_height = scaled_font_size + 2
+                            for i, line in enumerate(lines):
+                                if text_y + i * line_height < scaled_pos[1] + scaled_size[1] - padding:
+                                    self.systems.renderer.draw_text(
+                                        line, text_x, text_y + i * line_height, font_path, scaled_font_size, font_color
+                                    )
+                        else:
+                            # Single line
+                            self.systems.renderer.draw_text(
+                                text, text_x, text_y, font_path, scaled_font_size, font_color
+                            )
+                    except:
+                        # Fallback to simple rendering
+                        self.systems.renderer.draw_text(
+                            text, text_x, text_y, font_path, scaled_font_size, font_color
+                        )
+                else:
+                    # Simple rendering without size calculation
+                    self.systems.renderer.draw_text(
+                        text, text_x, text_y, font_path, scaled_font_size, font_color
+                    )
+
+        except Exception as e:
+            print(f"Error rendering RichTextLabel: {e}")
+
+    def _render_nine_patch_rect(self, ui_data: Dict[str, Any], scaled_pos: List[float], scaled_size: List[float]):
+        """Render NinePatchRect with 9-patch scaling"""
+        try:
+            # Get nine patch properties
+            texture_path = ui_data.get('texture_path', '')
+            patch_margin_left = ui_data.get('patch_margin_left', 8.0)
+            patch_margin_top = ui_data.get('patch_margin_top', 8.0)
+            patch_margin_right = ui_data.get('patch_margin_right', 8.0)
+            patch_margin_bottom = ui_data.get('patch_margin_bottom', 8.0)
+            modulate_color = ui_data.get('modulate_color', [1.0, 1.0, 1.0, 1.0])
+            draw_center = ui_data.get('draw_center', True)
+
+            if not texture_path or not texture_path.strip():
+                # Fallback to simple rectangle
+                center_x = scaled_pos[0] + scaled_size[0] / 2
+                center_y = scaled_pos[1] + scaled_size[1] / 2
+                self.systems.renderer.draw_rectangle(
+                    center_x, center_y, scaled_size[0], scaled_size[1], modulate_color
+                )
+                return
+
+            # For now, render as a simple textured rectangle
+            # Full 9-patch implementation would require more complex UV mapping
+            center_x = scaled_pos[0] + scaled_size[0] / 2
+            center_y = scaled_pos[1] + scaled_size[1] / 2
+
+            if hasattr(self.systems.renderer, 'draw_texture_rect'):
+                self.systems.renderer.draw_texture_rect(
+                    texture_path, center_x, center_y,
+                    scaled_size[0], scaled_size[1],
+                    "stretch", False, False, modulate_color,
+                    (0.0, 0.0), (1.0, 1.0), 0.0, None
+                )
+            else:
+                # Fallback to sprite rendering
+                self.systems.renderer.draw_sprite(
+                    texture_path, center_x, center_y,
+                    scaled_size[0], scaled_size[1], 0.0, modulate_color[3]
+                )
+
+        except Exception as e:
+            print(f"Error rendering NinePatchRect: {e}")
+
     def _setup_viewport_and_projection(self):
-        """Setup viewport and projection matrix based on camera or game bounds"""
+        """Setup viewport and projection matrix based on camera or game bounds with proper scaling"""
         try:
             import OpenGL.GL as gl
 
-            # Set viewport to window size
-            gl.glViewport(0, 0, self.width, self.height)
+            # Calculate viewport based on scaling mode
+            viewport_x, viewport_y, viewport_width, viewport_height = self._calculate_viewport()
+
+            # Set viewport
+            gl.glViewport(viewport_x, viewport_y, viewport_width, viewport_height)
 
             # Setup projection matrix
             gl.glMatrixMode(gl.GL_PROJECTION)
             gl.glLoadIdentity()
 
             if self.camera:
-                # Use camera-based projection
+                # Use camera-based projection with game bounds
                 cam_pos = self.camera.get_position()
                 zoom = self.camera.get_zoom()
 
-                # Calculate view bounds based on camera
-                view_width = self.width / zoom
-                view_height = self.height / zoom
+                # Extract zoom values (zoom can be a list [x, y] or a single float)
+                if isinstance(zoom, (list, tuple)):
+                    zoom_x = zoom[0] if len(zoom) > 0 else 1.0
+                    zoom_y = zoom[1] if len(zoom) > 1 else zoom_x
+                else:
+                    # zoom is a single float value
+                    zoom_x = zoom_y = float(zoom)
+
+                # Calculate view bounds based on camera and game bounds
+                # This should match the editor's coordinate system
+                view_width = self.game_bounds_width / zoom_x
+                view_height = self.game_bounds_height / zoom_y
 
                 left = cam_pos[0] - view_width / 2
                 right = cam_pos[0] + view_width / 2
@@ -1261,9 +1776,15 @@ class LupineGameEngine:
 
                 gl.glOrtho(left, right, bottom, top, -1, 1)
             else:
-                # Use game bounds for projection (centered at origin)
-                half_width = self.width / 2
-                half_height = self.height / 2
+                # No active camera - use default projection that matches editor
+                # The editor centers the coordinate system at (0,0) with game bounds
+                half_width = self.game_bounds_width / 2
+                half_height = self.game_bounds_height / 2
+
+                # Use the same coordinate system as the editor:
+                # - Origin at center (0,0)
+                # - Y increases upward (OpenGL standard)
+                # - Bounds extend from -half to +half in both directions
                 gl.glOrtho(-half_width, half_width, -half_height, half_height, -1, 1)
 
             gl.glMatrixMode(gl.GL_MODELVIEW)
@@ -1275,17 +1796,77 @@ class LupineGameEngine:
         except Exception as e:
             print(f"Error setting up viewport: {e}")
 
+    def _calculate_viewport(self) -> tuple[int, int, int, int]:
+        """Calculate viewport rectangle based on scaling mode"""
+        if self.scaling_mode == "stretch":
+            # Use full window
+            return 0, 0, self.width, self.height
+
+        elif self.scaling_mode == "letterbox":
+            # Maintain aspect ratio, add black bars
+            game_aspect = self.game_bounds_width / self.game_bounds_height
+            window_aspect = self.width / self.height
+
+            if game_aspect > window_aspect:
+                # Game is wider, add horizontal bars
+                viewport_width = self.width
+                viewport_height = int(self.width / game_aspect)
+                viewport_x = 0
+                viewport_y = (self.height - viewport_height) // 2
+            else:
+                # Game is taller, add vertical bars
+                viewport_width = int(self.height * game_aspect)
+                viewport_height = self.height
+                viewport_x = (self.width - viewport_width) // 2
+                viewport_y = 0
+
+            return viewport_x, viewport_y, viewport_width, viewport_height
+
+        elif self.scaling_mode == "crop":
+            # Fill window, crop if needed
+            game_aspect = self.game_bounds_width / self.game_bounds_height
+            window_aspect = self.width / self.height
+
+            if game_aspect > window_aspect:
+                # Game is wider, crop horizontally
+                viewport_width = int(self.height * game_aspect)
+                viewport_height = self.height
+                viewport_x = -(viewport_width - self.width) // 2
+                viewport_y = 0
+            else:
+                # Game is taller, crop vertically
+                viewport_width = self.width
+                viewport_height = int(self.width / game_aspect)
+                viewport_x = 0
+                viewport_y = -(viewport_height - self.height) // 2
+
+            return viewport_x, viewport_y, viewport_width, viewport_height
+
+        else:
+            # Fallback to stretch
+            return 0, 0, self.width, self.height
+
     def _setup_ui_projection(self):
         """Setup projection matrix for UI rendering (screen space)"""
         try:
             import OpenGL.GL as gl
 
-            # UI always uses screen space coordinates
+            # Calculate viewport for UI rendering
+            viewport_x, viewport_y, viewport_width, viewport_height = self._calculate_viewport()
+
+            # Set viewport for UI
+            gl.glViewport(viewport_x, viewport_y, viewport_width, viewport_height)
+
+            # UI uses screen space coordinates based on scaling mode
             gl.glMatrixMode(gl.GL_PROJECTION)
             gl.glLoadIdentity()
 
-            # Screen space: (0,0) at top-left, (width, height) at bottom-right
-            gl.glOrtho(0, self.width, self.height, 0, -1, 1)
+            if self.scaling_mode == "stretch":
+                # UI coordinates map directly to window
+                gl.glOrtho(0, self.width, self.height, 0, -1, 1)
+            else:
+                # UI coordinates map to game bounds, viewport handles scaling
+                gl.glOrtho(0, self.game_bounds_width, self.game_bounds_height, 0, -1, 1)
 
             gl.glMatrixMode(gl.GL_MODELVIEW)
             gl.glLoadIdentity()
@@ -1298,43 +1879,96 @@ class LupineGameEngine:
 
     def _scale_ui_position(self, position: List[float]) -> List[float]:
         """Scale UI position from game bounds coordinates to actual window coordinates"""
-        # Get game bounds from project settings
-        game_bounds_width = self.systems.game_bounds_width
-        game_bounds_height = self.systems.game_bounds_height
+        # Use the game bounds loaded from project settings
+        game_bounds_width = self.game_bounds_width
+        game_bounds_height = self.game_bounds_height
 
-        # Calculate scale factors
-        scale_x = self.width / game_bounds_width
-        scale_y = self.height / game_bounds_height
+        # Calculate scale factors based on scaling mode
+        if self.scaling_mode == "stretch":
+            # Simple stretch - scale to fit window exactly
+            scale_x = self.width / game_bounds_width
+            scale_y = self.height / game_bounds_height
+            scaled_x = position[0] * scale_x
+            scaled_y = position[1] * scale_y
+            return [scaled_x, scaled_y]
 
-        # Scale position - UI coordinates are top-left origin, so no Y flip needed
-        scaled_x = position[0] * scale_x
-        scaled_y = position[1] * scale_y
+        elif self.scaling_mode == "letterbox":
+            # Maintain aspect ratio, add black bars if needed
+            scale = min(self.width / game_bounds_width, self.height / game_bounds_height)
+            scaled_width = game_bounds_width * scale
+            scaled_height = game_bounds_height * scale
 
-        return [scaled_x, scaled_y]
+            # Center the scaled content
+            offset_x = (self.width - scaled_width) / 2
+            offset_y = (self.height - scaled_height) / 2
+
+            scaled_x = position[0] * scale + offset_x
+            scaled_y = position[1] * scale + offset_y
+            return [scaled_x, scaled_y]
+
+        elif self.scaling_mode == "crop":
+            # Fill window, crop if needed
+            scale = max(self.width / game_bounds_width, self.height / game_bounds_height)
+            scaled_x = position[0] * scale
+            scaled_y = position[1] * scale
+            return [scaled_x, scaled_y]
+
+        else:
+            # Fallback to stretch
+            scale_x = self.width / game_bounds_width
+            scale_y = self.height / game_bounds_height
+            scaled_x = position[0] * scale_x
+            scaled_y = position[1] * scale_y
+            return [scaled_x, scaled_y]
 
     def _scale_ui_size(self, size: List[float]) -> List[float]:
         """Scale UI size from game bounds coordinates to actual window coordinates"""
-        # Get game bounds from project settings
-        game_bounds_width = self.systems.game_bounds_width
-        game_bounds_height = self.systems.game_bounds_height
+        # Use the game bounds loaded from project settings
+        game_bounds_width = self.game_bounds_width
+        game_bounds_height = self.game_bounds_height
 
-        # Calculate scale factors
-        scale_x = self.width / game_bounds_width
-        scale_y = self.height / game_bounds_height
+        # Calculate scale factors based on scaling mode
+        if self.scaling_mode == "stretch":
+            # Simple stretch - scale to fit window exactly
+            scale_x = self.width / game_bounds_width
+            scale_y = self.height / game_bounds_height
+            scaled_width = size[0] * scale_x
+            scaled_height = size[1] * scale_y
+            return [scaled_width, scaled_height]
 
-        # Scale size
-        scaled_width = size[0] * scale_x
-        scaled_height = size[1] * scale_y
+        elif self.scaling_mode in ["letterbox", "crop"]:
+            # Maintain aspect ratio
+            if self.scaling_mode == "letterbox":
+                scale = min(self.width / game_bounds_width, self.height / game_bounds_height)
+            else:  # crop
+                scale = max(self.width / game_bounds_width, self.height / game_bounds_height)
 
-        return [scaled_width, scaled_height]
+            scaled_width = size[0] * scale
+            scaled_height = size[1] * scale
+            return [scaled_width, scaled_height]
+
+        else:
+            # Fallback to stretch
+            scale_x = self.width / game_bounds_width
+            scale_y = self.height / game_bounds_height
+            scaled_width = size[0] * scale_x
+            scaled_height = size[1] * scale_y
+            return [scaled_width, scaled_height]
 
     def _scale_ui_font_size(self, font_size: int) -> int:
         """Scale UI font size based on window scaling"""
-        # Get game bounds from project settings
-        game_bounds_height = self.systems.game_bounds_height
+        # Use the game bounds loaded from project settings
+        game_bounds_height = self.game_bounds_height
 
-        # Calculate scale factor based on height (more consistent for text)
-        scale_y = self.height / game_bounds_height
+        # Calculate scale factor based on scaling mode
+        if self.scaling_mode == "stretch":
+            scale_y = self.height / game_bounds_height
+        elif self.scaling_mode == "letterbox":
+            scale_y = min(self.width / self.game_bounds_width, self.height / game_bounds_height)
+        elif self.scaling_mode == "crop":
+            scale_y = max(self.width / self.game_bounds_width, self.height / game_bounds_height)
+        else:
+            scale_y = self.height / game_bounds_height
 
         # Scale font size
         scaled_font_size = int(font_size * scale_y)
@@ -1435,12 +2069,20 @@ class LupineGameEngine:
         self._update_ui_mouse_hover(x, y)
 
     def _on_resize(self, width: int, height: int):
-        """Handle window resize events"""
+        """Handle window resize events with proper scaling mode support"""
         self.width = width
         self.height = height
+
+        # Update renderer dimensions
         if self.systems.renderer:
             self.systems.renderer.width = width
             self.systems.renderer.height = height
+
+        # Update camera viewport size if camera exists
+        if self.camera and hasattr(self.camera, 'set_viewport_size'):
+            self.camera.set_viewport_size(width, height)
+
+        print(f"[RESIZE] Window resized to {width}x{height}, Game bounds: {self.game_bounds_width}x{self.game_bounds_height}, Mode: {self.scaling_mode}")
 
     def _handle_ui_mouse_event(self, x: float, y: float, event_type: str, event_data: Dict[str, Any]):
         """Handle mouse events for UI elements"""
@@ -1497,18 +2139,46 @@ class LupineGameEngine:
     def _screen_to_game_coords(self, screen_x: float, screen_y: float) -> Tuple[float, float]:
         """Convert screen coordinates to game coordinates for UI elements"""
         # For viewport-following UI elements, convert from screen to game bounds
-        game_bounds_width = self.systems.game_bounds_width
-        game_bounds_height = self.systems.game_bounds_height
+        game_bounds_width = self.game_bounds_width
+        game_bounds_height = self.game_bounds_height
 
-        # Calculate scale factors
-        scale_x = game_bounds_width / self.width
-        scale_y = game_bounds_height / self.height
+        # Handle different scaling modes
+        if self.scaling_mode == "stretch":
+            # Simple stretch - direct scaling
+            scale_x = game_bounds_width / self.width
+            scale_y = game_bounds_height / self.height
+            game_x = screen_x * scale_x
+            game_y = screen_y * scale_y
+            return game_x, game_y
 
-        # Convert screen coordinates to game bounds coordinates
-        game_x = screen_x * scale_x
-        game_y = screen_y * scale_y
+        elif self.scaling_mode == "letterbox":
+            # Account for letterbox offset
+            scale = min(self.width / game_bounds_width, self.height / game_bounds_height)
+            scaled_width = game_bounds_width * scale
+            scaled_height = game_bounds_height * scale
 
-        return game_x, game_y
+            offset_x = (self.width - scaled_width) / 2
+            offset_y = (self.height - scaled_height) / 2
+
+            # Remove offset and scale
+            game_x = (screen_x - offset_x) / scale
+            game_y = (screen_y - offset_y) / scale
+            return game_x, game_y
+
+        elif self.scaling_mode == "crop":
+            # Account for crop scaling
+            scale = max(self.width / game_bounds_width, self.height / game_bounds_height)
+            game_x = screen_x / scale
+            game_y = screen_y / scale
+            return game_x, game_y
+
+        else:
+            # Fallback to stretch
+            scale_x = game_bounds_width / self.width
+            scale_y = game_bounds_height / self.height
+            game_x = screen_x * scale_x
+            game_y = screen_y * scale_y
+            return game_x, game_y
 
     def _screen_to_world_coords(self, screen_x: float, screen_y: float) -> Tuple[float, float]:
         """Convert screen coordinates to world coordinates for world-space UI elements"""
@@ -1517,14 +2187,45 @@ class LupineGameEngine:
             camera_x, camera_y = self.camera.get_position()
             zoom = self.camera.get_zoom()
 
+            # Extract zoom values (zoom can be a list [x, y] or a single float)
+            if isinstance(zoom, (list, tuple)):
+                zoom_x = zoom[0] if len(zoom) > 0 else 1.0
+                zoom_y = zoom[1] if len(zoom) > 1 else zoom_x
+            else:
+                # zoom is a single float value
+                zoom_x = zoom_y = float(zoom)
+
             # Convert screen to world coordinates
-            world_x = (screen_x - self.width / 2) / zoom + camera_x
-            world_y = (screen_y - self.height / 2) / zoom + camera_y
+            world_x = (screen_x - self.width / 2) / zoom_x + camera_x
+            world_y = (screen_y - self.height / 2) / zoom_y + camera_y
 
             return world_x, world_y
         else:
-            # No camera, screen coordinates are world coordinates
-            return screen_x, screen_y
+            # No camera - convert screen coordinates to world coordinates
+            # using the same coordinate system as the default projection
+            # Screen coordinates: (0,0) at top-left, (width, height) at bottom-right
+            # World coordinates: (-half_width, -half_height) to (half_width, half_height)
+
+            # Calculate scale factors based on scaling mode
+            if self.scaling_mode == "stretch":
+                scale_x = self.game_bounds_width / self.width
+                scale_y = self.game_bounds_height / self.height
+            elif self.scaling_mode == "letterbox":
+                scale = min(self.game_bounds_width / self.width, self.game_bounds_height / self.height)
+                scale_x = scale_y = scale
+            elif self.scaling_mode == "crop":
+                scale = max(self.game_bounds_width / self.width, self.game_bounds_height / self.height)
+                scale_x = scale_y = scale
+            else:
+                scale_x = self.game_bounds_width / self.width
+                scale_y = self.game_bounds_height / self.height
+
+            # Convert screen to world coordinates
+            # Center the coordinates and apply scaling
+            world_x = (screen_x - self.width / 2) * scale_x
+            world_y = (screen_y - self.height / 2) * scale_y
+
+            return world_x, world_y
 
     def _get_ui_controls_at_point(self, screen_x: float, screen_y: float) -> List[Any]:
         """Get UI controls that contain the given screen point, sorted by z-order (topmost first)"""

@@ -228,6 +228,9 @@ class SceneViewport(QOpenGLWidget):
     
     def paintGL(self):
         """Render the scene"""
+        # Debug: Track when scene view is being rendered
+        # print(f"[DEBUG] Scene view paintGL called - rendering {len(self.scene_data.get('nodes', [])) if self.scene_data else 0} nodes")
+
         # Clear the screen using shared renderer if available
         if self.renderer:
             self.renderer.clear((0.2, 0.2, 0.2, 1.0))
@@ -619,17 +622,11 @@ class SceneViewport(QOpenGLWidget):
 
         node_type = node_data.get("type", "Node")
 
-        # All nodes now use the same position property
+        # All nodes use the same position property - no special UI handling
         position = node_data.get("position", [0, 0])
 
-        # Store original position for UI nodes
+        # Store original position for reference
         original_position = position.copy() if isinstance(position, list) else [position[0], position[1]]
-
-        # Handle coordinate conversion based on follow_viewport setting
-        follow_viewport = node_data.get("follow_viewport", False)  # Default false for non-UI nodes
-        if follow_viewport:
-            # Convert viewport coordinates to editor world coordinates for rendering
-            position = self._ui_to_world_coords(position)
 
         glPushMatrix()
         try:
@@ -691,6 +688,8 @@ class SceneViewport(QOpenGLWidget):
                         self.draw_pathfollow2d(node_data)
                 elif node_type == "SceneInstance":
                     self.draw_scene_instance(node_data)
+                elif node_type == "YSort":
+                    self.draw_ysort(node_data)
                 else:
                     # Default node representation
                     self.draw_default_node(node_data)
@@ -3087,12 +3086,23 @@ class SceneViewport(QOpenGLWidget):
             glEnd()
 
     def draw_tilemap(self, node_data: Dict[str, Any]):
-        """Draw TileMap node with layer support"""
+        """Draw TileMap node with layer support and proper texture rendering"""
         cell_size = node_data.get("cell_size", [32.0, 32.0])
         tiles = node_data.get("tiles", {})
         layers = node_data.get("layers", [])
+        tilesets = node_data.get("tilesets", [])
         modulate = node_data.get("modulate", [1.0, 1.0, 1.0, 1.0])
         opacity = node_data.get("opacity", 1.0)
+
+        # Load tilesets if not already cached
+        if not hasattr(self, '_tilemap_cache'):
+            self._tilemap_cache = {}
+
+        tilemap_id = id(node_data)
+        if tilemap_id not in self._tilemap_cache:
+            self._tilemap_cache[tilemap_id] = self._load_tilemap_tilesets(tilesets)
+
+        tilemap_tilesets = self._tilemap_cache[tilemap_id]
 
         # Handle both old and new tile data formats
         if isinstance(tiles, dict) and tiles:
@@ -3100,10 +3110,10 @@ class SceneViewport(QOpenGLWidget):
             first_key = next(iter(tiles.keys()))
             if first_key.isdigit():
                 # New layered format
-                self._draw_layered_tilemap(tiles, layers, cell_size, modulate, opacity)
+                self._draw_layered_tilemap(tiles, layers, cell_size, modulate, opacity, tilemap_tilesets)
             else:
                 # Old format - treat as single layer
-                self._draw_single_layer_tilemap(tiles, cell_size, modulate, opacity)
+                self._draw_single_layer_tilemap(tiles, cell_size, modulate, opacity, tilemap_tilesets)
         else:
             # Draw placeholder grid
             glColor3f(modulate[0] * 0.5, modulate[1] * 0.5, modulate[2] * 0.5)
@@ -3114,8 +3124,37 @@ class SceneViewport(QOpenGLWidget):
             glVertex2f(0, cell_size[1] * 3)
             glEnd()
 
+    def _load_tilemap_tilesets(self, tileset_paths: List[str]) -> List[Any]:
+        """Load tilesets for tilemap rendering"""
+        tilesets = []
+
+        if not tileset_paths:
+            return tilesets
+
+        try:
+            from core.tileset import get_tileset_manager
+            tileset_manager = get_tileset_manager()
+
+            # Set project root if we have access to it
+            if hasattr(self, 'project') and self.project:
+                tileset_manager.set_project_root(str(self.project.project_path))
+
+            for tileset_path in tileset_paths:
+                tileset = tileset_manager.load_tileset(tileset_path)
+                if tileset:
+                    tilesets.append(tileset)
+                else:
+                    print(f"Failed to load tileset: {tileset_path}")
+                    tilesets.append(None)
+        except Exception as e:
+            print(f"Error loading tilesets: {e}")
+            import traceback
+            traceback.print_exc()
+
+        return tilesets
+
     def _draw_layered_tilemap(self, tiles: Dict[str, Dict[str, Any]], layers: List[Dict[str, Any]],
-                             cell_size: List[float], modulate: List[float], opacity: float):
+                             cell_size: List[float], modulate: List[float], opacity: float, tilesets: Optional[List[Any]] = None):
         """Draw tilemap with multiple layers"""
         # Draw layers in order (background to foreground)
         for layer_index, layer in enumerate(layers):
@@ -3136,16 +3175,16 @@ class SceneViewport(QOpenGLWidget):
                 modulate[2] * layer_opacity
             ]
 
-            self._draw_tiles_for_layer(layer_tiles, cell_size, layer_color, layer_index)
+            self._draw_tiles_for_layer(layer_tiles, cell_size, layer_color, layer_index, tilesets)
 
     def _draw_single_layer_tilemap(self, tiles: Dict[str, Any], cell_size: List[float],
-                                  modulate: List[float], opacity: float):
+                                  modulate: List[float], opacity: float, tilesets: Optional[List[Any]] = None):
         """Draw tilemap with single layer (legacy format)"""
         color = [modulate[0] * opacity, modulate[1] * opacity, modulate[2] * opacity]
-        self._draw_tiles_for_layer(tiles, cell_size, color, 0)
+        self._draw_tiles_for_layer(tiles, cell_size, color, 0, tilesets)
 
     def _draw_tiles_for_layer(self, layer_tiles: Dict[str, Any], cell_size: List[float],
-                             color: List[float], layer_index: int):
+                             color: List[float], layer_index: int, tilesets: Optional[List[Any]] = None):
         """Draw tiles for a specific layer"""
         if not layer_tiles:
             return
@@ -3437,6 +3476,48 @@ class SceneViewport(QOpenGLWidget):
             # Draw simplified text indicator
             glColor3f(0.8, 0.8, 0.8)
             self.draw_text_opengl(scene_name[:8], -20, -25, None, 10, (0.8, 0.8, 0.8, 1.0))
+
+    def draw_ysort(self, node_data: Dict[str, Any]):
+        """Draw YSort node"""
+        sort_enabled = node_data.get("sort_enabled", True)
+        sort_offset = node_data.get("sort_offset", 0.0)
+
+        # Choose color based on enabled state
+        if sort_enabled:
+            glColor3f(0.2, 0.8, 0.2)  # Green for enabled
+        else:
+            glColor3f(0.5, 0.5, 0.5)  # Gray for disabled
+
+        # Draw YSort icon - arrows pointing up/down to indicate sorting
+        glBegin(GL_LINES)
+
+        # Up arrow
+        glVertex2f(-8, -2)
+        glVertex2f(0, -10)
+        glVertex2f(0, -10)
+        glVertex2f(8, -2)
+
+        # Down arrow
+        glVertex2f(-8, 2)
+        glVertex2f(0, 10)
+        glVertex2f(0, 10)
+        glVertex2f(8, 2)
+
+        # Center line
+        glVertex2f(0, -10)
+        glVertex2f(0, 10)
+
+        glEnd()
+
+        # Draw "Y" text indicator
+        glColor3f(1.0, 1.0, 1.0)
+        self.draw_text_opengl("Y", -3, -15, None, 8, (1.0, 1.0, 1.0, 1.0))
+
+        # Draw sort offset indicator if non-zero
+        if abs(sort_offset) > 0.001:
+            offset_text = f"+{sort_offset:.1f}" if sort_offset > 0 else f"{sort_offset:.1f}"
+            glColor3f(0.8, 0.8, 0.2)  # Yellow for offset
+            self.draw_text_opengl(offset_text, 12, -8, None, 6, (0.8, 0.8, 0.2, 1.0))
 
     def wheelEvent(self, event):
         """Handle mouse wheel for zooming"""
@@ -4226,14 +4307,8 @@ class SceneViewport(QOpenGLWidget):
         if not self.selected_node:
             return
 
-        # All nodes use the same position property now
+        # All nodes use the same position property - no special UI handling
         position = self.selected_node.get("position", [0, 0])
-
-        # Handle coordinate conversion based on follow_viewport setting
-        follow_viewport = self.selected_node.get("follow_viewport", False)
-        if follow_viewport:
-            # Convert viewport coordinates to world coordinates for drawing
-            position = self._ui_to_world_coords(position)
 
         glPushMatrix()
         try:
@@ -4369,8 +4444,40 @@ class SceneViewport(QOpenGLWidget):
     def update_node_property(self, node: Dict[str, Any], property_name: str, value):
         """Update a node property from inspector changes"""
         if node and property_name in node:
+            # Check if this is a texture-related property change
+            if property_name in ["texture", "texture_path", "icon", "normal_texture", "pressed_texture", "hover_texture"]:
+                # Invalidate texture cache for the old value
+                old_value = node.get(property_name)
+                if old_value and old_value in self.texture_cache:
+                    print(f"[DEBUG] Invalidating texture cache for: {old_value}")
+                    del self.texture_cache[old_value]
+
+                # Also invalidate the new value in case it was cached with different data
+                if value and value in self.texture_cache:
+                    print(f"[DEBUG] Invalidating texture cache for new value: {value}")
+                    del self.texture_cache[value]
+
             node[property_name] = value
             self.update()
+            print(f"[DEBUG] Updated node property {property_name} = {value}, scene view refreshed")
+
+    def clear_texture_cache(self, texture_path: Optional[str] = None):
+        """Clear texture cache for a specific path or all textures"""
+        if texture_path:
+            if texture_path in self.texture_cache:
+                print(f"[DEBUG] Clearing texture cache for: {texture_path}")
+                del self.texture_cache[texture_path]
+        else:
+            print(f"[DEBUG] Clearing entire texture cache ({len(self.texture_cache)} textures)")
+            self.texture_cache.clear()
+
+    def refresh_scene_data(self, new_scene_data: Dict[str, Any]):
+        """Refresh the scene data and update the view"""
+        self.scene_data = new_scene_data
+        # Clear texture cache to ensure textures are reloaded
+        self.clear_texture_cache()
+        self.update()
+        print(f"[DEBUG] Scene data refreshed, view updated")
 
     def _draw_collision_shape_selection_outline(self):
         """Draw selection outline for CollisionShape2D based on shape type"""

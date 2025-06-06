@@ -263,6 +263,10 @@ class DynamicNodeRegistry(BaseNodeRegistry):
             # Fallback to base registry
             return self.create_node(node_type, node_name)
 
+        # Use a more descriptive default name if none provided
+        if not node_name or node_name == node_type:
+            node_name = node_type
+
         # Handle scene instances specially
         if node_def.category == NodeCategory.SCENES:
             try:

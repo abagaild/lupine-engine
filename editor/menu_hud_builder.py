@@ -1,24 +1,29 @@
 """
 Menu and HUD Builder for Lupine Engine
 Comprehensive tool for creating UI layouts with drag-and-drop prefabs,
-variable bindings, and event handling
+variable bindings, and event handling with undo/redo and animation support
 """
 
+import json
+import copy
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QTabWidget,
     QGroupBox, QLabel, QPushButton, QComboBox, QSpinBox,
     QCheckBox, QFrame, QScrollArea, QMessageBox, QFileDialog,
     QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QMainWindow,
-    QTreeWidget, QTreeWidgetItem
+    QTreeWidget, QTreeWidgetItem, QInputDialog, QToolButton, QMenu
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QMimeData
-from PyQt6.QtGui import QFont, QDragEnterEvent, QDropEvent
+from PyQt6.QtGui import QFont, QDragEnterEvent, QDropEvent, QAction, QKeySequence
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 
 from core.project import LupineProject
-from core.ui.ui_prefabs import BUILTIN_PREFABS, UIPrefab, get_prefab
+from core.ui.ui_prefabs import BUILTIN_PREFABS, UIPrefab, get_prefab, UI_ANIMATION_PRESETS
 from core.ui.variable_binding import get_binding_manager, initialize_binding_manager
+from core.global_editor_system import (
+    get_global_editor_system, EditorCommand, PropertyChangeCommand
+)
 from editor.ui.prefab_library import PrefabLibrary
 from editor.ui.variable_binding_widget import VariableBindingWidget
 from editor.ui.event_binding_widget import EventBindingWidget
@@ -26,16 +31,137 @@ from editor.scene_view import SceneViewWidget
 from editor.inspector import InspectorWidget
 
 
+# Command classes for undo/redo operations
+class AddNodeCommand(EditorCommand):
+    """Command for adding a node to the scene"""
+
+    def __init__(self, scene_data: Dict[str, Any], node_data: Dict[str, Any], parent_path: Optional[List[int]] = None):
+        super().__init__(f"Add {node_data.get('type', 'Node')}")
+        self.scene_data = scene_data
+        self.node_data = copy.deepcopy(node_data)
+        self.parent_path = parent_path or [0]  # Default to root node
+        self.added_index = None
+
+    def execute(self) -> Any:
+        """Add the node to the scene"""
+        parent = self._get_parent_node()
+        if parent is not None:
+            if "children" not in parent:
+                parent["children"] = []
+            parent["children"].append(self.node_data)
+            self.added_index = len(parent["children"]) - 1
+        return self.node_data
+
+    def undo(self):
+        """Remove the node from the scene"""
+        if self.added_index is not None:
+            parent = self._get_parent_node()
+            if parent and "children" in parent and self.added_index < len(parent["children"]):
+                parent["children"].pop(self.added_index)
+
+    def _get_parent_node(self) -> Optional[Dict[str, Any]]:
+        """Get the parent node based on the path"""
+        current = self.scene_data
+        for index in self.parent_path:
+            if "nodes" in current:
+                current = current["nodes"][index]
+            elif "children" in current:
+                current = current["children"][index]
+            else:
+                return None
+        return current
+
+
+class RemoveNodeCommand(EditorCommand):
+    """Command for removing a node from the scene"""
+
+    def __init__(self, scene_data: Dict[str, Any], node_path: List[int]):
+        super().__init__("Remove Node")
+        self.scene_data = scene_data
+        self.node_path = node_path
+        self.removed_node = None
+        self.removed_index = None
+
+    def execute(self) -> Any:
+        """Remove the node from the scene"""
+        if len(self.node_path) < 2:
+            return None  # Can't remove root node
+
+        parent_path = self.node_path[:-1]
+        node_index = self.node_path[-1]
+
+        parent = self._get_node_by_path(parent_path)
+        if parent and "children" in parent and node_index < len(parent["children"]):
+            self.removed_node = copy.deepcopy(parent["children"][node_index])
+            self.removed_index = node_index
+            parent["children"].pop(node_index)
+
+        return self.removed_node
+
+    def undo(self):
+        """Restore the node to the scene"""
+        if self.removed_node is not None and self.removed_index is not None:
+            parent_path = self.node_path[:-1]
+            parent = self._get_node_by_path(parent_path)
+            if parent:
+                if "children" not in parent:
+                    parent["children"] = []
+                parent["children"].insert(self.removed_index, self.removed_node)
+
+    def _get_node_by_path(self, path: List[int]) -> Optional[Dict[str, Any]]:
+        """Get a node by its path"""
+        current = self.scene_data
+        for index in path:
+            if "nodes" in current:
+                current = current["nodes"][index]
+            elif "children" in current:
+                current = current["children"][index]
+            else:
+                return None
+        return current
+
+
+class MoveNodeCommand(EditorCommand):
+    """Command for moving a node"""
+
+    def __init__(self, node_data: Dict[str, Any], old_position: List[float], new_position: List[float]):
+        super().__init__("Move Node")
+        self.node_data = node_data
+        self.old_position = old_position[:]
+        self.new_position = new_position[:]
+
+    def execute(self) -> Any:
+        """Move the node to new position"""
+        self.node_data["position"] = self.new_position[:]
+        return self.new_position
+
+    def undo(self):
+        """Restore the node to old position"""
+        self.node_data["position"] = self.old_position[:]
+
+
 class HudPreviewWidget(QWidget):
     """Widget for previewing the HUD layout with camera bounds"""
-    
+
     node_selected = pyqtSignal(dict)  # node_data
     node_modified = pyqtSignal(dict, str, object)  # node_data, property, value
-    
+
     def __init__(self, project: LupineProject):
         super().__init__()
         self.project = project
         self.scene_data = None
+        self.selected_node = None
+        self.clipboard_data = None
+
+        # Setup global editor system
+        self.global_editor = get_global_editor_system()
+        self.global_editor.setup_shortcuts(self)
+
+        # Register clipboard callbacks
+        self.global_editor.register_copy_callback("HudPreviewWidget", self.copy_selected_node)
+        self.global_editor.register_cut_callback("HudPreviewWidget", self.cut_selected_node)
+        self.global_editor.register_paste_callback("HudPreviewWidget", self.paste_node)
+
         self.setup_ui()
         self.create_default_scene()
     
@@ -102,7 +228,7 @@ class HudPreviewWidget(QWidget):
         if self.scene_view:
             self.scene_view.setParent(None)
 
-        self.scene_view = SceneViewWidget(self.project, "hud_builder_temp.scene", self.scene_data)
+        self.scene_view = SceneViewWidget(self.project, "hud_builder_temp.scene", self.scene_data or {})
 
         # Connect signals
         if hasattr(self.scene_view, 'viewport') and self.scene_view.viewport:
@@ -160,23 +286,21 @@ class HudPreviewWidget(QWidget):
         instance = prefab.create_instance()
         instance["position"] = position
 
-        # Add to scene
-        if self.scene_data and "nodes" in self.scene_data and len(self.scene_data["nodes"]) > 0:
-            root_node = self.scene_data["nodes"][0]
-            if "children" not in root_node:
-                root_node["children"] = []
-            root_node["children"].append(instance)
+        # Execute command with undo/redo support
+        command = AddNodeCommand(self.scene_data, instance)
+        self.global_editor.undo_manager.execute_command(command)
 
-            # Update scene view
-            if (self.scene_view and hasattr(self.scene_view, 'viewport') and
-                self.scene_view.viewport):
-                self.scene_view.viewport.scene_data = self.scene_data
-                self.scene_view.viewport.update()
+        # Update scene view
+        if (self.scene_view and hasattr(self.scene_view, 'viewport') and
+            self.scene_view.viewport):
+            self.scene_view.viewport.scene_data = self.scene_data
+            self.scene_view.viewport.update()
 
-            # Select the new node
-            self.node_selected.emit(instance)
+        # Select the new node
+        self.selected_node = instance
+        self.node_selected.emit(instance)
 
-            print(f"Added prefab '{prefab_name}' at position {position}")
+        print(f"Added prefab '{prefab_name}' at position {position}")
 
     def add_generic_node_at_position(self, node_type: str, position: List[float]):
         """Add a generic UI node at the specified position"""
@@ -283,6 +407,172 @@ class HudPreviewWidget(QWidget):
             self.scene_view.viewport.scene_data = scene_data
             self.scene_view.viewport.update()
 
+    def copy_selected_node(self) -> Optional[Dict[str, Any]]:
+        """Copy the selected node to clipboard"""
+        if self.selected_node:
+            return copy.deepcopy(self.selected_node)
+        return None
+
+    def cut_selected_node(self) -> Optional[Dict[str, Any]]:
+        """Cut the selected node to clipboard"""
+        if self.selected_node:
+            node_data = copy.deepcopy(self.selected_node)
+            # TODO: Remove the node from scene
+            return node_data
+        return None
+
+    def paste_node(self, node_data: Dict[str, Any]):
+        """Paste a node from clipboard"""
+        if node_data and self.scene_data:
+            # Offset position to avoid overlap
+            if "position" in node_data:
+                node_data["position"][0] += 20
+                node_data["position"][1] += 20
+
+            # Generate unique name
+            base_name = node_data.get("name", "Node")
+            counter = 1
+            new_name = f"{base_name}_copy"
+
+            # Check for name conflicts and increment counter
+            while self._name_exists_in_scene(new_name):
+                counter += 1
+                new_name = f"{base_name}_copy{counter}"
+
+            node_data["name"] = new_name
+
+            # Add using command system
+            command = AddNodeCommand(self.scene_data, node_data)
+            self.global_editor.undo_manager.execute_command(command)
+
+            # Update scene view
+            if (self.scene_view and hasattr(self.scene_view, 'viewport') and
+                self.scene_view.viewport):
+                self.scene_view.viewport.scene_data = self.scene_data
+                self.scene_view.viewport.update()
+
+            # Select the pasted node
+            self.selected_node = node_data
+            self.node_selected.emit(node_data)
+
+    def _name_exists_in_scene(self, name: str) -> bool:
+        """Check if a node name already exists in the scene"""
+        def check_node(node: Dict[str, Any]) -> bool:
+            if node.get("name") == name:
+                return True
+            for child in node.get("children", []):
+                if check_node(child):
+                    return True
+            return False
+
+        if self.scene_data and "nodes" in self.scene_data:
+            for node in self.scene_data["nodes"]:
+                if check_node(node):
+                    return True
+        return False
+
+
+class AnimationSettingsWidget(QWidget):
+    """Widget for configuring UI element animations"""
+
+    animation_changed = pyqtSignal(str, dict)  # event_name, animation_data
+
+    def __init__(self):
+        super().__init__()
+        self.current_node = None
+        self.setup_ui()
+
+    def setup_ui(self):
+        """Setup the user interface"""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+
+        # Title
+        title_label = QLabel("Animation Settings")
+        title_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        layout.addWidget(title_label)
+
+        # Event animation settings
+        events = ["on_click", "on_hover", "on_focus", "on_show", "on_hide"]
+
+        for event in events:
+            event_group = QWidget()
+            event_layout = QVBoxLayout(event_group)
+            event_layout.setContentsMargins(0, 0, 0, 0)
+            event_layout.setSpacing(2)
+
+            # Event label
+            event_label = QLabel(event.replace("_", " ").title())
+            event_label.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+            event_layout.addWidget(event_label)
+
+            # Animation preset dropdown
+            preset_combo = QComboBox()
+            preset_combo.addItem("None")
+            for preset_name in UI_ANIMATION_PRESETS.keys():
+                preset_combo.addItem(preset_name.replace("_", " ").title())
+
+            preset_combo.currentTextChanged.connect(
+                lambda text, e=event: self.on_animation_preset_changed(e, text)
+            )
+            event_layout.addWidget(preset_combo)
+
+            # Store reference for later access
+            setattr(self, f"{event}_combo", preset_combo)
+
+            layout.addWidget(event_group)
+
+        layout.addStretch()
+
+    def set_node(self, node_data: Dict[str, Any]):
+        """Set the current node for animation editing"""
+        self.current_node = node_data
+        self.update_ui_from_node()
+
+    def update_ui_from_node(self):
+        """Update UI controls based on current node data"""
+        if not self.current_node:
+            return
+
+        animations = self.current_node.get("animations", {})
+
+        events = ["on_click", "on_hover", "on_focus", "on_show", "on_hide"]
+        for event in events:
+            combo = getattr(self, f"{event}_combo", None)
+            if combo:
+                animation_data = animations.get(event)
+                if animation_data and "preset" in animation_data:
+                    preset_name = animation_data["preset"].replace("_", " ").title()
+                    index = combo.findText(preset_name)
+                    if index >= 0:
+                        combo.setCurrentIndex(index)
+                else:
+                    combo.setCurrentIndex(0)  # None
+
+    def on_animation_preset_changed(self, event: str, preset_text: str):
+        """Handle animation preset change"""
+        if not self.current_node:
+            return
+
+        if "animations" not in self.current_node:
+            self.current_node["animations"] = {}
+
+        if preset_text == "None":
+            # Remove animation
+            if event in self.current_node["animations"]:
+                del self.current_node["animations"][event]
+        else:
+            # Set animation preset
+            preset_key = preset_text.lower().replace(" ", "_")
+            if preset_key in UI_ANIMATION_PRESETS:
+                animation_data = {
+                    "preset": preset_key,
+                    "data": copy.deepcopy(UI_ANIMATION_PRESETS[preset_key])
+                }
+                self.current_node["animations"][event] = animation_data
+                self.animation_changed.emit(event, animation_data)
+
 
 class MenuHudBuilder(QWidget):
     """Main Menu and HUD Builder widget"""
@@ -306,7 +596,6 @@ class MenuHudBuilder(QWidget):
         # Left panel - Prefab Library
         left_panel = QWidget()
         left_panel.setMaximumWidth(300)
-        left_panel.setMinimumWidth(250)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(2, 2, 2, 2)
         
@@ -331,17 +620,21 @@ class MenuHudBuilder(QWidget):
         # Right panel - Inspector with tabs
         right_panel = QWidget()
         right_panel.setMaximumWidth(350)
-        right_panel.setMinimumWidth(300)
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(2, 2, 2, 2)
         
         # Inspector tabs
         self.inspector_tabs = QTabWidget()
-        
+
         # Properties tab - use the actual InspectorWidget
         self.inspector_widget = InspectorWidget(self.project)
         self.inspector_widget.property_changed.connect(self.on_inspector_property_changed)
         self.inspector_tabs.addTab(self.inspector_widget, "Properties")
+
+        # Animation tab
+        self.animation_widget = AnimationSettingsWidget()
+        self.animation_widget.animation_changed.connect(self.on_animation_changed)
+        self.inspector_tabs.addTab(self.animation_widget, "Animations")
         
         # Variable bindings tab
         self.variable_binding_widget = VariableBindingWidget()
@@ -398,6 +691,7 @@ class MenuHudBuilder(QWidget):
         # Update inspector tabs
         self.variable_binding_widget.set_node(node_data)
         self.event_binding_widget.set_node(node_data)
+        self.animation_widget.set_node(node_data)
     
     def on_node_modified(self, node_data: Dict[str, Any], property_name: str, value: Any):
         """Handle node modification from preview"""
@@ -485,7 +779,6 @@ class MenuHudBuilderWindow(QMainWindow):
     def setup_window(self):
         """Setup the window"""
         self.setWindowTitle("Menu and HUD Builder - Lupine Engine")
-        self.setMinimumSize(1200, 800)
         self.resize(1400, 900)
 
         # Create the main widget

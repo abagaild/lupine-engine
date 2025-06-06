@@ -18,6 +18,7 @@ from PyQt6.QtGui import QFont, QAction, QPainter, QPen, QBrush, QColor
 
 from core.project import LupineProject
 from core.python_runtime import PythonScriptRuntime
+from core.global_editor_system import get_global_editor_system, PropertyChangeCommand, setup_editor_shortcuts
 from .script_dialog import ScriptAttachmentDialog
 from .polygon_builder import PolygonBuilderDialog
 
@@ -216,31 +217,42 @@ class InspectorWidget(QWidget):
         self.current_node = None
         self.property_widgets = {}
         self.python_runtime = PythonScriptRuntime()
+
+        # Setup global editor shortcuts
+        setup_editor_shortcuts(self)
+
+        # Register clipboard callbacks
+        global_system = get_global_editor_system()
+        global_system.register_copy_callback("InspectorWidget", self._copy_node_properties)
+        global_system.register_paste_callback("InspectorWidget", self._paste_node_properties)
+
         self.setup_ui()
     
     def setup_ui(self):
         """Setup the user interface"""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(5)
-        
+        layout.setContentsMargins(2, 2, 2, 2)  # Reduced margins
+        layout.setSpacing(2)  # Reduced spacing
+
         # Title
         title_label = QLabel("Inspector")
         title_font = QFont()
-        title_font.setPointSize(12)
+        title_font.setPointSize(10)  # Smaller font
         title_font.setBold(True)
         title_label.setFont(title_font)
         layout.addWidget(title_label)
-        
+
         # Scroll area for properties
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        
+
         # Properties widget
         self.properties_widget = QWidget()
         self.properties_layout = QVBoxLayout(self.properties_widget)
         self.properties_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.properties_layout.setContentsMargins(2, 2, 2, 2)  # Reduced margins
+        self.properties_layout.setSpacing(2)  # Reduced spacing
         
         self.scroll_area.setWidget(self.properties_widget)
         layout.addWidget(self.scroll_area)
@@ -433,18 +445,21 @@ class InspectorWidget(QWidget):
         """Create node information group"""
         group = QGroupBox("Node")
         layout = QFormLayout(group)
-        
+        layout.setContentsMargins(4, 4, 4, 4)  # Reduced margins
+        layout.setVerticalSpacing(2)  # Reduced vertical spacing
+        layout.setHorizontalSpacing(4)  # Reduced horizontal spacing
+
         # Node name
         name_edit = QLineEdit(self.current_node.get("name", ""))
         name_edit.textChanged.connect(lambda text: self.update_property("name", text))
         layout.addRow("Name:", name_edit)
         self.property_widgets["name"] = name_edit
-        
+
         # Node type (read-only)
         type_label = QLabel(self.current_node.get("type", "Node"))
         type_label.setStyleSheet("color: #b0b0b0;")
         layout.addRow("Type:", type_label)
-        
+
         self.properties_layout.addWidget(group)
 
     def create_builtin_node_properties(self):
@@ -551,6 +566,9 @@ class InspectorWidget(QWidget):
 
         group = QGroupBox(group_name)
         layout = QFormLayout(group)
+        layout.setContentsMargins(4, 4, 4, 4)  # Reduced margins
+        layout.setVerticalSpacing(2)  # Reduced vertical spacing
+        layout.setHorizontalSpacing(4)  # Reduced horizontal spacing
 
         # Add special TileMap editor button if this is a TileMap node
         if (self.current_node and self.current_node.get("type") == "TileMap" and
@@ -594,14 +612,22 @@ class InspectorWidget(QWidget):
             # Import and open the tilemap editor
             from editor.tilemap_editor import TilemapEditorWindow
 
+            # Get scene editor reference for saving
+            scene_editor = None
+            if hasattr(main_window, 'scene_tabs') and main_window.scene_tabs:
+                current_widget = main_window.scene_tabs.currentWidget()
+                if hasattr(current_widget, 'scene_view'):
+                    scene_editor = current_widget
+
             # Create tilemap editor window with current node data
             if not hasattr(main_window, 'tilemap_editor_window') or not main_window.tilemap_editor_window:
                 main_window.tilemap_editor_window = TilemapEditorWindow(
-                    self.project, self.current_node, main_window
+                    self.project, self.current_node, main_window, scene_editor
                 )
             else:
                 # Update with current node
                 main_window.tilemap_editor_window.set_tilemap_node(self.current_node)
+                main_window.tilemap_editor_window.scene_editor = scene_editor
 
             # Show the window
             main_window.tilemap_editor_window.show()
@@ -817,6 +843,7 @@ class InspectorWidget(QWidget):
         container = QWidget()
         layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)  # Reduced spacing
 
         # Ensure we have a valid vector2 value
         if isinstance(var_value, list) and len(var_value) >= 2:
@@ -825,21 +852,27 @@ class InspectorWidget(QWidget):
             vector_value = [0.0, 0.0]
 
         # X component
-        layout.addWidget(QLabel("X:"))
+        x_label = QLabel("X:")
+        x_label.setMinimumWidth(12)  # Compact label
+        layout.addWidget(x_label)
         x_spin = QDoubleSpinBox()
         x_spin.setRange(-999999.0, 999999.0)
         x_spin.setDecimals(3)
         x_spin.setValue(vector_value[0])
+        x_spin.setMaximumWidth(70)  # Compact width
         x_spin.valueChanged.connect(lambda v: self._update_vector2_component(var_name, 0, v))
         layout.addWidget(x_spin)
         self.property_widgets[f"{var_name}_x"] = x_spin
 
         # Y component
-        layout.addWidget(QLabel("Y:"))
+        y_label = QLabel("Y:")
+        y_label.setMinimumWidth(12)  # Compact label
+        layout.addWidget(y_label)
         y_spin = QDoubleSpinBox()
         y_spin.setRange(-999999.0, 999999.0)
         y_spin.setDecimals(3)
         y_spin.setValue(vector_value[1])
+        y_spin.setMaximumWidth(70)  # Compact width
         y_spin.valueChanged.connect(lambda v: self._update_vector2_component(var_name, 1, v))
         layout.addWidget(y_spin)
         self.property_widgets[f"{var_name}_y"] = y_spin
@@ -891,6 +924,7 @@ class InspectorWidget(QWidget):
         spin = QSpinBox()
         spin.setRange(var_info.get('min', -999999), var_info.get('max', 999999))
         spin.setValue(int(var_value) if var_value is not None else 0)
+        spin.setMaximumWidth(80)  # Compact width
         spin.valueChanged.connect(lambda v: self.update_property(var_name, v))
         return spin
 
@@ -900,6 +934,7 @@ class InspectorWidget(QWidget):
         spin.setRange(var_info.get('min', -999999.0), var_info.get('max', 999999.0))
         spin.setDecimals(3)
         spin.setValue(float(var_value) if var_value is not None else 0.0)
+        spin.setMaximumWidth(80)  # Compact width
         spin.valueChanged.connect(lambda v: self.update_property(var_name, v))
         return spin
 
@@ -1943,9 +1978,18 @@ def take_damage(amount):
         self.properties_layout.addLayout(button_layout)
     
     def update_property(self, property_name: str, value):
-        """Update a node property"""
+        """Update a node property with undo/redo support"""
         if self.current_node:
-            self.current_node[property_name] = value
+            old_value = self.current_node.get(property_name)
+
+            # Create and execute undo command
+            command = PropertyChangeCommand(
+                self.current_node, property_name, value, old_value,
+                f"Change {property_name}"
+            )
+
+            global_system = get_global_editor_system()
+            global_system.undo_manager.execute_command(command)
 
             # Special handling for scene instance properties
             if self.current_node.get("type") == "SceneInstance":
@@ -1971,6 +2015,28 @@ def take_damage(amount):
             # Avoid automatic refresh to prevent recursion and crashes
             # Widget updates are handled by the individual widget signal handlers
             pass  # No automatic widget refresh needed
+
+    def _copy_node_properties(self) -> Optional[Dict[str, Any]]:
+        """Copy current node properties to clipboard"""
+        if self.current_node:
+            # Copy all properties except internal ones
+            properties = {}
+            for key, value in self.current_node.items():
+                if not key.startswith('_'):  # Skip internal properties
+                    properties[key] = value
+            return properties
+        return None
+
+    def _paste_node_properties(self, properties: Dict[str, Any]):
+        """Paste properties to current node"""
+        if self.current_node and properties:
+            # Only paste compatible properties
+            for key, value in properties.items():
+                if key in self.current_node and not key.startswith('_'):
+                    self.update_property(key, value)
+
+            # Refresh the inspector to show updated values
+            self.refresh_properties()
     
     def update_position(self, index: int, value: float):
         """Update position component"""
@@ -2572,7 +2638,7 @@ def take_damage(amount):
         # Font Size
         font_size = self.current_node.get("font_size", 14)
         size_spin = QSpinBox()
-        size_spin.setRange(6, 72)
+        size_spin.setRange(1, 999)  # Removed maximum constraint, practical upper limit
         size_spin.setValue(font_size)
         size_spin.valueChanged.connect(lambda v: self.update_property("font_size", v))
         layout.addRow("Font Size:", size_spin)
